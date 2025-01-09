@@ -1,0 +1,18 @@
+# Google爬虫规则
+User-agent: Googlebot
+Allow: /
+Allow: /university/
+Crawl-delay: 10
+
+# 百度爬虫规则
+User-agent: Baiduspider
+Allow: /
+Allow: /university/
+Crawl-delay: 10
+
+# 禁止其他所有爬虫
+User-agent: *
+Disallow: /
+
+# 站点地图
+Sitemap: https://www.runjplib.com/sitemap.xml

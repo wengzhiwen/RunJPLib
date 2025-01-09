@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+   <!-- Priority University Pages -->
+   <url>
+      <loc>https://www.runjplib.com/university/早稲田大学</loc>
+      <priority>1.0</priority>
+      <changefreq>weekly</changefreq>
+   </url>
+   <url>
+      <loc>https://www.runjplib.com/university/東京大学</loc>
+      <priority>1.0</priority>
+      <changefreq>weekly</changefreq>
+   </url>
+   <url>
+      <loc>https://www.runjplib.com/university/関西大学</loc>
+      <priority>1.0</priority>
+      <changefreq>weekly</changefreq>
+   </url>
+   
+   <!-- Other Common Pages -->
+   <url>
+      <loc>https://www.runjplib.com/</loc>
+      <priority>0.8</priority>
+      <changefreq>daily</changefreq>
+   </url>
+   <url>
+      <loc>https://www.runjplib.com/university</loc>
+      <priority>0.9</priority>
+      <changefreq>weekly</changefreq>
+   </url>
+</urlset>

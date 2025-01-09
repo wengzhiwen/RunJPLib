@@ -1,7 +1,11 @@
-from flask import Flask
+from flask import Flask, send_from_directory
 from routes.index import index_route, university_route
 
 app = Flask(__name__)
+
+@app.route('/robots.txt')
+def robots():
+    return send_from_directory(app.static_folder or app.root_path, 'robots.txt')
 
 # 首页路由
 @app.route('/')
