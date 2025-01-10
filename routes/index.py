@@ -34,10 +34,9 @@ class CustomImageExtension(Extension):
 # Define csv_path as a constant since it's used in multiple functions
 CSV_PATH = os.path.join('pdf_with_md', 'index.csv')
 
-def index_route():
-    # 读取index.csv文件
+def get_sorted_universities():
+    """获取排序后的大学列表"""
     universities = []
-    
     with open(CSV_PATH, 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         for row in reader:
@@ -63,7 +62,11 @@ def index_route():
     
     # 按报名日期排序
     universities.sort(key=lambda x: x['deadline'])
-    
+    return universities
+
+def index_route():
+    """首页路由"""
+    universities = get_sorted_universities()
     return render_template('index.html', universities=universities)
 
 def process_html_img_tags(content):
@@ -102,12 +105,14 @@ def university_route(name, deadline=None, original=False):
     # Convert hyphens back to slashes in the deadline
     if deadline:
         deadline = deadline.replace('-', '/')
+    
+    # 获取大学信息
     university = get_university_by_name_and_deadline(name, deadline)
     if not university:
         error_msg = f"未找到{name}的招生信息"
         if deadline:
             error_msg = f"未找到{name}在{deadline}的招生信息"
-        return render_template('index.html', error=error_msg), 404
+        return render_template('index.html', error=error_msg, universities=get_sorted_universities()), 404
         
     # 读取并渲染markdown内容
     try:
@@ -115,7 +120,7 @@ def university_route(name, deadline=None, original=False):
         full_path = os.path.join('pdf_with_md', md_path)
         
         if not os.path.exists(full_path):
-            return render_template('index.html', error="未找到该大学的详细信息"), 404
+            return render_template('index.html', error="未找到该大学的详细信息", universities=get_sorted_universities()), 404
             
         with open(full_path, 'r', encoding='utf-8') as f:
             md_content = f.read()
@@ -130,21 +135,7 @@ def university_route(name, deadline=None, original=False):
             output_format='html5'
         )
         
-        # 读取所有大学列表用于侧边栏
-        universities = []
-        with open(CSV_PATH, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                # Convert deadline slashes to hyphens for display
-                display_deadline = row['deadline'].replace('/', '-') if row['deadline'] else None
-                universities.append({
-                    'name': row['university_name'],
-                    'deadline': display_deadline,
-                    'zh_md_path': row['zh_md_path']
-                })
-        
-        # 按报名日期排序
-        universities.sort(key=lambda x: x['deadline'])
+        universities = get_sorted_universities()
         
         template = 'content_original.html' if original else 'content.html'
         # Convert deadline slashes to hyphens for display
@@ -156,7 +147,7 @@ def university_route(name, deadline=None, original=False):
                              current_deadline=display_deadline)
         
     except Exception as e:
-        return render_template('index.html', error=str(e)), 500
+        return render_template('index.html', error=str(e), universities=get_sorted_universities()), 500
 
 def get_md_content(university_name):
     """获取原版markdown内容"""
