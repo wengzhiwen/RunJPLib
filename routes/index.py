@@ -42,9 +42,11 @@ def index_route():
         reader = csv.DictReader(f)
         for row in reader:
             if row['university_name'] is not None and row['deadline'] is not None and row['zh_md_path'] is not None:
+                # Convert deadline slashes to hyphens for display
+                display_deadline = row['deadline'].replace('/', '-') if row['deadline'] else None
                 universities.append({
                     'name': row['university_name'],
-                    'deadline': row['deadline'],
+                    'deadline': display_deadline,
                     'zh_md_path': row['zh_md_path']
             })
     
@@ -122,9 +124,11 @@ def university_route(name, deadline=None, original=False):
         with open(CSV_PATH, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
+                # Convert deadline slashes to hyphens for display
+                display_deadline = row['deadline'].replace('/', '-') if row['deadline'] else None
                 universities.append({
                     'name': row['university_name'],
-                    'deadline': row['deadline'],
+                    'deadline': display_deadline,
                     'zh_md_path': row['zh_md_path']
                 })
         
@@ -132,23 +136,26 @@ def university_route(name, deadline=None, original=False):
         universities.sort(key=lambda x: x['deadline'])
         
         template = 'content_original.html' if original else 'content.html'
+        # Convert deadline slashes to hyphens for display
+        display_deadline = university['deadline'].replace('/', '-') if university['deadline'] else None
         return render_template(template, 
                              content=html_content, 
                              universities=universities,
                              current_university=name,
-                             current_deadline=university['deadline'])
+                             current_deadline=display_deadline)
         
     except Exception as e:
         return render_template('index.html', error=str(e)), 500
 
 def get_md_content(university_name):
     """获取原版markdown内容"""
-    university = get_university_by_name(university_name)
+    university = get_university_by_name_and_deadline(university_name)
     if not university:
         return jsonify({'error': '未找到该大学信息'}), 404
         
     try:
-        full_path = os.path.join('pdf_with_md', md_path)
+        # 使用原文md_path
+        full_path = os.path.join('pdf_with_md', university['md_path'])
         if not os.path.exists(full_path):
             return jsonify({'error': 'File not found'}), 404
             
