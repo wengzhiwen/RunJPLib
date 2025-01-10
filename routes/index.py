@@ -36,6 +36,16 @@ CSV_PATH = os.path.join('pdf_with_md', 'index.csv')
 
 def get_sorted_universities():
     """获取排序后的大学列表"""
+    # 读取best_list中的大学
+    best_universities = set()
+    best_list_path = os.path.join('pdf_with_md', 'best_list.csv')
+    if os.path.exists(best_list_path):
+        with open(best_list_path, 'r', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            for row in reader:
+                if row:  # 确保行不为空
+                    best_universities.add(row[0])
+    
     universities = []
     with open(CSV_PATH, 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
@@ -60,20 +70,21 @@ def get_sorted_universities():
                 'zh_md_path': row['zh_md_path']
             })
     
-    # 按报名日期逆序排序,非日期格式的放最后
+    # 按是否为优质大学和报名日期进行排序
     def get_sort_key(univ):
+        is_best = 1 if univ['name'] in best_universities else 0
         deadline = univ['deadline']  # 使用原始日期格式进行排序
         if not deadline:
-            return '9999/99/99'  # 空值放最后
+            return (is_best, '9999/99/99')  # 空值放最后
         # 检查是否符合YYYY/MM/DD格式
         if len(deadline.split('/')) == 3:
             try:
                 year, month, day = map(int, deadline.split('/'))
                 if 1900 <= year <= 9999 and 1 <= month <= 12 and 1 <= day <= 31:
-                    return deadline
+                    return (is_best, deadline)
             except ValueError:
                 pass
-        return '9999/99/99'  # 非标准日期格式放最后
+        return (is_best, '9999/99/99')  # 非标准日期格式放最后
     
     universities.sort(key=get_sort_key, reverse=True)
     return universities
