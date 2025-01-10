@@ -41,13 +41,24 @@ def index_route():
     with open(CSV_PATH, 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         for row in reader:
-            if row['university_name'] is not None and row['deadline'] is not None and row['zh_md_path'] is not None:
-                # Convert deadline slashes to hyphens for display
-                display_deadline = row['deadline'].replace('/', '-') if row['deadline'] else None
-                universities.append({
-                    'name': row['university_name'],
-                    'deadline': display_deadline,
-                    'zh_md_path': row['zh_md_path']
+            if row['university_name'] is None or len(row['university_name']) == 0:
+                print("大学名为空")
+                continue
+            
+            if row['deadline'] is None or len(row['deadline']) == 0:
+                print(f"报名截止日为空: {row['university_name']}")
+                continue
+
+            if row['zh_md_path'] is None or len(row['zh_md_path']) == 0:
+                print(f"Markdown地址为空：{row['university_name'] } / {row['deadline'] }")
+                continue
+
+            # Convert deadline slashes to hyphens for display
+            display_deadline = row['deadline'].replace('/', '-') if row['deadline'] else None
+            universities.append({
+                'name': row['university_name'],
+                'deadline': display_deadline,
+                'zh_md_path': row['zh_md_path']
             })
     
     # 按报名日期排序
