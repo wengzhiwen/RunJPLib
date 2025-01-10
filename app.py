@@ -5,7 +5,11 @@ app = Flask(__name__)
 
 @app.route('/robots.txt')
 def robots():
-    return send_from_directory(app.static_folder or app.root_path, 'robots.txt')
+    return send_from_directory('static', 'robots.txt')
+
+@app.route('/sitemap.xml')
+def sitemap():
+    return send_from_directory('static', 'sitemap.xml')
 
 # 首页路由
 @app.route('/')

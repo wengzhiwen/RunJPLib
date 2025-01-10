@@ -2,17 +2,27 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
    <!-- Priority University Pages -->
    <url>
-      <loc>https://www.runjplib.com/university/早稲田大学</loc>
+      <loc>https://www.runjplib.com/university/早稲田大学/2023-06-23</loc>
       <priority>1.0</priority>
       <changefreq>weekly</changefreq>
    </url>
    <url>
-      <loc>https://www.runjplib.com/university/東京大学</loc>
+      <loc>https://www.runjplib.com/university/東京大学/2025-03-03</loc>
       <priority>1.0</priority>
       <changefreq>weekly</changefreq>
    </url>
    <url>
-      <loc>https://www.runjplib.com/university/関西大学</loc>
+      <loc>https://www.runjplib.com/university/東北大学/2024-02-08</loc>
+      <priority>1.0</priority>
+      <changefreq>weekly</changefreq>
+   </url>
+   <url>
+      <loc>https://www.runjplib.com/university/関西大学/2024-11-25</loc>
+      <priority>1.0</priority>
+      <changefreq>weekly</changefreq>
+   </url>
+   <url>
+      <loc>https://www.runjplib.com/university/群馬大学/2025-02-05</loc>
       <priority>1.0</priority>
       <changefreq>weekly</changefreq>
    </url>
@@ -22,10 +32,5 @@
       <loc>https://www.runjplib.com/</loc>
       <priority>0.8</priority>
       <changefreq>daily</changefreq>
-   </url>
-   <url>
-      <loc>https://www.runjplib.com/university</loc>
-      <priority>0.9</priority>
-      <changefreq>weekly</changefreq>
    </url>
 </urlset>
