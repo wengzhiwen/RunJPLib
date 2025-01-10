@@ -41,10 +41,11 @@ def index_route():
     with open(CSV_PATH, 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         for row in reader:
-            universities.append({
-                'name': row['university_name'],
-                'deadline': row['deadline'],
-                'zh_md_path': row['zh_md_path']
+            if row['university_name'] is not None and row['deadline'] is not None and row['zh_md_path'] is not None:
+                universities.append({
+                    'name': row['university_name'],
+                    'deadline': row['deadline'],
+                    'zh_md_path': row['zh_md_path']
             })
     
     # 按报名日期排序
@@ -68,20 +69,32 @@ def process_html_img_tags(content):
     img_pattern = r'<img[^>]+>'
     return re.sub(img_pattern, replace_img, content)
 
-def get_university_by_name(name):
-    """根据大学名称获取信息"""
+def get_university_by_name_and_deadline(name, deadline=None):
+    """根据大学名称和截止日期获取信息"""
     with open(CSV_PATH, 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         for row in reader:
             if row['university_name'] == name:
+                # 如果提供了deadline参数，需要精确匹配
+                if deadline is not None:
+                    if row['deadline'] == deadline:
+                        return row
+                    continue
+                # 如果没有提供deadline，返回第一个匹配的大学名称的记录
                 return row
     return None
 
-def university_route(name, original=False):
+def university_route(name, deadline=None, original=False):
     """处理单个大学的路由"""
-    university = get_university_by_name(name)
+    # Convert hyphens back to slashes in the deadline
+    if deadline:
+        deadline = deadline.replace('-', '/')
+    university = get_university_by_name_and_deadline(name, deadline)
     if not university:
-        return render_template('index.html', error="未找到该大学信息"), 404
+        error_msg = f"未找到{name}的招生信息"
+        if deadline:
+            error_msg = f"未找到{name}在{deadline}的招生信息"
+        return render_template('index.html', error=error_msg), 404
         
     # 读取并渲染markdown内容
     try:
@@ -122,7 +135,8 @@ def university_route(name, original=False):
         return render_template(template, 
                              content=html_content, 
                              universities=universities,
-                             current_university=name)
+                             current_university=name,
+                             current_deadline=university['deadline'])
         
     except Exception as e:
         return render_template('index.html', error=str(e)), 500

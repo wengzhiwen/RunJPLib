@@ -13,6 +13,23 @@ def index():
     return index_route()
 
 # RESTful路由 - 大学详情页（中文版和原版）
+# 新的路由格式：/university/<name>/<deadline>
+from werkzeug.routing import BaseConverter
+
+class DateConverter(BaseConverter):
+    regex = r'[^/]+' # Match any characters except forward slash
+
+app.url_map.converters['date'] = DateConverter
+
+@app.route('/university/<name>/<date:deadline>')
+def university_with_deadline(name, deadline):
+    return university_route(name, deadline=deadline)
+
+@app.route('/university/<name>/<date:deadline>/original')
+def university_original_with_deadline(name, deadline):
+    return university_route(name, deadline=deadline, original=True)
+
+# 保留旧的路由格式以保持向后兼容
 @app.route('/university/<name>')
 def university(name):
     return university_route(name)

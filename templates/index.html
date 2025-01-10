@@ -230,7 +230,7 @@
                         {% for uni in universities %}
                         <li class="nav-item">
                             <a class="nav-link {% if current_university == uni.name %}active{% endif %}" 
-                               href="{{ url_for('university', name=uni.name) }}">
+                               href="{{ url_for('university_with_deadline', name=uni.name, deadline=uni.deadline|replace('/', '-')) }}">
                                 {{ uni.name }} ({{ uni.deadline }})
                             </a>
                         </li>
