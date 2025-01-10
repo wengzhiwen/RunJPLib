@@ -52,16 +52,30 @@ def get_sorted_universities():
                 print(f"Markdown地址为空：{row['university_name'] } / {row['deadline'] }")
                 continue
 
-            # Convert deadline slashes to hyphens for display
-            display_deadline = row['deadline'].replace('/', '-') if row['deadline'] else None
+            # 保存原始日期用于排序
             universities.append({
                 'name': row['university_name'],
-                'deadline': display_deadline,
+                'deadline': row['deadline'],  # 保存原始日期格式
+                'display_deadline': row['deadline'].replace('/', '-') if row['deadline'] else None,  # 用于显示的格式
                 'zh_md_path': row['zh_md_path']
             })
     
-    # 按报名日期排序
-    universities.sort(key=lambda x: x['deadline'])
+    # 按报名日期逆序排序,非日期格式的放最后
+    def get_sort_key(univ):
+        deadline = univ['deadline']  # 使用原始日期格式进行排序
+        if not deadline:
+            return '9999/99/99'  # 空值放最后
+        # 检查是否符合YYYY/MM/DD格式
+        if len(deadline.split('/')) == 3:
+            try:
+                year, month, day = map(int, deadline.split('/'))
+                if 1900 <= year <= 9999 and 1 <= month <= 12 and 1 <= day <= 31:
+                    return deadline
+            except ValueError:
+                pass
+        return '9999/99/99'  # 非标准日期格式放最后
+    
+    universities.sort(key=get_sort_key, reverse=True)
     return universities
 
 def index_route():
@@ -138,13 +152,11 @@ def university_route(name, deadline=None, original=False):
         universities = get_sorted_universities()
         
         template = 'content_original.html' if original else 'content.html'
-        # Convert deadline slashes to hyphens for display
-        display_deadline = university['deadline'].replace('/', '-') if university['deadline'] else None
         return render_template(template, 
                              content=html_content, 
                              universities=universities,
                              current_university=name,
-                             current_deadline=display_deadline)
+                             current_deadline=university['deadline'].replace('/', '-') if university['deadline'] else None)
         
     except Exception as e:
         return render_template('index.html', error=str(e), universities=get_sorted_universities()), 500
