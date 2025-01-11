@@ -15,8 +15,10 @@ class CustomImageProcessor(ImageInlineProcessor):
             src = el.get('src')
             # 检查是否是本地图片路径（不是http/https开头的URL）
             if not src.startswith(('http://', 'https://')):
+                # 从markdown文件路径推断图片所在的文件夹
+                md_dir = os.path.dirname(self.md.current_path) if hasattr(self.md, 'current_path') else 'pdf_with_md'
                 # 获取图片的完整路径
-                img_path = os.path.join('pdf_with_md', src)
+                img_path = os.path.join(md_dir, src)
                 if not os.path.exists(img_path):
                     # 如果图片不存在，替换为提示文字
                     el.tag = 'span'
@@ -31,44 +33,61 @@ class CustomImageExtension(Extension):
         md.inlinePatterns.register(image_pattern, 'image_link', 150)
         print("CustomImageExtension registered successfully")
 
-# Define csv_path as a constant since it's used in multiple functions
-CSV_PATH = os.path.join('pdf_with_md', 'index.csv')
-
 def get_sorted_universities():
     """获取排序后的大学列表"""
-    # 读取best_list中的大学
+    # 读取所有文件夹中的best_list
     best_universities = set()
-    best_list_path = os.path.join('pdf_with_md', 'best_list.csv')
-    if os.path.exists(best_list_path):
-        with open(best_list_path, 'r', encoding='utf-8') as f:
-            reader = csv.reader(f)
-            for row in reader:
-                if row:  # 确保行不为空
-                    best_universities.add(row[0])
+    base_dir = os.path.dirname('pdf_with_md')
+    if not base_dir:
+        base_dir = '.'
+    pdf_dirs = [d for d in os.listdir(base_dir) if d.startswith('pdf_with_md')]
+    
+    # 从每个文件夹读取best_list.csv
+    for pdf_dir in pdf_dirs:
+        best_list_path = os.path.join(pdf_dir, 'best_list.csv')
+        if os.path.exists(best_list_path):
+            with open(best_list_path, 'r', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    if row:  # 确保行不为空
+                        best_universities.add(row[0])
     
     universities = []
-    with open(CSV_PATH, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            if row['university_name'] is None or len(row['university_name']) == 0:
-                print("大学名为空")
-                continue
+    
+    # 获取所有pdf_with_md开头的文件夹
+    base_dir = os.path.dirname('pdf_with_md')
+    if not base_dir:
+        base_dir = '.'
+    pdf_dirs = [d for d in os.listdir(base_dir) if d.startswith('pdf_with_md')]
+    
+    # 从每个文件夹读取index.csv
+    for pdf_dir in pdf_dirs:
+        csv_path = os.path.join(pdf_dir, 'index.csv')
+        if not os.path.exists(csv_path):
+            continue
             
-            if row['deadline'] is None or len(row['deadline']) == 0:
-                print(f"报名截止日为空: {row['university_name']}")
-                continue
+        with open(csv_path, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row['university_name'] is None or len(row['university_name']) == 0:
+                    print("大学名为空")
+                    continue
+                
+                if row['deadline'] is None or len(row['deadline']) == 0:
+                    print(f"报名截止日为空: {row['university_name']}")
+                    continue
 
-            if row['zh_md_path'] is None or len(row['zh_md_path']) == 0:
-                print(f"Markdown地址为空：{row['university_name'] } / {row['deadline'] }")
-                continue
+                if row['zh_md_path'] is None or len(row['zh_md_path']) == 0:
+                    print(f"Markdown地址为空：{row['university_name'] } / {row['deadline'] }")
+                    continue
 
-            # 保存原始日期用于排序
-            universities.append({
-                'name': row['university_name'],
-                'deadline': row['deadline'],  # 保存原始日期格式
-                'display_deadline': row['deadline'].replace('/', '-') if row['deadline'] else None,  # 用于显示的格式
-                'zh_md_path': row['zh_md_path']
-            })
+                # 保存原始日期用于排序，并添加文件夹前缀到路径
+                universities.append({
+                    'name': row['university_name'],
+                    'deadline': row['deadline'],  # 保存原始日期格式
+                    'display_deadline': row['deadline'].replace('/', '-') if row['deadline'] else None,  # 用于显示的格式
+                    'zh_md_path': os.path.join(pdf_dir, row['zh_md_path'])
+                })
     
     # 按是否为优质大学和报名日期进行排序
     def get_sort_key(univ):
@@ -94,14 +113,16 @@ def index_route():
     universities = get_sorted_universities()
     return render_template('index.html', universities=universities)
 
-def process_html_img_tags(content):
+def process_html_img_tags(content, md_path=None):
     """处理HTML格式的img标签"""
     def replace_img(match):
         src = re.search(r'src=["\'](.*?)["\']', match.group(0))
         if src:
             src = src.group(1)
             if not src.startswith(('http://', 'https://')):
-                img_path = os.path.join('pdf_with_md', src)
+                # 从markdown文件路径推断图片所在的文件夹
+                md_dir = os.path.dirname(md_path) if md_path else 'pdf_with_md'
+                img_path = os.path.join(md_dir, src)
                 if not os.path.exists(img_path):
                     return '<span>受技术限制，图片未能保留在当前文档中</span>'
         return match.group(0)
@@ -112,17 +133,34 @@ def process_html_img_tags(content):
 
 def get_university_by_name_and_deadline(name, deadline=None):
     """根据大学名称和截止日期获取信息"""
-    with open(CSV_PATH, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            if row['university_name'] == name:
-                # 如果提供了deadline参数，需要精确匹配
-                if deadline is not None:
-                    if row['deadline'] == deadline:
-                        return row
-                    continue
-                # 如果没有提供deadline，返回第一个匹配的大学名称的记录
-                return row
+    # 获取所有pdf_with_md开头的文件夹
+    base_dir = os.path.dirname('pdf_with_md')
+    if not base_dir:
+        base_dir = '.'
+    pdf_dirs = [d for d in os.listdir(base_dir) if d.startswith('pdf_with_md')]
+    
+    for pdf_dir in pdf_dirs:
+        csv_path = os.path.join(pdf_dir, 'index.csv')
+        if not os.path.exists(csv_path):
+            continue
+            
+        with open(csv_path, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row['university_name'] == name:
+                    # 如果提供了deadline参数，需要精确匹配
+                    if deadline is not None:
+                        if row['deadline'] == deadline:
+                            # 添加文件夹前缀到路径
+                            row['zh_md_path'] = os.path.join(pdf_dir, row['zh_md_path'])
+                            row['md_path'] = os.path.join(pdf_dir, row['md_path'])
+                            return row
+                        continue
+                    # 如果没有提供deadline，返回第一个匹配的大学名称的记录
+                    # 添加文件夹前缀到路径
+                    row['zh_md_path'] = os.path.join(pdf_dir, row['zh_md_path'])
+                    row['md_path'] = os.path.join(pdf_dir, row['md_path'])
+                    return row
     return None
 
 def university_route(name, deadline=None, original=False):
@@ -142,7 +180,7 @@ def university_route(name, deadline=None, original=False):
     # 读取并渲染markdown内容
     try:
         md_path = university['md_path'] if original else university['zh_md_path']
-        full_path = os.path.join('pdf_with_md', md_path)
+        full_path = md_path  # 路径已经包含了文件夹前缀
         
         if not os.path.exists(full_path):
             return render_template('index.html', error="未找到该大学的详细信息", universities=get_sorted_universities()), 404
@@ -151,14 +189,16 @@ def university_route(name, deadline=None, original=False):
             md_content = f.read()
         
         # 处理HTML格式的img标签
-        md_content = process_html_img_tags(md_content)
+        md_content = process_html_img_tags(md_content, full_path)
             
         # 使用markdown库渲染内容
-        html_content = markdown.markdown(
-            md_content,
+        md = markdown.Markdown(
             extensions=['tables', 'fenced_code', CustomImageExtension()],
             output_format='html5'
         )
+        # 设置当前处理的文件路径
+        md.current_path = full_path
+        html_content = md.convert(md_content)
         
         universities = get_sorted_universities()
         
@@ -179,8 +219,8 @@ def get_md_content(university_name):
         return jsonify({'error': '未找到该大学信息'}), 404
         
     try:
-        # 使用原文md_path
-        full_path = os.path.join('pdf_with_md', university['md_path'])
+        # 使用原文md_path，路径已经包含了文件夹前缀
+        full_path = university['md_path']
         if not os.path.exists(full_path):
             return jsonify({'error': 'File not found'}), 404
             
@@ -191,14 +231,16 @@ def get_md_content(university_name):
         print(f"MD content preview: {md_content[:200]}")  # 打印前200个字符
         
         # 先处理HTML格式的img标签
-        md_content = process_html_img_tags(md_content)
+        md_content = process_html_img_tags(md_content, full_path)
             
         # 使用markdown库渲染内容，添加自定义图片处理扩展
-        html_content = markdown.markdown(
-            md_content,
+        md = markdown.Markdown(
             extensions=['tables', 'fenced_code', CustomImageExtension()],
             output_format='html5'
         )
+        # 设置当前处理的文件路径
+        md.current_path = full_path
+        html_content = md.convert(md_content)
         print(f"Generated HTML length: {len(html_content)}")
         return jsonify({'content': html_content})
         
