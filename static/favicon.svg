@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 400 400">
+<g transform="translate(200,200)">
+    <!-- 16瓣菊花 -->
+    <path d="
+        M0,-160 C20,-160 40,-140 40,-120
+        L40,-40 C40,-20 20,0 0,0
+        C-20,0 -40,-20 -40,-40
+        L-40,-120 C-40,-140 -20,-160 0,-160
+        Z" 
+        fill="#FFD700" 
+        transform="rotate(0)"
+    />
+    <use href="#petal" transform="rotate(22.5)"/>
+    <use href="#petal" transform="rotate(45)"/>
+    <use href="#petal" transform="rotate(67.5)"/>
+    <use href="#petal" transform="rotate(90)"/>
+    <use href="#petal" transform="rotate(112.5)"/>
+    <use href="#petal" transform="rotate(135)"/>
+    <use href="#petal" transform="rotate(157.5)"/>
+    <use href="#petal" transform="rotate(180)"/>
+    <use href="#petal" transform="rotate(202.5)"/>
+    <use href="#petal" transform="rotate(225)"/>
+    <use href="#petal" transform="rotate(247.5)"/>
+    <use href="#petal" transform="rotate(270)"/>
+    <use href="#petal" transform="rotate(292.5)"/>
+    <use href="#petal" transform="rotate(315)"/>
+    <use href="#petal" transform="rotate(337.5)"/>
+    
+    <!-- 中心圆环 -->
+    <circle r="80" fill="#FFD700"/>
+    <!-- 红色日之丸 -->
+    <circle r="64" fill="#BC002D"/>
+</g>
+
+<defs>
+    <path id="petal" d="
+        M0,-160 C20,-160 40,-140 40,-120
+        L40,-40 C40,-20 20,0 0,0
+        C-20,0 -40,-20 -40,-40
+        L-40,-120 C-40,-140 -20,-160 0,-160
+        Z" 
+        fill="#FFD700"
+    />
+</defs>
+</svg>

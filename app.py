@@ -11,6 +11,10 @@ def robots():
 def sitemap():
     return send_from_directory('static', 'sitemap.xml')
 
+@app.route('/favicon.svg')
+def favicon():
+    return send_from_directory('static', 'favicon.svg')
+
 # 首页路由
 @app.route('/')
 def index():
