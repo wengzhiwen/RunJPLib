@@ -65,16 +65,30 @@
 
         @media (max-width: 768px) {
             .sidebar {
-                width: 100%;
-                height: auto;
-                position: relative;
-                top: 0;
+                display: none;  /* Hide the sidebar on mobile */
             }
 
             .main-content {
                 margin-left: 0;
                 width: 100%;
                 padding: 20px;
+            }
+
+            /* Mobile menu styles */
+            #navbarNav {
+                background: #f8f9fa;
+                padding: 1rem;
+                max-height: 80vh;
+                overflow-y: auto;
+            }
+
+            #navbarNav .nav-link {
+                padding: 0.5rem 1rem;
+                border-bottom: 1px solid #dee2e6;
+            }
+
+            #navbarNav .nav-link:last-child {
+                border-bottom: none;
             }
         }
 
@@ -265,12 +279,30 @@
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <!-- Mobile-only university list -->
+                <div class="d-lg-none">
+                    <div class="sidebar-heading">大学列表</div>
+                    <div style="padding: 0 1rem; font-size: 0.8rem; color: #666;">请使用浏览器的搜索功能</div>
+                    <ul class="nav flex-column">
+                        {% for uni in universities %}
+                        <li class="nav-item">
+                            <a class="nav-link {% if current_university == uni.name %}active{% endif %}" 
+                               href="{{ url_for('university_with_deadline', name=uni.name, deadline=uni.display_deadline) }}">
+                                {{ uni.name }} ({{ uni.display_deadline }})
+                            </a>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
         </div>
     </nav>
 
     <div class="container-fluid p-0">
         <div class="row g-0">
-            <nav class="sidebar">
+            <!-- Desktop-only sidebar -->
+            <nav class="sidebar d-none d-lg-block">
                 <div class="sidebar-sticky">
                     <div class="sidebar-heading">大学列表</div>
                     <div style="padding: 0 1rem; font-size: 0.8rem; color: #666;">请使用浏览器的搜索功能</div>
