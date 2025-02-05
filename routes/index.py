@@ -35,14 +35,14 @@ class CustomImageExtension(Extension):
 
 def get_sorted_universities():
     """获取排序后的大学列表"""
-    # 读取所有文件夹中的best_list
-    best_universities = set()
-    base_dir = os.path.dirname('pdf_with_md')
-    if not base_dir:
-        base_dir = '.'
-    pdf_dirs = [d for d in os.listdir(base_dir) if d.startswith('pdf_with_md')]
+    logging.debug("####get_sorted_universities####")
     
-    # 从每个文件夹读取best_list.csv
+    best_universities = set()
+    base_dir = os.getenv('CONTENT_BASE_DIR', '.')
+    pdf_dirs = [d for d in os.listdir(base_dir) if d.startswith('pdf_with_md')]
+    logging.debug(f"pdf_dirs: {pdf_dirs}")
+    
+    # 从每个文件夹读取best_list.csv并合并
     for pdf_dir in pdf_dirs:
         best_list_path = os.path.join(pdf_dir, 'best_list.csv')
         if os.path.exists(best_list_path):
@@ -55,9 +55,7 @@ def get_sorted_universities():
     universities = []
     
     # 获取所有pdf_with_md开头的文件夹
-    base_dir = os.path.dirname('pdf_with_md')
-    if not base_dir:
-        base_dir = '.'
+    base_dir = os.getenv('CONTENT_BASE_DIR', '.')
     pdf_dirs = [d for d in os.listdir(base_dir) if d.startswith('pdf_with_md')]
     
     # 从每个文件夹读取index.csv
@@ -134,9 +132,7 @@ def process_html_img_tags(content, md_path=None):
 def get_university_by_name_and_deadline(name, deadline=None):
     """根据大学名称和截止日期获取信息"""
     # 获取所有pdf_with_md开头的文件夹
-    base_dir = os.path.dirname('pdf_with_md')
-    if not base_dir:
-        base_dir = '.'
+    base_dir = os.getenv('CONTENT_BASE_DIR', '.')
     pdf_dirs = [d for d in os.listdir(base_dir) if d.startswith('pdf_with_md')]
     
     for pdf_dir in pdf_dirs:

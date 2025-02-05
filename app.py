@@ -1,5 +1,9 @@
 from flask import Flask, send_from_directory
 from routes.index import index_route, university_route
+import logging
+from dotenv import load_dotenv
+import os
+load_dotenv()
 
 app = Flask(__name__)
 
@@ -47,4 +51,12 @@ def university_original(name):
     return university_route(name, original=True)
 
 if __name__ == '__main__':
+    # 设定日志配置
+    logging.basicConfig(
+        level=os.getenv('LOG_LEVEL', 'DEBUG'),
+        format='%(asctime)s - %(filename)s - %(lineno)d - %(levelname)s - %(message)s'
+    )
+    logging.debug("日志配置完成，准备启动应用")
+    
+    # 启动应用
     app.run(debug=True, host='0.0.0.0', port=5000)
