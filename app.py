@@ -34,21 +34,21 @@ class DateConverter(BaseConverter):
 app.url_map.converters['date'] = DateConverter
 
 @app.route('/university/<name>/<date:deadline>')
-def university_with_deadline(name, deadline):
-    return university_route(name, deadline=deadline)
+def university_report_with_deadline(name, deadline):
+    return university_route(name, deadline=deadline, content="REPORT")
 
 @app.route('/university/<name>/<date:deadline>/original')
 def university_original_with_deadline(name, deadline):
-    return university_route(name, deadline=deadline, original=True)
+    return university_route(name, deadline=deadline, content="ORIGINAL")
+
+@app.route('/university/<name>/<date:deadline>/zh')
+def university_zh_with_deadline(name, deadline):
+    return university_route(name, deadline=deadline, content="ZH")
 
 # 保留旧的路由格式以保持向后兼容
 @app.route('/university/<name>')
 def university(name):
     return university_route(name)
-
-@app.route('/university/<name>/original')
-def university_original(name):
-    return university_route(name, original=True)
 
 if __name__ == '__main__':
     # 设定日志配置

@@ -288,8 +288,8 @@
                         {% for uni in universities %}
                         <li class="nav-item">
                             <a class="nav-link {% if current_university == uni.name %}active{% endif %}" 
-                               href="{{ url_for('university_with_deadline', name=uni.name, deadline=uni.display_deadline) }}">
-                                {{ uni.name }} ({{ uni.display_deadline }})
+                               href="{{ url_for('university_report_with_deadline', name=uni.name, deadline=uni.deadline) }}">
+                                {{ uni.name }} ({{ uni.deadline }})
                             </a>
                         </li>
                         {% endfor %}
@@ -310,8 +310,8 @@
                         {% for uni in universities %}
                         <li class="nav-item">
                             <a class="nav-link {% if current_university == uni.name %}active{% endif %}" 
-                               href="{{ url_for('university_with_deadline', name=uni.name, deadline=uni.display_deadline) }}">
-                                {{ uni.name }} ({{ uni.display_deadline }})
+                               href="{{ url_for('university_report_with_deadline', name=uni.name, deadline=uni.deadline) }}">
+                                {{ uni.name }} ({{ uni.deadline }})
                             </a>
                         </li>
                         {% endfor %}
