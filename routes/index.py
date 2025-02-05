@@ -59,6 +59,7 @@ def get_sorted_universities():
     pdf_dirs = [d for d in os.listdir(base_dir) if d.startswith('pdf_with_md')]
     
     # 从每个文件夹读取index.csv
+    # TODO: 想办法废掉index.csv
     for pdf_dir in pdf_dirs:
         csv_path = os.path.join(pdf_dir, 'index.csv')
         if not os.path.exists(csv_path):
@@ -135,6 +136,7 @@ def get_university_by_name_and_deadline(name, deadline=None):
     base_dir = os.getenv('CONTENT_BASE_DIR', '.')
     pdf_dirs = [d for d in os.listdir(base_dir) if d.startswith('pdf_with_md')]
     
+    # TODO：想办法废掉index.csv
     for pdf_dir in pdf_dirs:
         csv_path = os.path.join(pdf_dir, 'index.csv')
         if not os.path.exists(csv_path):
@@ -160,7 +162,13 @@ def get_university_by_name_and_deadline(name, deadline=None):
     return None
 
 def university_route(name, deadline=None, original=False):
-    """处理单个大学的路由"""
+    """
+    处理单个大学的路由
+    
+    :param name: 大学名称
+    :param deadline: 报名截止日期
+    :param original: 是否要看原版（False = 中文版）
+    """
     # Convert hyphens back to slashes in the deadline
     if deadline:
         deadline = deadline.replace('-', '/')
@@ -207,38 +215,3 @@ def university_route(name, deadline=None, original=False):
         
     except Exception as e:
         return render_template('index.html', error=str(e), universities=get_sorted_universities()), 500
-
-def get_md_content(university_name):
-    """获取原版markdown内容"""
-    university = get_university_by_name_and_deadline(university_name)
-    if not university:
-        return jsonify({'error': '未找到该大学信息'}), 404
-        
-    try:
-        # 使用原文md_path，路径已经包含了文件夹前缀
-        full_path = university['md_path']
-        if not os.path.exists(full_path):
-            return jsonify({'error': 'File not found'}), 404
-            
-        with open(full_path, 'r', encoding='utf-8') as f:
-            md_content = f.read()
-        
-        print(f"Processing MD content with length: {len(md_content)}")
-        print(f"MD content preview: {md_content[:200]}")  # 打印前200个字符
-        
-        # 先处理HTML格式的img标签
-        md_content = process_html_img_tags(md_content, full_path)
-            
-        # 使用markdown库渲染内容，添加自定义图片处理扩展
-        md = markdown.Markdown(
-            extensions=['tables', 'fenced_code', CustomImageExtension()],
-            output_format='html5'
-        )
-        # 设置当前处理的文件路径
-        md.current_path = full_path
-        html_content = md.convert(md_content)
-        print(f"Generated HTML length: {len(html_content)}")
-        return jsonify({'content': html_content})
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
