@@ -42,7 +42,7 @@ def get_all_universities() -> list[University]:
             # 对报名截止日进行格式化
             # 如果报名截止日是一串8位数字，则认为它是YYYYMMDD格式，需要转换为YYYY/MM/DD格式
             if len(deadline) == 8 and deadline.isdigit():
-                deadline = f"{deadline[:4]}/{deadline[4:6]}/{deadline[6:]}"
+                deadline = f"{deadline[:4]}-{deadline[4:6]}-{deadline[6:]}"
             # 如果报名截止日是YYYY/MM/DD格式或YYYY-MM-DD格式，为了保证显示效果，需要统一为YYYY-MM-DD格式
             elif len(deadline) == 10:
                 deadline = deadline.replace("/", "-")
@@ -139,7 +139,7 @@ def get_university_by_name_and_deadline(name, deadline=None) -> University | Non
     # 对报名截止日期进行格式化
     # 如果报名截止日是一串8位数字，则认为它是YYYYMMDD格式，需要转换为YYYY/MM/DD格式
     if len(deadline) == 8 and deadline.isdigit():
-        deadline = f"{deadline[:4]}/{deadline[4:6]}/{deadline[6:]}"
+        deadline = f"{deadline[:4]}-{deadline[4:6]}-{deadline[6:]}"
     # 如果报名截止日是YYYY/MM/DD格式或YYYY-MM-DD格式，为了保证显示效果，需要统一为YYYY-MM-DD格式
     elif len(deadline) == 10:
         deadline = deadline.replace("/", "-")
