@@ -2,7 +2,7 @@ import os
 import csv
 import markdown
 import re
-from flask import render_template, jsonify
+from flask import render_template, jsonify, make_response
 from config import CONTENT_DIR
 from markdown.inlinepatterns import ImageInlineProcessor, IMAGE_LINK_RE
 from markdown.extensions import Extension
@@ -236,3 +236,10 @@ def university_route(name, deadline=None, content="REPORT"):
             ),
             500,
         )
+
+def sitemap_route():
+    """sitemap路由"""
+    universities = get_sorted_universities()
+    response = make_response(render_template("sitemap.xml", universities=universities))
+    response.headers["Content-Type"] = "application/xml"
+    return response

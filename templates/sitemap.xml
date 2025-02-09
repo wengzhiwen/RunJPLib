@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <!-- 主页 -->
+    <url>
+        <loc>https://www.runjplib.com/</loc>
+        <priority>1.0</priority>
+        <changefreq>daily</changefreq>
+    </url>
+    
+    <!-- 大学招生信息基础分析报告页面 -->
+    {% for uni in universities %}
+    <url>
+        <loc>https://www.runjplib.com{{ url_for('university_report_with_deadline', name=uni.name, deadline=uni.deadline) }}</loc>
+        <priority>0.8</priority>
+        <changefreq>weekly</changefreq>
+    </url>
+    {% endfor %}
+
+    <!-- 大学招生信息中文版翻译件 -->
+    {% for uni in universities %}
+    <url>
+        <loc>https://www.runjplib.com{{ url_for('university_zh_with_deadline', name=uni.name, deadline=uni.deadline) }}</loc>
+        <priority>0.8</priority>
+        <changefreq>weekly</changefreq>
+    </url>
+    {% endfor %}
+</urlset> 

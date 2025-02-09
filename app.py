@@ -1,5 +1,5 @@
 from flask import Flask, send_from_directory
-from routes.index import index_route, university_route
+from routes.index import index_route, university_route, sitemap_route
 import logging
 from dotenv import load_dotenv
 import os
@@ -13,7 +13,7 @@ def robots():
 
 @app.route('/sitemap.xml')
 def sitemap():
-    return send_from_directory('static', 'sitemap.xml')
+    return sitemap_route()
 
 @app.route('/favicon.svg')
 def favicon():
