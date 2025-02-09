@@ -211,7 +211,14 @@ def university_route(name, deadline=None, content="REPORT"):
 
         # 使用markdown库渲染内容
         md = markdown.Markdown(
-            extensions=["tables", "fenced_code"],
+            extensions=[
+                'extra',
+                'tables',
+                'fenced_code',
+                'sane_lists',
+                'nl2br',
+                'smarty'
+            ],
             output_format="html5",
         )
         # 设置当前处理的文件路径
