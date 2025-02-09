@@ -377,6 +377,21 @@
                         润日图书馆 - 日本大学招生信息库
                     </h1>
                     <p class="lead">最全面的日本大学入试情报大全</p>
+
+                    <div class="search-container mb-4">
+                        <div class="input-group" style="max-width: 300px;">
+                            <input type="text" 
+                                   id="universitySearch" 
+                                   class="form-control" 
+                                   placeholder="输入大学日文名称搜索...">
+                            <button class="btn btn-outline-secondary" type="button" id="searchButton">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-search" viewBox="0 0 16 16">
+                                    <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
                     <p>本站收集整理了包括东京大学（东大）、京都大学（京大）、早稻田大学（早大）、庆应义塾大学（庆应）等日本顶尖大学的本科（学部）招生信息（募集要项）。<br />
                         扫描、翻译和分析工作都由AI（Google Gemini、DeepSeek和OpenAI GPT）进行，受限于当前技术条件并不能100%准确的传达原版招生信息的内容，且原版内容可能会发生更新或调整。为了保证不耽误你的升学，还请务必访问大学官网确认更加准确的信息。<br />
                         <br />
@@ -441,6 +456,44 @@
       },
       "keywords": "日本留学,日本大学,东京大学,京都大学,早稻田大学,庆应义塾大学,一桥大学,中央大学,留学日本,日本大学入试,留考,日本高考,日本大学招生,留学生考试"
     }
+    </script>
+
+    <!-- 在body结束标签前添加搜索功能的JavaScript代码 -->
+    <script>
+    function performSearch() {
+        const searchTerm = document.getElementById('universitySearch').value.toLowerCase();
+        const links = document.querySelectorAll('.nav-link');
+        
+        links.forEach(link => {
+            const text = link.textContent.toLowerCase();
+            const listItem = link.parentElement;
+            
+            if (text.includes(searchTerm)) {
+                listItem.style.display = '';
+                if (searchTerm) {
+                    const regex = new RegExp(searchTerm, 'gi');
+                    const highlightedText = link.textContent.replace(regex, match => 
+                        `<span style="background-color: #fff3cd">${match}</span>`
+                    );
+                    link.innerHTML = highlightedText;
+                }
+            } else {
+                listItem.style.display = 'none';
+            }
+        });
+    }
+
+    document.getElementById('universitySearch').addEventListener('input', performSearch);
+    document.getElementById('searchButton').addEventListener('click', performSearch);
+
+    // 当搜索框失去焦点时，移除高亮
+    document.getElementById('universitySearch').addEventListener('blur', function() {
+        const links = document.querySelectorAll('.nav-link');
+        links.forEach(link => {
+            const text = link.textContent;
+            link.innerHTML = text;
+        });
+    });
     </script>
 </body>
 
