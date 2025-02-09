@@ -464,6 +464,18 @@
         const searchTerm = document.getElementById('universitySearch').value.toLowerCase();
         const links = document.querySelectorAll('.nav-link');
         
+        // 通过检查桌面版侧边栏是否显示来判断是否为移动版
+        const desktopSidebar = document.querySelector('.sidebar.d-none.d-lg-block');
+        const isDesktopSidebarHidden = window.getComputedStyle(desktopSidebar).display === 'none';
+        
+        // 如果是移动版（桌面侧边栏隐藏），则展开导航栏
+        if (isDesktopSidebarHidden) {
+            const navbarCollapse = document.getElementById('navbarNav');
+            const bsCollapse = new bootstrap.Collapse(navbarCollapse, {
+                show: true
+            });
+        }
+        
         links.forEach(link => {
             const text = link.textContent.toLowerCase();
             const listItem = link.parentElement;
