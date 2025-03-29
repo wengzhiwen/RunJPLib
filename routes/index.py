@@ -7,6 +7,7 @@ from config import CONTENT_DIR
 from markdown.inlinepatterns import ImageInlineProcessor, IMAGE_LINK_RE
 from markdown.extensions import Extension
 import logging
+from collections import defaultdict
 
 class University:
     def __init__(self, name, deadline, zh_md_path, md_path, report_md_path):
@@ -33,7 +34,7 @@ def get_all_universities() -> list[University]:
             # 将子文件夹的名称按"_"split
             sub_dir_name = sub_dir.split("_")
             if len(sub_dir_name) < 2:
-                logging.info(f"忽略子文件夹: {sub_dir} 。文件夹名不含有“_”")
+                logging.info(f"忽略子文件夹: {sub_dir} 。文件夹名不含有\"_\"")
                 continue
             # 获取大学名称
             university_name = sub_dir_name[0]
@@ -54,19 +55,19 @@ def get_all_universities() -> list[University]:
                 logging.info(f"忽略子文件夹: {sub_dir}。无法解析的报名截止日")
                 continue
 
-            # 检查文件夹下是否存在“文件夹名.md”
+            # 检查文件夹下是否存在"文件夹名.md"
             if not os.path.exists(os.path.join(pdf_dir, sub_dir, f"{sub_dir}.md")):
-                logging.info(f"忽略子文件夹: {sub_dir}。文件夹下没有“文件夹名.md”文件")
+                logging.info(f"忽略子文件夹: {sub_dir}。文件夹下没有\"文件夹名.md\"文件")
                 continue
 
-            # 检查文件夹下是否存在“文件夹名_report.md”
+            # 检查文件夹下是否存在"文件夹名_report.md"
             if not os.path.exists(os.path.join(pdf_dir, sub_dir, f"{sub_dir}_report.md")):
-                logging.info(f"忽略子文件夹: {sub_dir}。文件夹下没有“文件夹名_report.md”文件")
+                logging.info(f"忽略子文件夹: {sub_dir}。文件夹下没有\"文件夹名_report.md\"文件")
                 continue
 
-            # 检查文件夹下是否存在“文件夹名_中文.md”
+            # 检查文件夹下是否存在"文件夹名_中文.md"
             if not os.path.exists(os.path.join(pdf_dir, sub_dir, f"{sub_dir}_中文.md")):
-                logging.info(f"忽略子文件夹: {sub_dir}。文件夹下没有“文件夹名_中文.md”文件")
+                logging.info(f"忽略子文件夹: {sub_dir}。文件夹下没有\"文件夹名_中文.md\"文件")
                 continue
             
             # 这是一所完整的大学的信息
@@ -123,10 +124,38 @@ def get_sorted_universities() -> list[University]:
     universities.sort(key=get_sort_key, reverse=True)
     return universities
 
+def load_categories() -> defaultdict:
+    """
+    加载大学分类信息，并根据实际文件存在情况标记链接状态
+    
+    :return: 包含分类信息的defaultdict
+    """
+    categories = defaultdict(list)
+    # 获取所有存在的大学信息
+    existing_universities = {uni.name: uni.deadline for uni in get_all_universities()}
+    
+    try:
+        with open('data/university_categories.csv', 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if all(row.get(field) for field in ['category', 'name', 'ja_name', 'url']):
+                    # 检查该大学是否存在
+                    file_exists = row['name'] in existing_universities
+                    categories[row['category']].append({
+                        'name': row['name'],
+                        'ja_name': row['ja_name'],
+                        'url': row['url'],
+                        'file_exists': file_exists
+                    })
+    except Exception as e:
+        logging.error(f"加载大学分类数据时发生错误: {e}")
+    return categories
+
 def index_route():
     """首页路由"""
     universities = get_sorted_universities()
-    return render_template("index.html", universities=universities)
+    categories = load_categories()
+    return render_template("index.html", universities=universities, categories=categories)
 
 def get_university_by_name_and_deadline(name, deadline=None) -> University | None:
     """
@@ -179,7 +208,8 @@ def university_route(name, deadline=None, content="REPORT"):
             render_template(
                 "index.html", 
                 error=error_msg, 
-                universities=get_sorted_universities()
+                universities=get_sorted_universities(),
+                categories=load_categories()
             ),
             404,
         )
@@ -202,6 +232,7 @@ def university_route(name, deadline=None, content="REPORT"):
                     "index.html",
                     error=f"未找到{name}在{deadline}的{content}信息",
                     universities=get_sorted_universities(),
+                    categories=load_categories()
                 ),
                 404,
             )
