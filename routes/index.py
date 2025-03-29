@@ -9,13 +9,16 @@ from markdown.extensions import Extension
 import logging
 from collections import defaultdict
 
+
 class University:
+
     def __init__(self, name, deadline, zh_md_path, md_path, report_md_path):
         self.name = name
         self.deadline = deadline
         self.zh_md_path = zh_md_path
         self.md_path = md_path
         self.report_md_path = report_md_path
+
 
 def get_all_universities() -> list[University]:
     """获取所有大学的信息"""
@@ -28,7 +31,8 @@ def get_all_universities() -> list[University]:
     for pdf_dir in pdf_dirs:
         # 获取其下的所有一级子文件夹（大学）
         sub_dirs = [
-            d for d in os.listdir(pdf_dir) if os.path.isdir(os.path.join(pdf_dir, d))
+            d for d in os.listdir(pdf_dir)
+            if os.path.isdir(os.path.join(pdf_dir, d))
         ]
         for sub_dir in sub_dirs:
             # 将子文件夹的名称按"_"split
@@ -56,32 +60,36 @@ def get_all_universities() -> list[University]:
                 continue
 
             # 检查文件夹下是否存在"文件夹名.md"
-            if not os.path.exists(os.path.join(pdf_dir, sub_dir, f"{sub_dir}.md")):
+            if not os.path.exists(
+                    os.path.join(pdf_dir, sub_dir, f"{sub_dir}.md")):
                 logging.info(f"忽略子文件夹: {sub_dir}。文件夹下没有\"文件夹名.md\"文件")
                 continue
 
             # 检查文件夹下是否存在"文件夹名_report.md"
-            if not os.path.exists(os.path.join(pdf_dir, sub_dir, f"{sub_dir}_report.md")):
+            if not os.path.exists(
+                    os.path.join(pdf_dir, sub_dir, f"{sub_dir}_report.md")):
                 logging.info(f"忽略子文件夹: {sub_dir}。文件夹下没有\"文件夹名_report.md\"文件")
                 continue
 
             # 检查文件夹下是否存在"文件夹名_中文.md"
-            if not os.path.exists(os.path.join(pdf_dir, sub_dir, f"{sub_dir}_中文.md")):
+            if not os.path.exists(
+                    os.path.join(pdf_dir, sub_dir, f"{sub_dir}_中文.md")):
                 logging.info(f"忽略子文件夹: {sub_dir}。文件夹下没有\"文件夹名_中文.md\"文件")
                 continue
-            
+
             # 这是一所完整的大学的信息
-            universities.append(
-                {
-                    "name": university_name,
-                    "deadline": deadline,
-                    "zh_md_path": os.path.join(pdf_dir, sub_dir, f"{sub_dir}_中文.md"),
-                    "md_path": os.path.join(pdf_dir, sub_dir, f"{sub_dir}.md"),
-                    "report_md_path": os.path.join(
-                        pdf_dir, sub_dir, f"{sub_dir}_report.md"
-                    ),
-                }
-            )
+            universities.append({
+                "name":
+                university_name,
+                "deadline":
+                deadline,
+                "zh_md_path":
+                os.path.join(pdf_dir, sub_dir, f"{sub_dir}_中文.md"),
+                "md_path":
+                os.path.join(pdf_dir, sub_dir, f"{sub_dir}.md"),
+                "report_md_path":
+                os.path.join(pdf_dir, sub_dir, f"{sub_dir}_report.md"),
+            })
 
     # 修改返回值，将字典转换为 University 对象
     return [
@@ -91,8 +99,7 @@ def get_all_universities() -> list[University]:
             zh_md_path=u["zh_md_path"],
             md_path=u["md_path"],
             report_md_path=u["report_md_path"],
-        )
-        for u in universities
+        ) for u in universities
     ]
 
 
@@ -124,40 +131,62 @@ def get_sorted_universities() -> list[University]:
     universities.sort(key=get_sort_key, reverse=True)
     return universities
 
+
 def load_categories() -> defaultdict:
     """
     加载大学分类信息，并根据实际文件存在情况标记链接状态
     
     :return: 包含分类信息的defaultdict
     """
+    logging.debug("####load_categories####")
     categories = defaultdict(list)
-    # 获取所有存在的大学信息
-    existing_universities = {uni.name: uni.deadline for uni in get_all_universities()}
-    
+
     try:
-        with open('data/university_categories.csv', 'r', encoding='utf-8') as f:
+        with open('data/university_categories.csv', 'r',
+                  encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                if all(row.get(field) for field in ['category', 'name', 'ja_name', 'url']):
-                    # 检查该大学是否存在
-                    file_exists = row['name'] in existing_universities
+                if all(
+                        row.get(field)
+                        for field in ['category', 'name', 'ja_name', 'url']):
+                    # 从URL中提取大学名称和截止日期
+                    url_parts = row['url'].split('/')
+                    logging.debug(f"url_parts: {url_parts}")
+                    if len(url_parts) >= 4:  # URL格式应该是 /university/大学名/截止日期
+                        name = url_parts[2]
+                        deadline = url_parts[3]
+                        # 直接使用get_university_by_name_and_deadline检查
+                        file_exists = get_university_by_name_and_deadline(
+                            name, deadline) is not None
+                    else:
+                        file_exists = False
+
                     categories[row['category']].append({
-                        'name': row['name'],
-                        'ja_name': row['ja_name'],
-                        'url': row['url'],
-                        'file_exists': file_exists
+                        'name':
+                        row['name'],
+                        'ja_name':
+                        row['ja_name'],
+                        'url':
+                        row['url'],
+                        'file_exists':
+                        file_exists
                     })
     except Exception as e:
         logging.error(f"加载大学分类数据时发生错误: {e}")
     return categories
 
+
 def index_route():
     """首页路由"""
     universities = get_sorted_universities()
     categories = load_categories()
-    return render_template("index.html", universities=universities, categories=categories)
+    return render_template("index.html",
+                           universities=universities,
+                           categories=categories)
 
-def get_university_by_name_and_deadline(name, deadline=None) -> University | None:
+
+def get_university_by_name_and_deadline(name,
+                                        deadline=None) -> University | None:
     """
     根据大学名称和报名截止日期获取信息
 
@@ -205,12 +234,10 @@ def university_route(name, deadline=None, content="REPORT"):
     if not university:
         error_msg = f"未找到{name}在{deadline}的招生信息"
         return (
-            render_template(
-                "index.html", 
-                error=error_msg, 
-                universities=get_sorted_universities(),
-                categories=load_categories()
-            ),
+            render_template("index.html",
+                            error=error_msg,
+                            universities=get_sorted_universities(),
+                            categories=load_categories()),
             404,
         )
 
@@ -225,15 +252,13 @@ def university_route(name, deadline=None, content="REPORT"):
         else:
             md_path = university.report_md_path
             template = "content_report.html"
-        
+
         if not os.path.exists(md_path):
             return (
-                render_template(
-                    "index.html",
-                    error=f"未找到{name}在{deadline}的{content}信息",
-                    universities=get_sorted_universities(),
-                    categories=load_categories()
-                ),
+                render_template("index.html",
+                                error=f"未找到{name}在{deadline}的{content}信息",
+                                universities=get_sorted_universities(),
+                                categories=load_categories()),
                 404,
             )
 
@@ -243,11 +268,7 @@ def university_route(name, deadline=None, content="REPORT"):
         # 使用markdown库渲染内容
         md = markdown.Markdown(
             extensions=[
-                'extra',
-                'tables',
-                'fenced_code',
-                'sane_lists',
-                'nl2br',
+                'extra', 'tables', 'fenced_code', 'sane_lists', 'nl2br',
                 'smarty'
             ],
             output_format="html5",
@@ -267,17 +288,17 @@ def university_route(name, deadline=None, content="REPORT"):
 
     except Exception as e:
         return (
-            render_template(
-                "index.html", 
-                error=str(e), 
-                universities=get_sorted_universities()
-            ),
+            render_template("index.html",
+                            error=str(e),
+                            universities=get_sorted_universities()),
             500,
         )
+
 
 def sitemap_route():
     """sitemap路由"""
     universities = get_sorted_universities()
-    response = make_response(render_template("sitemap.xml", universities=universities))
+    response = make_response(
+        render_template("sitemap.xml", universities=universities))
     response.headers["Content-Type"] = "application/xml"
     return response
