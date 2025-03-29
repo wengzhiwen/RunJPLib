@@ -1,41 +1,46 @@
-from flask import Flask, send_from_directory, render_template
-from routes.index import index_route, university_route, sitemap_route
+"""
+Flask应用主文件
+"""
 import logging
-from dotenv import load_dotenv
 import os
 
-load_dotenv()
+from dotenv import load_dotenv
+from flask import Flask, send_from_directory
+from werkzeug.routing import BaseConverter
+
+from routes.index import index_route, university_route, sitemap_route
+
 
 app = Flask(__name__)
 
 
 @app.route('/robots.txt')
 def robots():
+    """robots.txt路由"""
     return send_from_directory('static', 'robots.txt')
 
 
 @app.route('/sitemap.xml')
 def sitemap():
+    """sitemap.xml路由"""
     return sitemap_route()
 
 
 @app.route('/favicon.svg')
 def favicon():
+    """favicon.svg路由"""
     return send_from_directory('static', 'favicon.svg')
 
 
 # 首页路由
 @app.route('/')
 def index():
+    """首页路由"""
     return index_route()
 
 
-# RESTful路由 - 大学详情页（中文版和原版）
-# 新的路由格式：/university/<name>/<deadline>
-from werkzeug.routing import BaseConverter
-
-
 class DateConverter(BaseConverter):
+    """日期转换器"""
     regex = r'[^/]+'  # Match any characters except forward slash
 
 
@@ -44,26 +49,32 @@ app.url_map.converters['date'] = DateConverter
 
 @app.route('/university/<name>/<date:deadline>')
 def university_report_with_deadline(name, deadline):
+    """大学详情页路由"""
     return university_route(name, deadline=deadline, content="REPORT")
 
 
 @app.route('/university/<name>/<date:deadline>/original')
 def university_original_with_deadline(name, deadline):
+    """大学详情页路由"""
     return university_route(name, deadline=deadline, content="ORIGINAL")
 
 
 @app.route('/university/<name>/<date:deadline>/zh')
 def university_zh_with_deadline(name, deadline):
+    """大学详情页路由"""
     return university_route(name, deadline=deadline, content="ZH")
 
 
 # 保留旧的路由格式以保持向后兼容
 @app.route('/university/<n>')
 def university(name):
+    """大学详情页路由"""
     return university_route(name)
 
 
 if __name__ == '__main__':
+    load_dotenv()
+
     # 设定日志配置
     logging.basicConfig(
         level=os.getenv('LOG_LEVEL', 'DEBUG'),
@@ -73,4 +84,13 @@ if __name__ == '__main__':
     logging.debug("日志配置完成，准备启动应用")
 
     # 启动应用
-    app.run(debug=True, host='0.0.0.0', port=os.getenv('FLASK_APP_PORT', 5000))
+    if os.getenv('FLASK_APP_PORT') and os.getenv('FLASK_APP_PORT').isdigit():
+        app_port = int(os.getenv('FLASK_APP_PORT'))
+    else:
+        logging.warning("FLASK_APP_PORT未设置，使用默认端口5000")
+        app_port = 5000
+
+    if os.getenv('LOG_LEVEL') == 'DEBUG':
+        app.run(debug=True, host='0.0.0.0', port=app_port)
+    else:
+        app.run(host='0.0.0.0', port=app_port)
