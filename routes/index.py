@@ -1,17 +1,19 @@
+"""
+处理首页和大学相关路由的模块。
+"""
 import os
 import csv
-import markdown
 import re
-from flask import render_template, jsonify, make_response
-from config import CONTENT_DIR
-from markdown.inlinepatterns import ImageInlineProcessor, IMAGE_LINK_RE
-from markdown.extensions import Extension
 import logging
 from collections import defaultdict
 
+import markdown
+from flask import render_template, make_response
+
 
 class University:
-
+    # pylint: disable=too-few-public-methods
+    """大学信息类"""
     def __init__(self, name, deadline, zh_md_path, md_path, report_md_path):
         self.name = name
         self.deadline = deadline
@@ -38,7 +40,7 @@ def get_all_universities() -> list[University]:
             # 将子文件夹的名称按"_"split
             sub_dir_name = sub_dir.split("_")
             if len(sub_dir_name) < 2:
-                logging.info(f"忽略子文件夹: {sub_dir} 。文件夹名不含有\"_\"")
+                logging.info("忽略子文件夹: %s 。文件夹名不含有\"_\"", sub_dir)
                 continue
             # 获取大学名称
             university_name = sub_dir_name[0]
@@ -53,28 +55,28 @@ def get_all_universities() -> list[University]:
                 deadline = deadline.replace("/", "-")
                 # 检查格式是否正确
                 if not re.match(r"\d{4}-\d{2}-\d{2}", deadline):
-                    logging.info(f"忽略子文件夹: {sub_dir}。无法解析的报名截止日")
+                    logging.info("忽略子文件夹: %s。无法解析的报名截止日", sub_dir)
                     continue
             else:
-                logging.info(f"忽略子文件夹: {sub_dir}。无法解析的报名截止日")
+                logging.info("忽略子文件夹: %s。无法解析的报名截止日", sub_dir)
                 continue
 
             # 检查文件夹下是否存在"文件夹名.md"
             if not os.path.exists(
                     os.path.join(pdf_dir, sub_dir, f"{sub_dir}.md")):
-                logging.info(f"忽略子文件夹: {sub_dir}。文件夹下没有\"文件夹名.md\"文件")
+                logging.info("忽略子文件夹: %s。文件夹下没有\"文件夹名.md\"文件", sub_dir)
                 continue
 
             # 检查文件夹下是否存在"文件夹名_report.md"
             if not os.path.exists(
                     os.path.join(pdf_dir, sub_dir, f"{sub_dir}_report.md")):
-                logging.info(f"忽略子文件夹: {sub_dir}。文件夹下没有\"文件夹名_report.md\"文件")
+                logging.info("忽略子文件夹: %s。文件夹下没有\"文件夹名_report.md\"文件", sub_dir)
                 continue
 
             # 检查文件夹下是否存在"文件夹名_中文.md"
             if not os.path.exists(
                     os.path.join(pdf_dir, sub_dir, f"{sub_dir}_中文.md")):
-                logging.info(f"忽略子文件夹: {sub_dir}。文件夹下没有\"文件夹名_中文.md\"文件")
+                logging.info("忽略子文件夹: %s。文件夹下没有\"文件夹名_中文.md\"文件", sub_dir)
                 continue
 
             # 这是一所完整的大学的信息
@@ -110,7 +112,7 @@ def get_sorted_universities() -> list[University]:
     best_universities = set()
     base_dir = os.getenv("CONTENT_BASE_DIR", ".")
     pdf_dirs = [d for d in os.listdir(base_dir) if d.startswith("pdf_with_md")]
-    logging.debug(f"pdf_dirs: {pdf_dirs}")
+    logging.debug("pdf_dirs: %s", pdf_dirs)
 
     # 从每个文件夹读取best_list.csv并合并
     for pdf_dir in pdf_dirs:
@@ -146,33 +148,45 @@ def load_categories() -> defaultdict:
                   encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                if all(
-                        row.get(field)
-                        for field in ['category', 'name', 'ja_name', 'url']):
-                    # 从URL中提取大学名称和截止日期
-                    url_parts = row['url'].split('/')
-                    logging.debug(f"url_parts: {url_parts}")
-                    if len(url_parts) >= 4:  # URL格式应该是 /university/大学名/截止日期
-                        name = url_parts[2]
-                        deadline = url_parts[3]
-                        # 直接使用get_university_by_name_and_deadline检查
-                        file_exists = get_university_by_name_and_deadline(
-                            name, deadline) is not None
-                    else:
-                        file_exists = False
+                # 检查必要字段是否存在且不为空
+                required_fields = ['category', 'name', 'ja_name', 'url']
+                if not all(row.get(field) for field in required_fields):
+                    missing_fields = [field for field in required_fields if not row.get(field)]
+                    logging.warning("CSV行缺少必要字段: %s", missing_fields)
+                    continue
 
-                    categories[row['category']].append({
-                        'name':
-                        row['name'],
-                        'ja_name':
-                        row['ja_name'],
-                        'url':
-                        row['url'],
-                        'file_exists':
-                        file_exists
-                    })
-    except Exception as e:
-        logging.error(f"加载大学分类数据时发生错误: {e}")
+                # 从URL中提取大学名称和截止日期
+                url_parts = row['url'].split('/')
+                logging.debug("url_parts: %s", url_parts)
+                if len(url_parts) >= 4:  # URL格式应该是 /university/大学名/截止日期
+                    name = url_parts[2]
+                    deadline = url_parts[3]
+                    # 直接使用get_university_by_name_and_deadline检查
+                    file_exists = get_university_by_name_and_deadline(
+                        name, deadline) is not None
+                else:
+                    file_exists = False
+
+                categories[row['category']].append({
+                    'name':
+                    row['name'],
+                    'ja_name':
+                    row['ja_name'],
+                    'url':
+                    row['url'],
+                    'file_exists':
+                    file_exists
+                })
+    except FileNotFoundError as e:
+        logging.error("找不到大学分类数据文件: %s", e)
+    except PermissionError as e:
+        logging.error("没有权限访问大学分类数据文件: %s", e)
+    except UnicodeDecodeError as e:
+        logging.error("大学分类数据文件编码错误: %s", e)
+    except csv.Error as e:
+        logging.error("大学分类数据CSV格式错误: %s", e)
+    except IOError as e:
+        logging.error("读取大学分类数据时发生IO错误: %s", e)
     return categories
 
 
@@ -203,10 +217,10 @@ def get_university_by_name_and_deadline(name,
         deadline = deadline.replace("/", "-")
         # 检查格式是否正确
         if not re.match(r"\d{4}-\d{2}-\d{2}", deadline):
-            logging.info(f"无法解析的报名截止日：{deadline}")
+            logging.info("无法解析的报名截止日：%s", deadline)
             return None
     else:
-        logging.info(f"无法解析的报名截止日：{deadline}")
+        logging.info("无法解析的报名截止日：%s", deadline)
         return None
 
     # 获取所有大学的信息
@@ -286,10 +300,18 @@ def university_route(name, deadline=None, content="REPORT"):
             current_deadline=university.deadline,
         )
 
+    except (FileNotFoundError, IOError, UnicodeDecodeError) as e:
+        return (
+            render_template("index.html",
+                            error=f"文件操作错误: {str(e)}",
+                            universities=get_sorted_universities()),
+            500,
+        )
+    # pylint: disable=broad-except
     except Exception as e:
         return (
             render_template("index.html",
-                            error=str(e),
+                            error=f"Markdown解析错误: {str(e)}",
                             universities=get_sorted_universities()),
             500,
         )
