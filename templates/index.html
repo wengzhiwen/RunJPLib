@@ -392,93 +392,21 @@
                         </div>
                     </div>
                     <h2>快速索引</h2>
-                    <h3>旧帝国大学</h3>
+                    {% for category, unis in categories.items() %}
+                    <h3>{{ category }}</h3>
                     <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4 mb-5">
+                        {% for uni in unis %}
                         <div class="col">
                             <div class="card h-100">
                                 <div class="card-body">
-                                    <h5 class="card-title"><a href="/university/%E6%9D%B1%E4%BA%AC%E5%A4%A7%E5%AD%A6/2024-12-06" class="text-decoration-none">东京大学</a></h5>
-                                    <p class="card-text text-muted">東京大学・東大</p>
+                                    <h5 class="card-title"><a href="{{ uni.url }}" class="text-decoration-none">{{ uni.name }}</a></h5>
+                                    <p class="card-text text-muted">{{ uni.ja_name }}</p>
                                 </div>
                             </div>
                         </div>
-                        <div class="col">
-                            <div class="card h-100">
-                                <div class="card-body">
-                                    <h5 class="card-title"><a href="/university/%E4%BA%AC%E9%83%BD%E5%A4%A7%E5%AD%A6/2099-01-01" class="text-decoration-none">京都大学</a></h5>
-                                    <p class="card-text text-muted">京都大学・京大</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col">
-                            <div class="card h-100">
-                                <div class="card-body">
-                                    <h5 class="card-title"><a href="/university/%E5%A4%A7%E9%98%AA%E5%A4%A7%E5%AD%A6/2025-01-10" class="text-decoration-none">大阪大学</a></h5>
-                                    <p class="card-text text-muted">大阪大学・阪大</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col">
-                            <div class="card h-100">
-                                <div class="card-body">
-                                    <h5 class="card-title"><a href="/university/%E6%9D%B1%E5%8C%97%E5%A4%A7%E5%AD%A6/2024-02-08" class="text-decoration-none">东北大学</a></h5>
-                                    <p class="card-text text-muted">東北大学・東北大</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col">
-                            <div class="card h-100">
-                                <div class="card-body">
-                                    <h5 class="card-title"><a href="/university/%E5%90%8D%E5%8F%A4%E5%B1%8B%E5%A4%A7%E5%AD%A6/2025-01-07" class="text-decoration-none">名古屋大学</a></h5>
-                                    <p class="card-text text-muted">名古屋大学・名大</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col">
-                            <div class="card h-100">
-                                <div class="card-body">
-                                    <h5 class="card-title"><a href="/university/%E4%B9%9D%E5%B7%9E%E5%A4%A7%E5%AD%A6/2024-11-15" class="text-decoration-none">九州大学</a></h5>
-                                    <p class="card-text text-muted">九州大学・九大</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col">
-                            <div class="card h-100">
-                                <div class="card-body">
-                                    <h5 class="card-title"><a href="/university/%E5%8C%97%E6%B5%B7%E9%81%93%E5%A4%A7%E5%AD%A6/2025-09-25" class="text-decoration-none">北海道大学</a></h5>
-                                    <p class="card-text text-muted">北海道大学・北大</p>
-                                </div>
-                            </div>
-                        </div>
+                        {% endfor %}
                     </div>
-
-                    <h3>早庆上</h3>
-                    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4 mb-5">
-                        <div class="col">
-                            <div class="card h-100">
-                                <div class="card-body">
-                                    <h5 class="card-title"><a href="/university/%E6%97%A9%E7%A8%B2%E7%94%B0%E5%A4%A7%E5%AD%A6/2023-06-23" class="text-decoration-none">早稻田大学</a></h5>
-                                    <p class="card-text text-muted">早稲田大学・早大</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col">
-                            <div class="card h-100">
-                                <div class="card-body">
-                                    <h5 class="card-title"><a href="/university/%E6%85%B6%E6%87%89%E7%BE%A9%E5%A1%BE%E5%A4%A7%E5%AD%A6/2024-10-31" class="text-decoration-none">庆应义塾大学</a></h5>
-                                    <p class="card-text text-muted">慶應義塾大学・慶大</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col">
-                            <div class="card h-100">
-                                <div class="card-body">
-                                    <h5 class="card-title"><a href="/university/%E4%B8%8A%E6%99%BA%E5%A4%A7%E5%AD%A6/2024-08-07" class="text-decoration-none">上智大学</a></h5>
-                                    <p class="card-text text-muted">上智大学・上智</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    {% endfor %}
 
                     <p>本站收集整理了包括东京大学（东大）、京都大学（京大）、早稻田大学（早大）、庆应义塾大学（庆应）等日本顶尖大学的本科（学部）招生信息（募集要项）。<br />
                         扫描、翻译和分析工作都由AI（Google Gemini、DeepSeek和OpenAI GPT）进行，受限于当前技术条件并不能100%准确的传达原版招生信息的内容，且原版内容可能会发生更新或调整。为了保证不耽误你的升学，还请务必访问大学官网确认更加准确的信息。<br />
