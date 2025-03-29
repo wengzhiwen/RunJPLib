@@ -48,11 +48,19 @@ def index():
                     if not all(row[field] for field in required_fields):
                         logging.warning(f"第{row_num}行存在空字段")
                         continue
-                        
+                    
+                    # 检查文件是否存在
+                    file_exists = False
+                    for uni in universities:
+                        if uni.name == row['name']:
+                            file_exists = True
+                            break
+                    
                     categories[row['category']].append({
                         'name': row['name'],
                         'ja_name': row['ja_name'],
-                        'url': row['url']
+                        'url': row['url'],
+                        'file_exists': file_exists
                     })
                 except KeyError as e:
                     logging.error(f"第{row_num}行缺少字段: {e}")

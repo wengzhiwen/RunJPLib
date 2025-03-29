@@ -222,6 +222,21 @@
             vertical-align: middle;
             margin-right: 8px;
         }
+
+        /* 链接样式 */
+        .card-title a {
+            text-decoration: none;
+        }
+
+        /* 无效链接样式 */
+        .card-title a.invalid-link {
+            color: #dc3545;
+            cursor: not-allowed;
+        }
+
+        .card-title a.invalid-link:hover {
+            color: #dc3545;
+        }
     </style>
 </head>
 
@@ -399,7 +414,13 @@
                         <div class="col">
                             <div class="card h-100">
                                 <div class="card-body">
-                                    <h5 class="card-title"><a href="{{ uni.url }}" class="text-decoration-none">{{ uni.name }}</a></h5>
+                                    <h5 class="card-title">
+                                        <a href="{{ uni.url }}" 
+                                           class="{% if not uni.file_exists %}invalid-link{% endif %}"
+                                           {% if not uni.file_exists %}title="该链接暂时无法访问"{% endif %}>
+                                            {{ uni.name }}
+                                        </a>
+                                    </h5>
                                     <p class="card-text text-muted">{{ uni.ja_name }}</p>
                                 </div>
                             </div>
