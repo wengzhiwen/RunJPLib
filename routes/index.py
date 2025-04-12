@@ -6,11 +6,16 @@ import csv
 import re
 import logging
 from collections import defaultdict
+from functools import lru_cache
+import hashlib
+import time
 
 import markdown
 from flask import render_template, make_response
 from .blog import get_all_blogs, get_random_blogs_with_summary
 
+# 缓存更新间隔（秒）
+CACHE_UPDATE_INTERVAL = 5
 
 class University:
     # pylint: disable=too-few-public-methods
@@ -21,120 +26,170 @@ class University:
         self.zh_md_path = zh_md_path
         self.md_path = md_path
         self.report_md_path = report_md_path
+        self.url = f"/university/{name}"  # 添加url属性
 
-
-def get_all_universities() -> list[University]:
-    """获取所有大学的信息"""
-    base_dir = os.getenv("CONTENT_BASE_DIR", ".")
-    pdf_dirs = [d for d in os.listdir(base_dir) if d.startswith("pdf_with_md")]
-
-    universities = []
-
-    # 从每个pdf_with_md文件夹中获取所有大学的信息
-    for pdf_dir in pdf_dirs:
-        # 获取其下的所有一级子文件夹（大学）
-        sub_dirs = [
-            d for d in os.listdir(pdf_dir)
-            if os.path.isdir(os.path.join(pdf_dir, d))
-        ]
-        for sub_dir in sub_dirs:
-            # 将子文件夹的名称按"_"split
-            sub_dir_name = sub_dir.split("_")
-            if len(sub_dir_name) < 2:
-                logging.info("忽略子文件夹: %s 。文件夹名不含有\"_\"", sub_dir)
+class UniversityCache:
+    """大学信息缓存管理类"""
+    def __init__(self):
+        self.last_check_time = 0
+        self.files_hash = None
+        self._universities = None
+        self._sorted_universities = None
+        self._latest_by_name = {}
+        
+    def should_update(self) -> bool:
+        """检查是否需要更新缓存"""
+        current_time = time.time()
+        if current_time - self.last_check_time > CACHE_UPDATE_INTERVAL:
+            new_hash = self._calculate_files_hash()
+            if new_hash != self.files_hash:
+                self.files_hash = new_hash
+                return True
+        return False
+    
+    def _calculate_files_hash(self) -> str:
+        """计算所有大学文件的哈希值"""
+        hash_str = ""
+        base_dir = os.getenv("CONTENT_BASE_DIR", ".")
+        pdf_dirs = [d for d in os.listdir(base_dir) if d.startswith("pdf_with_md")]
+        for pdf_dir in pdf_dirs:
+            try:
+                for root, _, files in os.walk(pdf_dir):
+                    for file in sorted(files):
+                        if file.endswith('.md'):
+                            full_path = os.path.join(root, file)
+                            hash_str += f"{full_path}:{os.path.getmtime(full_path)};"
+            except OSError:
                 continue
-            # 获取大学名称
-            university_name = sub_dir_name[0]
-            # 获取报名截止日期
-            deadline = sub_dir_name[1]
-            # 对报名截止日进行格式化
-            # 如果报名截止日是一串8位数字，则认为它是YYYYMMDD格式，需要转换为YYYY/MM/DD格式
-            if len(deadline) == 8 and deadline.isdigit():
-                deadline = f"{deadline[:4]}-{deadline[4:6]}-{deadline[6:]}"
-            # 如果报名截止日是YYYY/MM/DD格式或YYYY-MM-DD格式，为了保证显示效果，需要统一为YYYY-MM-DD格式
-            elif len(deadline) == 10:
-                deadline = deadline.replace("/", "-")
-                # 检查格式是否正确
-                if not re.match(r"\d{4}-\d{2}-\d{2}", deadline):
+        return hashlib.md5(hash_str.encode()).hexdigest()
+    
+    def get_all_universities(self) -> list[University]:
+        """获取所有大学信息"""
+        if self._universities is None or self.should_update():
+            self._universities = self._load_universities()
+            self._sorted_universities = None  # 清除排序缓存
+            self._latest_by_name.clear()  # 清除最新信息缓存
+            self.last_check_time = time.time()
+        return self._universities
+    
+    def get_sorted_universities(self) -> list[University]:
+        """获取排序后的大学列表"""
+        if self._sorted_universities is None:
+            universities = self.get_all_universities()
+            # 获取优质大学列表
+            best_universities = set()
+            base_dir = os.getenv("CONTENT_BASE_DIR", ".")
+            pdf_dirs = [d for d in os.listdir(base_dir) if d.startswith("pdf_with_md")]
+            
+            for pdf_dir in pdf_dirs:
+                best_list_path = os.path.join(pdf_dir, "best_list.csv")
+                if os.path.exists(best_list_path):
+                    with open(best_list_path, "r", encoding="utf-8") as f:
+                        reader = csv.reader(f)
+                        for row in reader:
+                            if row:
+                                best_universities.add(row[0])
+            
+            # 排序函数
+            def get_sort_key(univ: University):
+                is_best = 1 if univ.name in best_universities else 0
+                return (is_best, univ.deadline)
+            
+            self._sorted_universities = sorted(universities, key=get_sort_key, reverse=True)
+        
+        return self._sorted_universities
+    
+    def get_latest_by_name(self, name: str) -> University | None:
+        """获取指定大学最新的信息"""
+        if name not in self._latest_by_name:
+            universities = self.get_all_universities()
+            matching = [u for u in universities if u.name == name]
+            if matching:
+                self._latest_by_name[name] = max(matching, key=lambda x: x.deadline)
+            else:
+                self._latest_by_name[name] = None
+        return self._latest_by_name[name]
+    
+    def _load_universities(self) -> list[University]:
+        """从文件系统加载大学信息"""
+        universities = []
+        base_dir = os.getenv("CONTENT_BASE_DIR", ".")
+        pdf_dirs = [d for d in os.listdir(base_dir) if d.startswith("pdf_with_md")]
+        
+        for pdf_dir in pdf_dirs:
+            sub_dirs = [
+                d for d in os.listdir(pdf_dir)
+                if os.path.isdir(os.path.join(pdf_dir, d))
+            ]
+            for sub_dir in sub_dirs:
+                sub_dir_name = sub_dir.split("_")
+                if len(sub_dir_name) < 2:
+                    logging.info("忽略子文件夹: %s 。文件夹名不含有\"_\"", sub_dir)
+                    continue
+                
+                university_name = sub_dir_name[0]
+                deadline = sub_dir_name[1]
+                
+                if len(deadline) == 8 and deadline.isdigit():
+                    deadline = f"{deadline[:4]}-{deadline[4:6]}-{deadline[6:]}"
+                elif len(deadline) == 10:
+                    deadline = deadline.replace("/", "-")
+                    if not re.match(r"\d{4}-\d{2}-\d{2}", deadline):
+                        logging.info("忽略子文件夹: %s。无法解析的报名截止日", sub_dir)
+                        continue
+                else:
                     logging.info("忽略子文件夹: %s。无法解析的报名截止日", sub_dir)
                     continue
-            else:
-                logging.info("忽略子文件夹: %s。无法解析的报名截止日", sub_dir)
-                continue
 
-            # 检查文件夹下是否存在"文件夹名.md"
-            if not os.path.exists(
-                    os.path.join(pdf_dir, sub_dir, f"{sub_dir}.md")):
-                logging.info("忽略子文件夹: %s。文件夹下没有\"文件夹名.md\"文件", sub_dir)
-                continue
+                # 检查必要文件
+                required_files = [
+                    f"{sub_dir}.md",
+                    f"{sub_dir}_report.md",
+                    f"{sub_dir}_中文.md"
+                ]
+                if not all(
+                    os.path.exists(os.path.join(pdf_dir, sub_dir, f))
+                    for f in required_files
+                ):
+                    logging.info("忽略子文件夹: %s。缺少必要文件", sub_dir)
+                    continue
 
-            # 检查文件夹下是否存在"文件夹名_report.md"
-            if not os.path.exists(
-                    os.path.join(pdf_dir, sub_dir, f"{sub_dir}_report.md")):
-                logging.info("忽略子文件夹: %s。文件夹下没有\"文件夹名_report.md\"文件", sub_dir)
-                continue
+                universities.append(
+                    University(
+                        name=university_name,
+                        deadline=deadline,
+                        zh_md_path=os.path.join(pdf_dir, sub_dir, f"{sub_dir}_中文.md"),
+                        md_path=os.path.join(pdf_dir, sub_dir, f"{sub_dir}.md"),
+                        report_md_path=os.path.join(pdf_dir, sub_dir, f"{sub_dir}_report.md"),
+                    )
+                )
+        
+        return universities
+    
+    def clear(self):
+        """清除所有缓存"""
+        self._universities = None
+        self._sorted_universities = None
+        self._latest_by_name.clear()
+        self.last_check_time = 0
+        self.files_hash = None
 
-            # 检查文件夹下是否存在"文件夹名_中文.md"
-            if not os.path.exists(
-                    os.path.join(pdf_dir, sub_dir, f"{sub_dir}_中文.md")):
-                logging.info("忽略子文件夹: %s。文件夹下没有\"文件夹名_中文.md\"文件", sub_dir)
-                continue
+# 创建全局缓存实例
+_university_cache = UniversityCache()
 
-            # 这是一所完整的大学的信息
-            universities.append({
-                "name":
-                university_name,
-                "deadline":
-                deadline,
-                "zh_md_path":
-                os.path.join(pdf_dir, sub_dir, f"{sub_dir}_中文.md"),
-                "md_path":
-                os.path.join(pdf_dir, sub_dir, f"{sub_dir}.md"),
-                "report_md_path":
-                os.path.join(pdf_dir, sub_dir, f"{sub_dir}_report.md"),
-            })
-
-    # 修改返回值，将字典转换为 University 对象
-    return [
-        University(
-            name=u["name"],
-            deadline=u["deadline"],
-            zh_md_path=u["zh_md_path"],
-            md_path=u["md_path"],
-            report_md_path=u["report_md_path"],
-        ) for u in universities
-    ]
-
+def get_all_universities() -> list[University]:
+    """获取所有大学列表"""
+    return _university_cache.get_all_universities()
 
 def get_sorted_universities() -> list[University]:
     """获取排序后的大学列表"""
-    logging.debug("####get_sorted_universities####")
+    return _university_cache.get_sorted_universities()
 
-    best_universities = set()
-    base_dir = os.getenv("CONTENT_BASE_DIR", ".")
-    pdf_dirs = [d for d in os.listdir(base_dir) if d.startswith("pdf_with_md")]
-    logging.debug("pdf_dirs: %s", pdf_dirs)
+def get_latest_university_by_name(name: str) -> University | None:
+    """获取指定大学最新的信息"""
+    return _university_cache.get_latest_by_name(name)
 
-    # 从每个文件夹读取best_list.csv并合并
-    for pdf_dir in pdf_dirs:
-        best_list_path = os.path.join(pdf_dir, "best_list.csv")
-        if os.path.exists(best_list_path):
-            with open(best_list_path, "r", encoding="utf-8") as f:
-                reader = csv.reader(f)
-                for row in reader:
-                    if row:  # 确保行不为空
-                        best_universities.add(row[0])
-
-    # 按是否为优质大学和报名日期进行排序
-    def get_sort_key(univ: University):
-        is_best = 1 if univ.name in best_universities else 0
-        return (is_best, univ.deadline)
-
-    universities = get_all_universities()
-    universities.sort(key=get_sort_key, reverse=True)
-    return universities
-
-
+@lru_cache(maxsize=1, typed=False)
 def load_categories() -> defaultdict:
     """
     加载大学分类信息，并根据实际文件存在情况标记链接状态
@@ -237,24 +292,6 @@ def get_university_by_name_and_deadline(name, deadline=None) -> University | Non
             return university
 
     return None
-
-
-def get_latest_university_by_name(name):
-    """
-    根据大学名称获取最新的招生信息
-    
-    :param name: 大学名称
-    :return: 最新的大学信息或None
-    """
-    universities = get_all_universities()
-    matching_universities = [u for u in universities if u.name == name]
-    
-    if not matching_universities:
-        return None
-        
-    # 按deadline降序排序，返回最新的
-    return sorted(matching_universities, key=lambda x: x.deadline, reverse=True)[0]
-
 
 def university_route(name, deadline=None, content="REPORT"):
     """

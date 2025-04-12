@@ -7,10 +7,85 @@ import re
 from datetime import datetime
 import random
 from difflib import SequenceMatcher
+from functools import lru_cache
+import hashlib
+import time
 
 import markdown
 from flask import render_template, abort
 
+# 缓存更新间隔（秒）
+CACHE_UPDATE_INTERVAL = 60
+
+class BlogCache:
+    """博客缓存管理类"""
+    def __init__(self):
+        self.last_check_time = 0
+        self.files_hash = None
+        self.blogs_list = None
+        self.content_cache = {}
+    
+    def should_update(self) -> bool:
+        """检查是否需要更新缓存"""
+        current_time = time.time()
+        if current_time - self.last_check_time > CACHE_UPDATE_INTERVAL:
+            new_hash = self._calculate_files_hash()
+            if new_hash != self.files_hash:
+                self.files_hash = new_hash
+                return True
+        return False
+    
+    def _calculate_files_hash(self) -> str:
+        """计算所有博客文件的哈希值"""
+        hash_str = ""
+        for file in sorted(glob.glob('blogs/*.md')):
+            try:
+                hash_str += f"{file}:{os.path.getmtime(file)};"
+            except OSError:
+                continue
+        return hashlib.md5(hash_str.encode()).hexdigest()
+    
+    def get_content(self, blog_id: str) -> dict:
+        """获取博客内容，优先从缓存获取"""
+        if blog_id in self.content_cache:
+            return self.content_cache[blog_id]
+        
+        content = self._load_content(blog_id)
+        if content:
+            self.content_cache[blog_id] = content
+        return content
+    
+    def _load_content(self, blog_id: str) -> dict:
+        """从文件加载博客内容"""
+        file_path = f'blogs/{blog_id}.md'
+        if not os.path.exists(file_path) or not os.path.getsize(file_path):
+            return None
+
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                md_content = f.read()
+
+            md = markdown.Markdown(
+                extensions=['extra', 'tables', 'fenced_code', 'sane_lists', 'nl2br', 'smarty'],
+                output_format="html5",
+            )
+            html_content = md.convert(md_content)
+            
+            return {
+                'content': html_content,
+                'text_content': re.sub(r'<[^>]+>', '', html_content)
+            }
+        except Exception:
+            return None
+    
+    def clear(self):
+        """清除所有缓存"""
+        self.blogs_list = None
+        self.content_cache.clear()
+        self.last_check_time = 0
+
+# 创建全局缓存实例
+_blog_cache = BlogCache()
 
 def get_title_similarity(title1, title2):
     """计算两个标题的相似度"""
@@ -19,47 +94,84 @@ def get_title_similarity(title1, title2):
 
 def get_all_blogs():
     """获取所有博客列表"""
-    blogs = []
-    blog_files = glob.glob('blogs/*.md')
-    for file in blog_files:
-        filename = os.path.basename(file)
-        if not os.path.getsize(file):  # 跳过空文件
-            continue
-
-        # 从文件名中提取标题和日期
-        match = re.match(r'(.+)_(\d{14})\.md$', filename)
-        if not match:
-            continue
-
-        title = match.group(1)
-        date_str = match.group(2)
-
-        # 将日期字符串转换为datetime对象
-        date = datetime.strptime(date_str, '%Y%m%d%H%M%S')
-
-        blogs.append({
-            'id': filename[:-3],  # 移除.md后缀
-            'title': title,
-            'url_title': title.replace(' ', '-').lower(),  # URL友好的标题
-            'date': date.strftime('%Y-%m-%d'),
-            'datetime': date,
-            'md_path': file  # 添加文件路径
-        })
-
-    # 按日期降序排序
-    blogs = sorted(blogs, key=lambda x: x['datetime'], reverse=True)
+    global _blog_cache
     
-    # 对于相同标题的文章，只保留最新的一篇
-    unique_blogs = {}
-    for blog in blogs:
-        if blog['title'] not in unique_blogs:
-            unique_blogs[blog['title']] = blog
+    # 检查是否需要更新缓存
+    if _blog_cache.blogs_list is None or _blog_cache.should_update():
+        blogs = []
+        blog_files = glob.glob('blogs/*.md')
+        
+        for file in blog_files:
+            filename = os.path.basename(file)
+            if not os.path.getsize(file):
+                continue
+
+            match = re.match(r'(.+)_(\d{14})\.md$', filename)
+            if not match:
+                continue
+
+            title = match.group(1)
+            date_str = match.group(2)
+            date = datetime.strptime(date_str, '%Y%m%d%H%M%S')
+
+            blogs.append({
+                'id': filename[:-3],
+                'title': title,
+                'url_title': title.replace(' ', '-').lower(),
+                'date': date.strftime('%Y-%m-%d'),
+                'datetime': date,
+                'md_path': file
+            })
+
+        # 按日期降序排序
+        blogs = sorted(blogs, key=lambda x: x['datetime'], reverse=True)
+        
+        # 对于相同标题的文章，只保留最新的一篇
+        unique_blogs = {}
+        for blog in blogs:
+            if blog['title'] not in unique_blogs:
+                unique_blogs[blog['title']] = blog
+        
+        _blog_cache.blogs_list = list(unique_blogs.values())
+        _blog_cache.last_check_time = time.time()
     
-    return list(unique_blogs.values())
+    return _blog_cache.blogs_list
 
 
+def get_blog_by_id(blog_id):
+    """获取特定博客内容"""
+    file_path = f'blogs/{blog_id}.md'
+    if not os.path.exists(file_path) or not os.path.getsize(file_path):
+        return None
+
+    match = re.match(r'(.+)_(\d{14})$', blog_id)
+    if not match:
+        return None
+
+    title = match.group(1)
+    date_str = match.group(2)
+    date = datetime.strptime(date_str, '%Y%m%d%H%M%S')
+
+    # 从缓存获取内容
+    content_data = _blog_cache.get_content(blog_id)
+    if not content_data:
+        return None
+
+    return {
+        'id': blog_id,
+        'title': title,
+        'url_title': title.replace(' ', '-').lower(),
+        'date': date.strftime('%Y-%m-%d'),
+        'content': content_data['content']
+    }
+
+
+@lru_cache(maxsize=20, typed=False)
 def find_blog_by_title(url_title):
     """根据URL友好的标题查找博客"""
+    # 强制重新检查文件系统状态
+    _blog_cache.should_update()
+    
     all_blogs = get_all_blogs()
     
     # 首先尝试精确匹配
@@ -83,47 +195,6 @@ def find_blog_by_title(url_title):
     return None
 
 
-def get_blog_by_id(blog_id):
-    """获取特定博客内容"""
-    file_path = f'blogs/{blog_id}.md'
-    if not os.path.exists(file_path) or not os.path.getsize(file_path):
-        return None
-
-    # 从blog_id中提取标题和日期
-    match = re.match(r'(.+)_(\d{14})$', blog_id)
-    if not match:
-        return None
-
-    title = match.group(1)
-    date_str = match.group(2)
-
-    # 将日期字符串转换为datetime对象
-    date = datetime.strptime(date_str, '%Y%m%d%H%M%S')
-
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            md_content = f.read()
-
-        # 使用与大学信息相同的markdown处理方式
-        md = markdown.Markdown(
-            extensions=['extra', 'tables', 'fenced_code', 'sane_lists', 'nl2br', 'smarty'],
-            output_format="html5",
-        )
-        html_content = md.convert(md_content)
-
-        return {
-            'id': blog_id,
-            'title': title,
-            'url_title': title.replace(' ', '-').lower(),
-            'date': date.strftime('%Y-%m-%d'),
-            'content': html_content
-        }
-    except (FileNotFoundError, IOError, UnicodeDecodeError) as e:
-        abort(500, description=f"文件操作错误: {str(e)}")
-    except Exception as e:
-        abort(500, description=f"Markdown解析错误: {str(e)}")
-
-
 def get_random_blogs(n=10):
     """获取n篇随机博客"""
     all_blogs = get_all_blogs()
@@ -131,48 +202,29 @@ def get_random_blogs(n=10):
 
 
 def get_random_blogs_with_summary(count=3):
-    """获取指定数量的随机博客，并生成摘要
-    
-    Args:
-        count: 需要获取的博客数量
-        
-    Returns:
-        list: 包含博客信息的列表，每个博客包含id、title和summary
-    """
+    """获取指定数量的随机博客，并生成摘要"""
     all_blogs = get_all_blogs()
     if not all_blogs:
         return []
         
-    # 随机选择指定数量的博客
     selected_blogs = random.sample(all_blogs, min(count, len(all_blogs)))
     
     result = []
     for blog in selected_blogs:
-        try:
-            # 读取博客内容
-            with open(blog['md_path'], 'r', encoding='utf-8') as f:
-                content = f.read()
-            
-            # 移除Markdown标记
-            # 首先将内容转换为HTML
-            md = markdown.Markdown(extensions=['extra'])
-            html_content = md.convert(content)
-            
-            # 移除HTML标签
-            text_content = re.sub(r'<[^>]+>', '', html_content)
-            
-            # 生成摘要（取前100个字符）
-            summary = text_content[:100].strip() + '...' if len(text_content) > 100 else text_content
-            
-            result.append({
-                'id': blog['id'],
-                'title': blog['title'],
-                'url_title': blog['url_title'],
-                'summary': summary
-            })
-        except Exception as e:
-            # 如果处理某篇博客出错，跳过它
+        # 从缓存获取内容
+        content_data = _blog_cache.get_content(blog['id'])
+        if not content_data:
             continue
+            
+        # 生成摘要
+        summary = content_data['text_content'][:100].strip() + '...' if len(content_data['text_content']) > 100 else content_data['text_content']
+        
+        result.append({
+            'id': blog['id'],
+            'title': blog['title'],
+            'url_title': blog['url_title'],
+            'summary': summary
+        })
             
     return result
 
