@@ -1,14 +1,13 @@
-import requests
 import time
 import statistics
 import argparse
 from datetime import datetime
 import json
 from typing import List, Dict
-import psutil
 import threading
 from collections import defaultdict
-
+import psutil
+import requests
 
 class SystemMonitor:
 
@@ -18,6 +17,7 @@ class SystemMonitor:
         self.metrics = defaultdict(list)
         self.timeline_metrics = []  # 用于存储时间序列数据
         self.start_time = None
+        self.monitor_thread: threading.Thread | None = None
 
     def collect_metrics(self):
         current_time = time.time()
@@ -111,7 +111,7 @@ class PerformanceTest:
         for i in range(self.num_requests):
             try:
                 start_time = time.time()
-                response = requests.get(self.url)
+                _ = requests.get(self.url, timeout=10)
                 end_time = time.time()
 
                 response_time = (end_time - start_time) * 1000  # 转换为毫秒
