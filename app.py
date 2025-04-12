@@ -48,29 +48,48 @@ class DateConverter(BaseConverter):
 app.url_map.converters['date'] = DateConverter
 
 
+# 大学相关路由 - 带deadline的完整路径
 @app.route('/university/<name>/<date:deadline>')
+@app.route('/university/<name>/<date:deadline>/')
 def university_report_with_deadline(name, deadline):
     """大学详情页路由"""
     return university_route(name, deadline=deadline, content="REPORT")
 
 
 @app.route('/university/<name>/<date:deadline>/original')
+@app.route('/university/<name>/<date:deadline>/original/')
 def university_original_with_deadline(name, deadline):
     """大学详情页路由"""
     return university_route(name, deadline=deadline, content="ORIGINAL")
 
 
 @app.route('/university/<name>/<date:deadline>/zh')
+@app.route('/university/<name>/<date:deadline>/zh/')
 def university_zh_with_deadline(name, deadline):
     """大学详情页路由"""
     return university_route(name, deadline=deadline, content="ZH")
 
 
-# 保留旧的路由格式以保持向后兼容
-@app.route('/university/<n>')
-def university(name):
-    """大学详情页路由"""
-    return university_route(name)
+# 大学相关路由 - 简化路径（自动使用最新deadline）
+@app.route('/university/<name>')
+@app.route('/university/<name>/')
+def university_report(name):
+    """大学详情页路由 - 最新报告"""
+    return university_route(name, content="REPORT")
+
+
+@app.route('/university/<name>/original')
+@app.route('/university/<name>/original/')
+def university_original(name):
+    """大学详情页路由 - 最新原文"""
+    return university_route(name, content="ORIGINAL")
+
+
+@app.route('/university/<name>/zh')
+@app.route('/university/<name>/zh/')
+def university_zh(name):
+    """大学详情页路由 - 最新翻译"""
+    return university_route(name, content="ZH")
 
 
 # 博客相关路由

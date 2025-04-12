@@ -203,8 +203,7 @@ def index_route():
                          mode='index')
 
 
-def get_university_by_name_and_deadline(name,
-                                        deadline=None) -> University | None:
+def get_university_by_name_and_deadline(name, deadline=None) -> University | None:
     """
     根据大学名称和报名截止日期获取信息
 
@@ -212,6 +211,10 @@ def get_university_by_name_and_deadline(name,
     :param deadline: 报名截止日期（YYYY-MM-DD / YYYYMMDD / YYYY/MM/DD）
     :return: 大学信息
     """
+    # 如果没有提供deadline，返回最新的大学信息
+    if deadline is None:
+        return get_latest_university_by_name(name)
+
     # 对报名截止日期进行格式化
     # 如果报名截止日是一串8位数字，则认为它是YYYYMMDD格式，需要转换为YYYY/MM/DD格式
     if len(deadline) == 8 and deadline.isdigit():
@@ -238,24 +241,46 @@ def get_university_by_name_and_deadline(name,
     return None
 
 
+def get_latest_university_by_name(name):
+    """
+    根据大学名称获取最新的招生信息
+    
+    :param name: 大学名称
+    :return: 最新的大学信息或None
+    """
+    universities = get_all_universities()
+    matching_universities = [u for u in universities if u.name == name]
+    
+    if not matching_universities:
+        return None
+        
+    # 按deadline降序排序，返回最新的
+    return sorted(matching_universities, key=lambda x: x.deadline, reverse=True)[0]
+
+
 def university_route(name, deadline=None, content="REPORT"):
     """
     处理单个大学的路由
 
     :param name: 大学名称
-    :param deadline: 报名截止日期
+    :param deadline: 报名截止日期（可选）
     :param content: 要显示的内容（REPORT = 分析报告，ZH = 翻译件， ORIGINAL = 原版）
     """
+    # 如果没有提供deadline，获取最新的信息
+    if deadline is None:
+        university = get_latest_university_by_name(name)
+    else:
+        university = get_university_by_name_and_deadline(name, deadline)
 
-    # 获取大学信息
-    university = get_university_by_name_and_deadline(name, deadline)
     if not university:
-        error_msg = f"未找到{name}在{deadline}的招生信息"
+        error_msg = f"未找到{name}的招生信息"
+        if deadline:
+            error_msg = f"未找到{name}在{deadline}的招生信息"
         return (
             render_template("index.html",
-                            error=error_msg,
-                            universities=get_sorted_universities(),
-                            categories=load_categories()),
+                          error=error_msg,
+                          universities=get_sorted_universities(),
+                          categories=load_categories()),
             404,
         )
 
@@ -274,9 +299,9 @@ def university_route(name, deadline=None, content="REPORT"):
         if not os.path.exists(md_path):
             return (
                 render_template("index.html",
-                                error=f"未找到{name}在{deadline}的{content}信息",
-                                universities=get_sorted_universities(),
-                                categories=load_categories()),
+                              error=f"未找到{name}在{university.deadline}的{content}信息",
+                              universities=get_sorted_universities(),
+                              categories=load_categories()),
                 404,
             )
 
@@ -291,7 +316,6 @@ def university_route(name, deadline=None, content="REPORT"):
             ],
             output_format="html5",
         )
-        # 设置当前处理的文件路径
         html_content = md.convert(md_content)
 
         universities = get_sorted_universities()
@@ -307,16 +331,15 @@ def university_route(name, deadline=None, content="REPORT"):
     except (FileNotFoundError, IOError, UnicodeDecodeError) as e:
         return (
             render_template("index.html",
-                            error=f"文件操作错误: {str(e)}",
-                            universities=get_sorted_universities()),
+                          error=f"文件操作错误: {str(e)}",
+                          universities=get_sorted_universities()),
             500,
         )
-    # pylint: disable=broad-except
     except Exception as e:
         return (
             render_template("index.html",
-                            error=f"Markdown解析错误: {str(e)}",
-                            universities=get_sorted_universities()),
+                          error=f"Markdown解析错误: {str(e)}",
+                          universities=get_sorted_universities()),
             500,
         )
 
