@@ -40,11 +40,16 @@ class BlogCache:
     def _calculate_files_hash(self) -> str:
         """计算所有博客文件的哈希值"""
         hash_str = ""
-        for file in sorted(glob.glob('blogs/*.md')):
-            try:
+        try:
+            # 首先将目录中所有文件名加入哈希计算
+            all_files = sorted(glob.glob('blogs/*.md'))
+            hash_str += ";".join(all_files) + ";"
+            
+            # 然后加入每个文件的修改时间
+            for file in all_files:
                 hash_str += f"{file}:{os.path.getmtime(file)};"
-            except OSError:
-                continue
+        except OSError:
+            pass
         return hashlib.md5(hash_str.encode()).hexdigest()
 
     def get_content(self, blog_id: str) -> dict:

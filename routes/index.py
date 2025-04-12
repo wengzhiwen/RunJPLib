@@ -15,7 +15,7 @@ from flask import render_template, make_response
 from .blog import get_all_blogs, get_random_blogs_with_summary
 
 # 缓存更新间隔（秒）
-CACHE_UPDATE_INTERVAL = 5
+CACHE_UPDATE_INTERVAL = 60
 
 
 class University:
@@ -56,13 +56,19 @@ class UniversityCache:
         hash_str = ""
         base_dir = os.getenv("CONTENT_BASE_DIR", ".")
         pdf_dirs = [d for d in os.listdir(base_dir) if d.startswith("pdf_with_md")]
+        
+        # 首先将所有pdf_with_md目录名加入哈希计算
+        hash_str += ";".join(sorted(pdf_dirs)) + ";"
+        
         for pdf_dir in pdf_dirs:
             try:
-                for root, _, files in os.walk(pdf_dir):
+                for root, dirs, files in os.walk(pdf_dir):
+                    # 将目录结构信息加入哈希计算
+                    hash_str += f"dir:{root}:{','.join(sorted(dirs))};"
                     for file in sorted(files):
                         if file.endswith('.md'):
                             full_path = os.path.join(root, file)
-                            hash_str += f"{full_path}:{os.path.getmtime(full_path)};"
+                            hash_str += f"file:{full_path}:{os.path.getmtime(full_path)};"
             except OSError:
                 continue
         return hashlib.md5(hash_str.encode()).hexdigest()
