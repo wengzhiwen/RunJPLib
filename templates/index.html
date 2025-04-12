@@ -349,7 +349,7 @@
                         {% for uni in universities %}
                         <li class="nav-item">
                             <a class="nav-link {% if current_university == uni.name %}active{% endif %}" 
-                               href="{{ url_for('university_report', name=uni.name) }}">
+                               href="{{ uni.url }}">
                                 {{ uni.name }}
                             </a>
                         </li>
@@ -384,7 +384,7 @@
                         {% for uni in universities %}
                         <li class="nav-item">
                             <a class="nav-link {% if current_university == uni.name %}active{% endif %}" 
-                               href="{{ url_for('university_report', name=uni.name) }}">
+                               href="{{ uni.url }}">
                                 {{ uni.name }}
                             </a>
                         </li>
@@ -475,7 +475,7 @@
                             <div class="card h-100">
                                 <div class="card-body">
                                     <h5 class="card-title">
-                                        <a href="{{ url_for('university_report', name=uni.name) }}" 
+                                        <a href="{{ uni.url }}" 
                                            class="{% if not uni.file_exists %}invalid-link{% endif %}"
                                            {% if not uni.file_exists %}title="该链接暂时无法访问"{% endif %}>
                                             {{ uni.name }}

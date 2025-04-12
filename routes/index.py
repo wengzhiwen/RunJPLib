@@ -156,15 +156,13 @@ def load_categories() -> defaultdict:
                     logging.warning("CSV行缺少必要字段: %s", missing_fields)
                     continue
 
-                # 从URL中提取大学名称和截止日期
+                # 从URL中提取大学名称
                 url_parts = row['url'].split('/')
                 logging.debug("url_parts: %s", url_parts)
-                if len(url_parts) >= 4:  # URL格式应该是 /university/大学名/截止日期
+                if len(url_parts) >= 3:  # URL格式应该是 /university/大学名
                     name = url_parts[2]
-                    deadline = url_parts[3]
-                    # 直接使用get_university_by_name_and_deadline检查
-                    file_exists = get_university_by_name_and_deadline(
-                        name, deadline) is not None
+                    # 使用 get_latest_university_by_name 检查
+                    file_exists = get_latest_university_by_name(name) is not None
                 else:
                     file_exists = False
 
