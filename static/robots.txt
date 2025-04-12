@@ -2,54 +2,63 @@
 User-agent: Googlebot
 Allow: /
 Allow: /university/
+Allow: /blog/
 Crawl-delay: 10
 
 # 百度爬虫规则
 User-agent: Baiduspider
 Allow: /
 Allow: /university/
+Allow: /blog/
 Crawl-delay: 10
 
-# 禁止 Bing 爬虫
+# Bing 爬虫
 User-agent: bingbot
 Allow: /
 Allow: /university/
+Allow: /blog/
 Crawl-delay: 10
 
-# 禁止 DuckDuckGo 爬虫
+# DuckDuckGo 爬虫
 User-agent: DuckDuckBot
 Allow: /
 Allow: /university/
+Allow: /blog/
 Crawl-delay: 10
 
 # 禁止 Internet Archive 爬虫
 User-agent: archive.org_bot
 Allow: /
 Allow: /university/
+Allow: /blog/
 Crawl-delay: 10
 
 # 搜狗爬虫规则
 User-agent: Sogou spider
 Allow: /
 Allow: /university/
+Allow: /blog/
 Crawl-delay: 10
 
 # 360搜索爬虫规则
 User-agent: 360Spider
 Allow: /
 Allow: /university/
+Allow: /blog/
 Crawl-delay: 10
 
 # Yahoo爬虫规则
 User-agent: Slurp
 Allow: /
 Allow: /university/
+Allow: /blog/
 Crawl-delay: 10
 
 # Yandex爬虫规则
 User-agent: Yandex
 Allow: /
 Allow: /university/
+Allow: /blog/
 Crawl-delay: 10
 
 # 禁止其他所有爬虫
