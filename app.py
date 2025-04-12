@@ -81,11 +81,11 @@ def blog_list():
     return blog_list_route()
 
 
-@app.route('/blog/<blog_id>')
-@app.route('/blog/<blog_id>/')
-def blog_detail(blog_id):
+@app.route('/blog/<title>')
+@app.route('/blog/<title>/')
+def blog_detail(title):
     """博客详情路由"""
-    return blog_detail_route(blog_id)
+    return blog_detail_route(title)
 
 
 if __name__ == '__main__':

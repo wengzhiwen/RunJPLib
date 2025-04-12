@@ -17,7 +17,7 @@
     <!-- 博客详情页 -->
     {% for blog in blogs %}
     <url>
-        <loc>{{ base_url }}/blog/{{ blog.id }}</loc>
+        <loc>{{ base_url }}/blog/{{ blog.url_title }}</loc>
         <changefreq>monthly</changefreq>
         <priority>0.8</priority>
     </url>

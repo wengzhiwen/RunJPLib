@@ -6,9 +6,15 @@ import os
 import re
 from datetime import datetime
 import random
+from difflib import SequenceMatcher
 
 import markdown
 from flask import render_template, abort
+
+
+def get_title_similarity(title1, title2):
+    """计算两个标题的相似度"""
+    return SequenceMatcher(None, title1.lower(), title2.lower()).ratio()
 
 
 def get_all_blogs():
@@ -34,13 +40,47 @@ def get_all_blogs():
         blogs.append({
             'id': filename[:-3],  # 移除.md后缀
             'title': title,
+            'url_title': title.replace(' ', '-').lower(),  # URL友好的标题
             'date': date.strftime('%Y-%m-%d'),
             'datetime': date,
             'md_path': file  # 添加文件路径
         })
 
     # 按日期降序排序
-    return sorted(blogs, key=lambda x: x['datetime'], reverse=True)
+    blogs = sorted(blogs, key=lambda x: x['datetime'], reverse=True)
+    
+    # 对于相同标题的文章，只保留最新的一篇
+    unique_blogs = {}
+    for blog in blogs:
+        if blog['title'] not in unique_blogs:
+            unique_blogs[blog['title']] = blog
+    
+    return list(unique_blogs.values())
+
+
+def find_blog_by_title(url_title):
+    """根据URL友好的标题查找博客"""
+    all_blogs = get_all_blogs()
+    
+    # 首先尝试精确匹配
+    for blog in all_blogs:
+        if blog['url_title'] == url_title:
+            return get_blog_by_id(blog['id'])
+    
+    # 如果没有精确匹配，尝试模糊匹配
+    best_match = None
+    highest_similarity = 0.7  # 设置相似度阈值
+    
+    for blog in all_blogs:
+        similarity = get_title_similarity(url_title.replace('-', ' '), blog['title'])
+        if similarity > highest_similarity:
+            highest_similarity = similarity
+            best_match = blog
+    
+    if best_match:
+        return get_blog_by_id(best_match['id'])
+    
+    return None
 
 
 def get_blog_by_id(blog_id):
@@ -71,7 +111,13 @@ def get_blog_by_id(blog_id):
         )
         html_content = md.convert(md_content)
 
-        return {'id': blog_id, 'title': title, 'date': date.strftime('%Y-%m-%d'), 'content': html_content}
+        return {
+            'id': blog_id,
+            'title': title,
+            'url_title': title.replace(' ', '-').lower(),
+            'date': date.strftime('%Y-%m-%d'),
+            'content': html_content
+        }
     except (FileNotFoundError, IOError, UnicodeDecodeError) as e:
         abort(500, description=f"文件操作错误: {str(e)}")
     except Exception as e:
@@ -121,6 +167,7 @@ def get_random_blogs_with_summary(count=3):
             result.append({
                 'id': blog['id'],
                 'title': blog['title'],
+                'url_title': blog['url_title'],
                 'summary': summary
             })
         except Exception as e:
@@ -137,16 +184,16 @@ def blog_list_route():
     # 如果有博客文章，随机选择一篇作为默认显示
     if blogs:
         random_blog = random.choice(blogs)
-        return blog_detail_route(random_blog['id'])
+        return blog_detail_route(random_blog['url_title'])
     
     # 如果没有博客文章，显示404页面并推荐其他博客
     recommended_blogs = get_random_blogs(10)
     return render_template('404.html', mode='blog', blogs=blogs, recommended_blogs=recommended_blogs), 404
 
 
-def blog_detail_route(blog_id):
+def blog_detail_route(url_title):
     """博客详情路由处理函数"""
-    blog = get_blog_by_id(blog_id)
+    blog = find_blog_by_title(url_title)
     if blog is None:
         # 获取10篇随机推荐的博客
         recommended_blogs = get_random_blogs(10)
