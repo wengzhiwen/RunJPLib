@@ -1,11 +1,60 @@
 {% extends "index.html" %}
 
 {% block main_content %}
-    <div class="notice-box">
-        这是从大学官网获得的招生信息（募集要项）的中文版扫描翻译本，<a href="{{ url_for('university_original_with_deadline', name=current_university, deadline=current_deadline) }}">日文扫描版请点这里</a>，或者直接查看<a href="{{ url_for('university_report_with_deadline', name=current_university, deadline=current_deadline) }}">基础分析报告</a>。
-        <br>
-        扫描和翻译工作都由AI（Google Gemini 1.5）进行，受限于当前技术条件并不能100%准确的传达原版招生信息的内容，且原版内容可能会发生更新或调整。为了保证不耽误你的升学，还请务必访问大学官网确认更加准确的信息。
+<div class="content-container">
+    {% if mode == 'blog' %}
+    <h1>{{ current_blog }}</h1>
+    <div class="meta-info">
+        <span class="date">{{ current_blog_date }}</span>
     </div>
+    {% else %}
+    <div class="notice-box">
+        <p>
+            本页面是{{ current_university }}在{{ current_deadline }}的招生要项中文翻译。<br />
+            翻译工作由AI（Google Gemini、DeepSeek和OpenAI GPT）完成，可能存在错误或不准确的地方。<br />
+            为了保证不耽误你的升学，还请务必访问大学官网确认更加准确的信息。<br />
+            <a href="{{ url_for('university_original_with_deadline', name=current_university, deadline=current_deadline) }}">点击这里查看原文</a>
+            <a href="{{ url_for('university_report_with_deadline', name=current_university, deadline=current_deadline) }}">点击这里查看基础分析报告</a>
+        </p>
+    </div>
+    {% endif %}
 
-    {{ content | safe }}
+    <div class="content">
+        {{ content | safe }}
+    </div>
+</div>
+
+<style>
+    .content-container {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+    
+    .meta-info {
+        color: #666;
+        margin-bottom: 20px;
+        font-size: 0.9em;
+    }
+    
+    .content {
+        line-height: 1.8;
+    }
+    
+    .content img {
+        max-width: 100%;
+        height: auto;
+        margin: 20px 0;
+    }
+    
+    .content h1,
+    .content h2,
+    .content h3,
+    .content h4,
+    .content h5,
+    .content h6 {
+        margin-top: 1.5em;
+        margin-bottom: 0.5em;
+    }
+</style>
 {% endblock %}

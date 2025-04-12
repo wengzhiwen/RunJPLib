@@ -9,6 +9,7 @@ from flask import Flask, send_from_directory
 from werkzeug.routing import BaseConverter
 
 from routes.index import index_route, university_route, sitemap_route
+from routes.blog import blog_list_route, blog_detail_route
 
 
 app = Flask(__name__)
@@ -70,6 +71,21 @@ def university_zh_with_deadline(name, deadline):
 def university(name):
     """大学详情页路由"""
     return university_route(name)
+
+
+# 博客相关路由
+@app.route('/blog')
+@app.route('/blog/')
+def blog_list():
+    """博客列表路由"""
+    return blog_list_route()
+
+
+@app.route('/blog/<blog_id>')
+@app.route('/blog/<blog_id>/')
+def blog_detail(blog_id):
+    """博客详情路由"""
+    return blog_detail_route(blog_id)
 
 
 if __name__ == '__main__':

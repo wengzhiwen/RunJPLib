@@ -1,0 +1,47 @@
+{% extends "index.html" %}
+
+{% block main_content %}
+<div class="blog-content">
+    <h1>{{ blog_title }}</h1>
+    <div class="blog-meta">
+        <span class="blog-date">{{ blog_date }}</span>
+    </div>
+    <div class="blog-body">
+        {{ blog_content | safe }}
+    </div>
+</div>
+
+<style>
+    .blog-content {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+    
+    .blog-meta {
+        color: #666;
+        margin-bottom: 20px;
+        font-size: 0.9em;
+    }
+    
+    .blog-body {
+        line-height: 1.8;
+    }
+    
+    .blog-body img {
+        max-width: 100%;
+        height: auto;
+        margin: 20px 0;
+    }
+    
+    .blog-body h1,
+    .blog-body h2,
+    .blog-body h3,
+    .blog-body h4,
+    .blog-body h5,
+    .blog-body h6 {
+        margin-top: 1.5em;
+        margin-bottom: 0.5em;
+    }
+</style>
+{% endblock %} 

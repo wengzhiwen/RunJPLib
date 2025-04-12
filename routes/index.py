@@ -9,6 +9,7 @@ from collections import defaultdict
 
 import markdown
 from flask import render_template, make_response
+from .blog import get_all_blogs, get_random_blogs_with_summary
 
 
 class University:
@@ -194,9 +195,12 @@ def index_route():
     """首页路由"""
     universities = get_sorted_universities()
     categories = load_categories()
+    recommended_blogs = get_random_blogs_with_summary(3)
     return render_template("index.html",
-                           universities=universities,
-                           categories=categories)
+                         universities=universities,
+                         categories=categories,
+                         recommended_blogs=recommended_blogs,
+                         mode='index')
 
 
 def get_university_by_name_and_deadline(name,
@@ -318,9 +322,12 @@ def university_route(name, deadline=None, content="REPORT"):
 
 
 def sitemap_route():
-    """sitemap路由"""
-    universities = get_sorted_universities()
+    """sitemap路由处理函数"""
+    base_url = os.getenv('BASE_URL', 'https://www.runjplib.com')
     response = make_response(
-        render_template("sitemap.xml", universities=universities))
+        render_template('sitemap.xml',
+                       base_url=base_url,
+                       blogs=get_all_blogs(),
+                       universities=get_all_universities()))
     response.headers["Content-Type"] = "application/xml"
     return response
