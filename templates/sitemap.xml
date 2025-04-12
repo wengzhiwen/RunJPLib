@@ -26,17 +26,17 @@
     <!-- 大学信息页 -->
     {% for university in universities %}
     <url>
-        <loc>{{ base_url }}/university/{{ university.name }}/{{ university.deadline }}</loc>
+        <loc>{{ base_url }}/university/{{ university.name }}</loc>
         <changefreq>monthly</changefreq>
         <priority>0.8</priority>
     </url>
     <url>
-        <loc>{{ base_url }}/university/{{ university.name }}/{{ university.deadline }}/zh</loc>
+        <loc>{{ base_url }}/university/{{ university.name }}/zh</loc>
         <changefreq>monthly</changefreq>
         <priority>0.8</priority>
     </url>
     <url>
-        <loc>{{ base_url }}/university/{{ university.name }}/{{ university.deadline }}/original</loc>
+        <loc>{{ base_url }}/university/{{ university.name }}/original</loc>
         <changefreq>monthly</changefreq>
         <priority>0.8</priority>
     </url>

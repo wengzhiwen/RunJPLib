@@ -13,8 +13,8 @@
             本页面是{{ current_university }}在{{ current_deadline }}的招生要项中文翻译。<br />
             翻译工作由AI（Google Gemini、DeepSeek和OpenAI GPT）完成，可能存在错误或不准确的地方。<br />
             为了保证不耽误你的升学，还请务必访问大学官网确认更加准确的信息。<br />
-            <a href="{{ url_for('university_original_with_deadline', name=current_university, deadline=current_deadline) }}">点击这里查看原文</a>
-            <a href="{{ url_for('university_report_with_deadline', name=current_university, deadline=current_deadline) }}">点击这里查看基础分析报告</a>
+            <a href="{{ url_for('university_original', name=current_university) }}">点击这里查看原文</a>
+            <a href="{{ url_for('university_report', name=current_university) }}">点击这里查看基础分析报告</a>
         </p>
     </div>
     {% endif %}

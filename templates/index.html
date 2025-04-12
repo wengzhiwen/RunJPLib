@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
-    <meta name="description" content="日本留学信息库，提供东京大学(东大)、京都大学(京大)、早稻田大学(早大)、庆应义塾大学(庆应)等日本知名大学的招生要项中文翻译。包含一桥大学、中央大学等各大学的入学考试、报名截止时间、考试科目等重要信息。">
+    <meta name="description" content="日本留学信息库，提供东京大学(东大)、京都大学(京大)、早稻田大学(早大)、庆应义塾大学(庆应)等日本知名大学的招生要项中文翻译。包含一桥大学、中央大学等各大学的入学考试、考试科目等重要信息。">
     <meta name="keywords" content="日本留学,日本大学,东京大学,京都大学,早稻田大学,庆应义塾大学,一桥大学,中央大学,留学日本,日本大学入试,留考,日本高考,日本大学招生,留学生考试">
     <meta name="robots" content="index, follow">
     <meta name="author" content="润日图书馆">
@@ -349,8 +349,8 @@
                         {% for uni in universities %}
                         <li class="nav-item">
                             <a class="nav-link {% if current_university == uni.name %}active{% endif %}" 
-                               href="{{ url_for('university_report_with_deadline', name=uni.name, deadline=uni.deadline) }}">
-                                {{ uni.name }} ({{ uni.deadline }})
+                               href="{{ url_for('university_report', name=uni.name) }}">
+                                {{ uni.name }}
                             </a>
                         </li>
                         {% endfor %}
@@ -384,8 +384,8 @@
                         {% for uni in universities %}
                         <li class="nav-item">
                             <a class="nav-link {% if current_university == uni.name %}active{% endif %}" 
-                               href="{{ url_for('university_report_with_deadline', name=uni.name, deadline=uni.deadline) }}">
-                                {{ uni.name }} ({{ uni.deadline }})
+                               href="{{ url_for('university_report', name=uni.name) }}">
+                                {{ uni.name }}
                             </a>
                         </li>
                         {% endfor %}
@@ -475,7 +475,7 @@
                             <div class="card h-100">
                                 <div class="card-body">
                                     <h5 class="card-title">
-                                        <a href="{{ uni.url }}" 
+                                        <a href="{{ url_for('university_report', name=uni.name) }}" 
                                            class="{% if not uni.file_exists %}invalid-link{% endif %}"
                                            {% if not uni.file_exists %}title="该链接暂时无法访问"{% endif %}>
                                             {{ uni.name }}
@@ -509,8 +509,6 @@
 
                     <p>本站收集整理了包括东京大学（东大）、京都大学（京大）、早稻田大学（早大）、庆应义塾大学（庆应）等日本顶尖大学的本科（学部）招生信息（募集要项）。<br />
                         扫描、翻译和分析工作都由AI（Google Gemini、DeepSeek和OpenAI GPT）进行，受限于当前技术条件并不能100%准确的传达原版招生信息的内容，且原版内容可能会发生更新或调整。为了保证不耽误你的升学，还请务必访问大学官网确认更加准确的信息。<br />
-                        <br />
-                        列表中大学名称右侧的日期是大学的报名（出愿截止日），也是通过AI从原文中分析出来的，仅供参考。
                         <br /><br />
                         <b>2025年4月12日更新:</b>
                         <br />

@@ -2,7 +2,9 @@
 
 {% block main_content %}
     <div class="notice-box">
-        这是从大学官网获得的招生信息（募集要项）的扫描本，<a href="{{ url_for('university_zh_with_deadline', name=current_university, deadline=current_deadline) }}">中文翻译版请点这里</a>，或者直接查看<a href="{{ url_for('university_report_with_deadline', name=current_university, deadline=current_deadline) }}">基础分析报告</a>。
+        本页面是{{ current_university }}在{{ current_deadline }}的招生要项原文。<br />
+        如果您需要中文翻译，<a href="{{ url_for('university_zh', name=current_university) }}">点击这里查看中文翻译版</a>，
+        或者直接查看<a href="{{ url_for('university_report', name=current_university) }}">基础分析报告</a>。
         <br>
         扫描和翻译工作都由AI（Google Gemini 1.5）进行，受限于当前技术条件并不能100%准确的传达原版招生信息的内容，且原版内容可能会发生更新或调整。为了保证不耽误你的升学，还请务必访问大学官网确认更加准确的信息。
     </div>

@@ -2,7 +2,7 @@
 
 {% block main_content %}
     <div class="notice-box">
-        这是从大学官网获得的招生信息（募集要项）的基础分析，<a href="{{ url_for('university_zh_with_deadline', name=current_university, deadline=current_deadline) }}">中文翻译版请点这里</a>，<a href="{{ url_for('university_original_with_deadline', name=current_university, deadline=current_deadline) }}">日文扫描版请点这里</a>。
+        这是从大学官网获得的招生信息（募集要项）的基础分析，<a href="{{ url_for('university_zh', name=current_university) }}">中文翻译版请点这里</a>，<a href="{{ url_for('university_original', name=current_university) }}">日文扫描版请点这里</a>。
         <br>
         分析工作都由AI（DeepSeek-V3和GPT-4o-mini）进行，受限于当前技术条件并不能100%准确的传达原版招生信息的内容，且原版内容可能会发生更新或调整。为了保证不耽误你的升学，还请务必访问大学官网确认更加准确的信息。
     </div>
