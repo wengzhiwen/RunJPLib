@@ -9,48 +9,46 @@ import psutil
 import threading
 from collections import defaultdict
 
+
 class SystemMonitor:
+
     def __init__(self, interval: float = 1.0):
         self.interval = interval
         self.running = False
         self.metrics = defaultdict(list)
         self.timeline_metrics = []  # 用于存储时间序列数据
         self.start_time = None
-        
+
     def collect_metrics(self):
         current_time = time.time()
         elapsed_time = current_time - self.start_time if self.start_time else 0
-        
+
         cpu_percent = psutil.cpu_percent(interval=0)
         memory = psutil.virtual_memory()
-        
+
         # 记录时间序列数据
-        self.timeline_metrics.append({
-            "时间点": f"{elapsed_time:.1f}秒",
-            "CPU使用率": cpu_percent,
-            "内存使用率": memory.percent
-        })
-        
+        self.timeline_metrics.append({"时间点": f"{elapsed_time:.1f}秒", "CPU使用率": cpu_percent, "内存使用率": memory.percent})
+
         # 累积统计数据
         self.metrics['cpu'].append(cpu_percent)
         self.metrics['memory'].append(memory.percent)
-        
+
     def monitor(self):
         while self.running:
             self.collect_metrics()
             time.sleep(self.interval)
-    
+
     def start(self):
         self.running = True
         self.start_time = time.time()
         self.monitor_thread = threading.Thread(target=self.monitor)
         self.monitor_thread.start()
-    
+
     def stop(self):
         self.running = False
         if hasattr(self, 'monitor_thread'):
             self.monitor_thread.join()
-    
+
     def get_stats(self):
         stats = {}
         # 基础统计
@@ -62,32 +60,29 @@ class SystemMonitor:
                     "平均值": f"{statistics.mean(values):.2f}%",
                     "标准差": f"{statistics.stdev(values):.2f}%" if len(values) > 1 else "N/A"
                 }
-        
+
         # 分析压力趋势
         if len(self.timeline_metrics) > 1:
             # 计算CPU和内存使用率的趋势
             cpu_trend = self._calculate_trend([m["CPU使用率"] for m in self.timeline_metrics])
             mem_trend = self._calculate_trend([m["内存使用率"] for m in self.timeline_metrics])
-            
-            stats["压力趋势分析"] = {
-                "CPU趋势": cpu_trend,
-                "内存趋势": mem_trend
-            }
-            
+
+            stats["压力趋势分析"] = {"CPU趋势": cpu_trend, "内存趋势": mem_trend}
+
             # 添加时间序列数据
             stats["时间序列数据"] = self.timeline_metrics
-            
+
         return stats
-    
+
     def _calculate_trend(self, values: List[float]) -> str:
         if len(values) < 2:
             return "数据点不足以分析趋势"
-            
+
         # 计算前半段和后半段的平均值来判断趋势
         mid_point = len(values) // 2
         first_half_avg = statistics.mean(values[:mid_point])
         second_half_avg = statistics.mean(values[mid_point:])
-        
+
         diff = second_half_avg - first_half_avg
         if abs(diff) < 1:  # 如果变化小于1%，认为是稳定的
             return "保持稳定"
@@ -96,7 +91,9 @@ class SystemMonitor:
         else:
             return f"呈下降趋势 (减少了 {abs(diff):.1f}%)"
 
+
 class PerformanceTest:
+
     def __init__(self, url: str, num_requests: int = 100):
         self.url = url
         self.num_requests = num_requests
@@ -108,7 +105,7 @@ class PerformanceTest:
         print(f"开始测试 {self.url}")
         print(f"将发送 {self.num_requests} 个请求...\n")
         print("开始监控系统资源...")
-        
+
         self.system_monitor.start()
 
         for i in range(self.num_requests):
@@ -116,20 +113,17 @@ class PerformanceTest:
                 start_time = time.time()
                 response = requests.get(self.url)
                 end_time = time.time()
-                
+
                 response_time = (end_time - start_time) * 1000  # 转换为毫秒
                 self.response_times.append(response_time)
-                
+
                 if (i + 1) % 10 == 0:
                     print(f"已完成 {i + 1} 个请求")
-                
+
             except Exception as e:
-                error_info = {
-                    "request_num": i + 1,
-                    "error": str(e)
-                }
+                error_info = {"request_num": i + 1, "error": str(e)}
                 self.errors.append(error_info)
-        
+
         self.system_monitor.stop()
 
     def generate_report(self):
@@ -158,7 +152,7 @@ class PerformanceTest:
 
         print("\n性能测试报告:")
         print("=" * 50)
-        
+
         # 打印请求统计
         print("\n1. 请求统计:")
         print("-" * 30)
@@ -167,13 +161,13 @@ class PerformanceTest:
         print(f"请求总数: {stats['请求总数']}")
         print(f"成功请求数: {stats['成功请求数']}")
         print(f"失败请求数: {stats['失败请求数']}")
-        
+
         # 打印响应时间统计
         print("\n2. 响应时间统计:")
         print("-" * 30)
         for key, value in stats['响应时间统计'].items():
             print(f"{key}: {value}")
-        
+
         # 打印系统资源统计
         print("\n3. 系统资源使用统计:")
         print("-" * 30)
@@ -182,7 +176,7 @@ class PerformanceTest:
                 print(f"\n{resource.upper()} 使用率:")
                 for metric_name, value in metrics.items():
                     print(f"{metric_name}: {value}")
-        
+
         # 打印压力趋势分析
         if "压力趋势分析" in stats['系统资源统计']:
             print("\n4. 压力趋势分析:")
@@ -203,6 +197,7 @@ class PerformanceTest:
             json.dump(stats, f, ensure_ascii=False, indent=2)
         print(f"\n详细报告已保存到: {report_filename}")
 
+
 def main():
     parser = argparse.ArgumentParser(description='API性能测试工具')
     parser.add_argument('--url', default='http://localhost:5000', help='要测试的URL')
@@ -213,5 +208,6 @@ def main():
     tester.run_test()
     tester.generate_report()
 
+
 if __name__ == "__main__":
-    main() 
+    main()

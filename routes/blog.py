@@ -17,14 +17,16 @@ from flask import render_template, abort
 # 缓存更新间隔（秒）
 CACHE_UPDATE_INTERVAL = 60
 
+
 class BlogCache:
     """博客缓存管理类"""
+
     def __init__(self):
         self.last_check_time = 0
         self.files_hash = None
         self.blogs_list = None
         self.content_cache = {}
-    
+
     def should_update(self) -> bool:
         """检查是否需要更新缓存"""
         current_time = time.time()
@@ -34,7 +36,7 @@ class BlogCache:
                 self.files_hash = new_hash
                 return True
         return False
-    
+
     def _calculate_files_hash(self) -> str:
         """计算所有博客文件的哈希值"""
         hash_str = ""
@@ -44,17 +46,17 @@ class BlogCache:
             except OSError:
                 continue
         return hashlib.md5(hash_str.encode()).hexdigest()
-    
+
     def get_content(self, blog_id: str) -> dict:
         """获取博客内容，优先从缓存获取"""
         if blog_id in self.content_cache:
             return self.content_cache[blog_id]
-        
+
         content = self._load_content(blog_id)
         if content:
             self.content_cache[blog_id] = content
         return content
-    
+
     def _load_content(self, blog_id: str) -> dict:
         """从文件加载博客内容"""
         file_path = f'blogs/{blog_id}.md'
@@ -70,22 +72,21 @@ class BlogCache:
                 output_format="html5",
             )
             html_content = md.convert(md_content)
-            
-            return {
-                'content': html_content,
-                'text_content': re.sub(r'<[^>]+>', '', html_content)
-            }
+
+            return {'content': html_content, 'text_content': re.sub(r'<[^>]+>', '', html_content)}
         except Exception:
             return None
-    
+
     def clear(self):
         """清除所有缓存"""
         self.blogs_list = None
         self.content_cache.clear()
         self.last_check_time = 0
 
+
 # 创建全局缓存实例
 _blog_cache = BlogCache()
+
 
 def get_title_similarity(title1, title2):
     """计算两个标题的相似度"""
@@ -95,12 +96,12 @@ def get_title_similarity(title1, title2):
 def get_all_blogs():
     """获取所有博客列表"""
     global _blog_cache
-    
+
     # 检查是否需要更新缓存
     if _blog_cache.blogs_list is None or _blog_cache.should_update():
         blogs = []
         blog_files = glob.glob('blogs/*.md')
-        
+
         for file in blog_files:
             filename = os.path.basename(file)
             if not os.path.getsize(file):
@@ -125,16 +126,16 @@ def get_all_blogs():
 
         # 按日期降序排序
         blogs = sorted(blogs, key=lambda x: x['datetime'], reverse=True)
-        
+
         # 对于相同标题的文章，只保留最新的一篇
         unique_blogs = {}
         for blog in blogs:
             if blog['title'] not in unique_blogs:
                 unique_blogs[blog['title']] = blog
-        
+
         _blog_cache.blogs_list = list(unique_blogs.values())
         _blog_cache.last_check_time = time.time()
-    
+
     return _blog_cache.blogs_list
 
 
@@ -157,13 +158,7 @@ def get_blog_by_id(blog_id):
     if not content_data:
         return None
 
-    return {
-        'id': blog_id,
-        'title': title,
-        'url_title': title.replace(' ', '-').lower(),
-        'date': date.strftime('%Y-%m-%d'),
-        'content': content_data['content']
-    }
+    return {'id': blog_id, 'title': title, 'url_title': title.replace(' ', '-').lower(), 'date': date.strftime('%Y-%m-%d'), 'content': content_data['content']}
 
 
 @lru_cache(maxsize=20, typed=False)
@@ -171,27 +166,27 @@ def find_blog_by_title(url_title):
     """根据URL友好的标题查找博客"""
     # 强制重新检查文件系统状态
     _blog_cache.should_update()
-    
+
     all_blogs = get_all_blogs()
-    
+
     # 首先尝试精确匹配
     for blog in all_blogs:
         if blog['url_title'] == url_title:
             return get_blog_by_id(blog['id'])
-    
+
     # 如果没有精确匹配，尝试模糊匹配
     best_match = None
     highest_similarity = 0.7  # 设置相似度阈值
-    
+
     for blog in all_blogs:
         similarity = get_title_similarity(url_title.replace('-', ' '), blog['title'])
         if similarity > highest_similarity:
             highest_similarity = similarity
             best_match = blog
-    
+
     if best_match:
         return get_blog_by_id(best_match['id'])
-    
+
     return None
 
 
@@ -206,38 +201,33 @@ def get_random_blogs_with_summary(count=3):
     all_blogs = get_all_blogs()
     if not all_blogs:
         return []
-        
+
     selected_blogs = random.sample(all_blogs, min(count, len(all_blogs)))
-    
+
     result = []
     for blog in selected_blogs:
         # 从缓存获取内容
         content_data = _blog_cache.get_content(blog['id'])
         if not content_data:
             continue
-            
+
         # 生成摘要
         summary = content_data['text_content'][:100].strip() + '...' if len(content_data['text_content']) > 100 else content_data['text_content']
-        
-        result.append({
-            'id': blog['id'],
-            'title': blog['title'],
-            'url_title': blog['url_title'],
-            'summary': summary
-        })
-            
+
+        result.append({'id': blog['id'], 'title': blog['title'], 'url_title': blog['url_title'], 'summary': summary})
+
     return result
 
 
 def blog_list_route():
     """博客列表路由处理函数"""
     blogs = get_all_blogs()
-    
+
     # 如果有博客文章，随机选择一篇作为默认显示
     if blogs:
         random_blog = random.choice(blogs)
         return blog_detail_route(random_blog['url_title'])
-    
+
     # 如果没有博客文章，显示404页面并推荐其他博客
     recommended_blogs = get_random_blogs(10)
     return render_template('404.html', mode='blog', blogs=blogs, recommended_blogs=recommended_blogs), 404
@@ -250,7 +240,7 @@ def blog_detail_route(url_title):
         # 获取10篇随机推荐的博客
         recommended_blogs = get_random_blogs(10)
         return render_template('404.html', mode='blog', blogs=get_all_blogs(), recommended_blogs=recommended_blogs), 404
-        
+
     return render_template(
         'content.html',  # 使用与大学信息相同的模板
         mode='blog',

@@ -17,9 +17,11 @@ from .blog import get_all_blogs, get_random_blogs_with_summary
 # 缓存更新间隔（秒）
 CACHE_UPDATE_INTERVAL = 5
 
+
 class University:
     # pylint: disable=too-few-public-methods
     """大学信息类"""
+
     def __init__(self, name, deadline, zh_md_path, md_path, report_md_path):
         self.name = name
         self.deadline = deadline
@@ -28,15 +30,17 @@ class University:
         self.report_md_path = report_md_path
         self.url = f"/university/{name}"  # 添加url属性
 
+
 class UniversityCache:
     """大学信息缓存管理类"""
+
     def __init__(self):
         self.last_check_time = 0
         self.files_hash = None
         self._universities = None
         self._sorted_universities = None
         self._latest_by_name = {}
-        
+
     def should_update(self) -> bool:
         """检查是否需要更新缓存"""
         current_time = time.time()
@@ -46,7 +50,7 @@ class UniversityCache:
                 self.files_hash = new_hash
                 return True
         return False
-    
+
     def _calculate_files_hash(self) -> str:
         """计算所有大学文件的哈希值"""
         hash_str = ""
@@ -62,7 +66,7 @@ class UniversityCache:
             except OSError:
                 continue
         return hashlib.md5(hash_str.encode()).hexdigest()
-    
+
     def get_all_universities(self) -> list[University]:
         """获取所有大学信息"""
         if self._universities is None or self.should_update():
@@ -71,7 +75,7 @@ class UniversityCache:
             self._latest_by_name.clear()  # 清除最新信息缓存
             self.last_check_time = time.time()
         return self._universities
-    
+
     def get_sorted_universities(self) -> list[University]:
         """获取排序后的大学列表"""
         if self._sorted_universities is None:
@@ -80,7 +84,7 @@ class UniversityCache:
             best_universities = set()
             base_dir = os.getenv("CONTENT_BASE_DIR", ".")
             pdf_dirs = [d for d in os.listdir(base_dir) if d.startswith("pdf_with_md")]
-            
+
             for pdf_dir in pdf_dirs:
                 best_list_path = os.path.join(pdf_dir, "best_list.csv")
                 if os.path.exists(best_list_path):
@@ -89,16 +93,16 @@ class UniversityCache:
                         for row in reader:
                             if row:
                                 best_universities.add(row[0])
-            
+
             # 排序函数
             def get_sort_key(univ: University):
                 is_best = 1 if univ.name in best_universities else 0
                 return (is_best, univ.deadline)
-            
+
             self._sorted_universities = sorted(universities, key=get_sort_key, reverse=True)
-        
+
         return self._sorted_universities
-    
+
     def get_latest_by_name(self, name: str) -> University | None:
         """获取指定大学最新的信息"""
         if name not in self._latest_by_name:
@@ -109,27 +113,24 @@ class UniversityCache:
             else:
                 self._latest_by_name[name] = None
         return self._latest_by_name[name]
-    
+
     def _load_universities(self) -> list[University]:
         """从文件系统加载大学信息"""
         universities = []
         base_dir = os.getenv("CONTENT_BASE_DIR", ".")
         pdf_dirs = [d for d in os.listdir(base_dir) if d.startswith("pdf_with_md")]
-        
+
         for pdf_dir in pdf_dirs:
-            sub_dirs = [
-                d for d in os.listdir(pdf_dir)
-                if os.path.isdir(os.path.join(pdf_dir, d))
-            ]
+            sub_dirs = [d for d in os.listdir(pdf_dir) if os.path.isdir(os.path.join(pdf_dir, d))]
             for sub_dir in sub_dirs:
                 sub_dir_name = sub_dir.split("_")
                 if len(sub_dir_name) < 2:
                     logging.info("忽略子文件夹: %s 。文件夹名不含有\"_\"", sub_dir)
                     continue
-                
+
                 university_name = sub_dir_name[0]
                 deadline = sub_dir_name[1]
-                
+
                 if len(deadline) == 8 and deadline.isdigit():
                     deadline = f"{deadline[:4]}-{deadline[4:6]}-{deadline[6:]}"
                 elif len(deadline) == 10:
@@ -142,15 +143,8 @@ class UniversityCache:
                     continue
 
                 # 检查必要文件
-                required_files = [
-                    f"{sub_dir}.md",
-                    f"{sub_dir}_report.md",
-                    f"{sub_dir}_中文.md"
-                ]
-                if not all(
-                    os.path.exists(os.path.join(pdf_dir, sub_dir, f))
-                    for f in required_files
-                ):
+                required_files = [f"{sub_dir}.md", f"{sub_dir}_report.md", f"{sub_dir}_中文.md"]
+                if not all(os.path.exists(os.path.join(pdf_dir, sub_dir, f)) for f in required_files):
                     logging.info("忽略子文件夹: %s。缺少必要文件", sub_dir)
                     continue
 
@@ -161,11 +155,10 @@ class UniversityCache:
                         zh_md_path=os.path.join(pdf_dir, sub_dir, f"{sub_dir}_中文.md"),
                         md_path=os.path.join(pdf_dir, sub_dir, f"{sub_dir}.md"),
                         report_md_path=os.path.join(pdf_dir, sub_dir, f"{sub_dir}_report.md"),
-                    )
-                )
-        
+                    ))
+
         return universities
-    
+
     def clear(self):
         """清除所有缓存"""
         self._universities = None
@@ -174,20 +167,25 @@ class UniversityCache:
         self.last_check_time = 0
         self.files_hash = None
 
+
 # 创建全局缓存实例
 _university_cache = UniversityCache()
+
 
 def get_all_universities() -> list[University]:
     """获取所有大学列表"""
     return _university_cache.get_all_universities()
 
+
 def get_sorted_universities() -> list[University]:
     """获取排序后的大学列表"""
     return _university_cache.get_sorted_universities()
 
+
 def get_latest_university_by_name(name: str) -> University | None:
     """获取指定大学最新的信息"""
     return _university_cache.get_latest_by_name(name)
+
 
 @lru_cache(maxsize=1, typed=False)
 def load_categories() -> defaultdict:
@@ -200,8 +198,7 @@ def load_categories() -> defaultdict:
     categories = defaultdict(list)
 
     try:
-        with open('data/university_categories.csv', 'r',
-                  encoding='utf-8') as f:
+        with open('data/university_categories.csv', 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 # 检查必要字段是否存在且不为空
@@ -221,16 +218,7 @@ def load_categories() -> defaultdict:
                 else:
                     file_exists = False
 
-                categories[row['category']].append({
-                    'name':
-                    row['name'],
-                    'ja_name':
-                    row['ja_name'],
-                    'url':
-                    row['url'],
-                    'file_exists':
-                    file_exists
-                })
+                categories[row['category']].append({'name': row['name'], 'ja_name': row['ja_name'], 'url': row['url'], 'file_exists': file_exists})
     except FileNotFoundError as e:
         logging.error("找不到大学分类数据文件: %s", e)
     except PermissionError as e:
@@ -249,11 +237,7 @@ def index_route():
     universities = get_sorted_universities()
     categories = load_categories()
     recommended_blogs = get_random_blogs_with_summary(3)
-    return render_template("index.html",
-                         universities=universities,
-                         categories=categories,
-                         recommended_blogs=recommended_blogs,
-                         mode='index')
+    return render_template("index.html", universities=universities, categories=categories, recommended_blogs=recommended_blogs, mode='index')
 
 
 def get_university_by_name_and_deadline(name, deadline=None) -> University | None:
@@ -293,6 +277,7 @@ def get_university_by_name_and_deadline(name, deadline=None) -> University | Non
 
     return None
 
+
 def university_route(name, deadline=None, content="REPORT"):
     """
     处理单个大学的路由
@@ -312,10 +297,7 @@ def university_route(name, deadline=None, content="REPORT"):
         if deadline:
             error_msg = f"未找到{name}在{deadline}的招生信息"
         return (
-            render_template("index.html",
-                          error=error_msg,
-                          universities=get_sorted_universities(),
-                          categories=load_categories()),
+            render_template("index.html", error=error_msg, universities=get_sorted_universities(), categories=load_categories()),
             404,
         )
 
@@ -334,9 +316,9 @@ def university_route(name, deadline=None, content="REPORT"):
         if not os.path.exists(md_path):
             return (
                 render_template("index.html",
-                              error=f"未找到{name}在{university.deadline}的{content}信息",
-                              universities=get_sorted_universities(),
-                              categories=load_categories()),
+                                error=f"未找到{name}在{university.deadline}的{content}信息",
+                                universities=get_sorted_universities(),
+                                categories=load_categories()),
                 404,
             )
 
@@ -345,10 +327,7 @@ def university_route(name, deadline=None, content="REPORT"):
 
         # 使用markdown库渲染内容
         md = markdown.Markdown(
-            extensions=[
-                'extra', 'tables', 'fenced_code', 'sane_lists', 'nl2br',
-                'smarty'
-            ],
+            extensions=['extra', 'tables', 'fenced_code', 'sane_lists', 'nl2br', 'smarty'],
             output_format="html5",
         )
         html_content = md.convert(md_content)
@@ -365,16 +344,12 @@ def university_route(name, deadline=None, content="REPORT"):
 
     except (FileNotFoundError, IOError, UnicodeDecodeError) as e:
         return (
-            render_template("index.html",
-                          error=f"文件操作错误: {str(e)}",
-                          universities=get_sorted_universities()),
+            render_template("index.html", error=f"文件操作错误: {str(e)}", universities=get_sorted_universities()),
             500,
         )
     except Exception as e:
         return (
-            render_template("index.html",
-                          error=f"Markdown解析错误: {str(e)}",
-                          universities=get_sorted_universities()),
+            render_template("index.html", error=f"Markdown解析错误: {str(e)}", universities=get_sorted_universities()),
             500,
         )
 
@@ -382,10 +357,6 @@ def university_route(name, deadline=None, content="REPORT"):
 def sitemap_route():
     """sitemap路由处理函数"""
     base_url = os.getenv('BASE_URL', 'https://www.runjplib.com')
-    response = make_response(
-        render_template('sitemap.xml',
-                       base_url=base_url,
-                       blogs=get_all_blogs(),
-                       universities=get_all_universities()))
+    response = make_response(render_template('sitemap.xml', base_url=base_url, blogs=get_all_blogs(), universities=get_all_universities()))
     response.headers["Content-Type"] = "application/xml"
     return response

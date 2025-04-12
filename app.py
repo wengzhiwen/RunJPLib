@@ -11,7 +11,6 @@ from werkzeug.routing import BaseConverter
 from routes.index import index_route, university_route, sitemap_route
 from routes.blog import blog_list_route, blog_detail_route
 
-
 app = Flask(__name__)
 
 
@@ -111,11 +110,7 @@ if __name__ == '__main__':
     load_dotenv()
 
     # 设定日志配置
-    logging.basicConfig(
-        level=os.getenv('LOG_LEVEL', 'DEBUG'),
-        format=
-        '%(asctime)s - %(filename)s - %(lineno)d - %(levelname)s - %(message)s'
-    )
+    logging.basicConfig(level=os.getenv('LOG_LEVEL', 'DEBUG'), format='%(asctime)s - %(filename)s - %(lineno)d - %(levelname)s - %(message)s')
     logging.debug("日志配置完成，准备启动应用")
 
     # 启动应用
