@@ -1,15 +1,15 @@
 {% extends "index.html" %}
 
 {% block main_content %}
-<div class="blog-content">
+<article class="blog-content">
     <h1>{{ blog_title }}</h1>
     <div class="blog-meta">
-        <span class="blog-date">{{ blog_date }}</span>
+        <time class="blog-date" datetime="{{ blog_date }}">{{ blog_date }}</time>
     </div>
-    <div class="blog-body">
+    <div class="blog-body" role="main">
         {{ blog_content | safe }}
     </div>
-</div>
+</article>
 
 <style>
     .blog-content {
