@@ -137,6 +137,7 @@ env.bak/
 venv.bak/
 LibEnv/
 .vscode/
+config/llm_config.json
 
 # Spyder project settings
 .spyderproject
@@ -175,3 +176,4 @@ cython_debug/
 # Local data
 pdf_with_md*/*
 blogs/*
+ref/
