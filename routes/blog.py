@@ -12,7 +12,7 @@ import hashlib
 import time
 
 import markdown
-from flask import render_template, abort
+from flask import render_template
 
 # 缓存更新间隔（秒）
 CACHE_UPDATE_INTERVAL = 60
@@ -44,7 +44,7 @@ class BlogCache:
             # 首先将目录中所有文件名加入哈希计算
             all_files = sorted(glob.glob('blogs/*.md'))
             hash_str += ";".join(all_files) + ";"
-            
+
             # 然后加入每个文件的修改时间
             for file in all_files:
                 hash_str += f"{file}:{os.path.getmtime(file)};"
@@ -243,13 +243,32 @@ def blog_detail_route(url_title):
     blog = find_blog_by_title(url_title)
     if blog is None:
         # 获取10篇随机推荐的博客
-        recommended_blogs = get_random_blogs(10)
+        recommended_blogs = get_random_blogs_with_summary(10)
         return render_template('404.html', mode='blog', blogs=get_all_blogs(), recommended_blogs=recommended_blogs), 404
 
+    # 获取3篇推荐博客，排除当前博客
+    all_blogs = get_all_blogs()
+    other_blogs = [b for b in all_blogs if b['id'] != blog['id']]
+    recommended_blogs = []
+
+    if other_blogs:
+        selected_blogs = random.sample(other_blogs, min(3, len(other_blogs)))
+        for selected_blog in selected_blogs:
+            content_data = _blog_cache.get_content(selected_blog['id'])
+            if content_data:
+                summary = content_data['text_content'][:100].strip() + '...' if len(content_data['text_content']) > 100 else content_data['text_content']
+                recommended_blogs.append({
+                    'id': selected_blog['id'],
+                    'title': selected_blog['title'],
+                    'url_title': selected_blog['url_title'],
+                    'summary': summary
+                })
+
     return render_template(
-        'content.html',  # 使用与大学信息相同的模板
+        'blog.html',  # 使用blog.html模板
         mode='blog',
         blogs=get_all_blogs(),
-        blog=blog,  # 添加blog变量
-        content=blog['content']
-    )
+        blog_title=blog['title'],
+        blog_date=blog['date'],
+        blog_content=blog['content'],
+        recommended_blogs=recommended_blogs)

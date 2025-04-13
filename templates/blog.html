@@ -11,6 +11,27 @@
     </div>
 </article>
 
+<!-- 添加推荐博客部分 -->
+<section class="recommended-blogs">
+    <h2>推荐阅读</h2>
+    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4 mb-5">
+        {% for blog in recommended_blogs %}
+        <div class="col">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h3 class="card-title">
+                        <a href="{{ url_for('blog_detail', title=blog.url_title) }}">
+                            {{ blog.title }}
+                        </a>
+                    </h3>
+                    <p class="card-text">{{ blog.summary }}</p>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+
 <style>
     .blog-content {
         max-width: 800px;
@@ -83,6 +104,21 @@
         color: #333;
         font-weight: 600;
         line-height: 1.2;
+    }
+
+    /* 推荐博客部分样式 */
+    .recommended-blogs {
+        max-width: 1200px;
+        margin: 60px auto 0;
+        padding: 0 20px;
+    }
+
+    .recommended-blogs h2 {
+        font-size: 2em;
+        margin-bottom: 1em;
+        color: #333;
+        border-bottom: 2px solid #eee;
+        padding-bottom: 0.5em;
     }
 </style>
 
