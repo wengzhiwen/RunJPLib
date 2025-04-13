@@ -1,13 +1,6 @@
 {% extends "index.html" %}
 
-
 {% block main_content %}
-{% if mode == 'blog' %}
-<h1>{{ blog.title }}</h1>
-<div class="meta-info">
-    <span class="date">{{ blog.date }}</span>
-</div>
-{% else %}
 <div class="notice-box">
     <p>
         本页面是{{ current_university }}在{{ current_deadline }}的招生要项中文翻译。<br />
@@ -17,15 +10,6 @@
         <a href="{{ url_for('university_report', name=current_university) }}">点击这里查看基础分析报告</a>
     </p>
 </div>
-{% endif %}
 
 {{ content | safe }}
-
-<style>
-.meta-info {
-    color: #666;
-    margin-bottom: 20px;
-    font-size: 0.9em;
-}
-</style>
 {% endblock %}

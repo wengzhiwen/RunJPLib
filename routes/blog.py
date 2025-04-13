@@ -265,7 +265,7 @@ def blog_detail_route(url_title):
         return render_template('404.html', mode='blog', blogs=get_all_blogs(), recommended_blogs=recommended_blogs), 404
 
     return render_template(
-        'content.html',
+        'content_blog.html',
         mode='blog',
         blogs=get_all_blogs(),
         blog=blog,

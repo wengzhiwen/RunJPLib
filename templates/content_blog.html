@@ -1,0 +1,18 @@
+{% extends "index.html" %}
+
+{% block main_content %}
+<h1>{{ blog.title }}</h1>
+<div class="meta-info">
+    <span class="date">{{ blog.date }}</span>
+</div>
+
+{{ content | safe }}
+
+<style>
+.meta-info {
+    color: #666;
+    margin-bottom: 20px;
+    font-size: 0.9em;
+}
+</style>
+{% endblock %} 
