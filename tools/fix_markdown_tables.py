@@ -37,12 +37,35 @@ def fix_list_format(content):
     return '\n'.join(fixed_lines)
 
 
+def should_process_line(line):
+    """检查一行是否需要处理（只包含 - | : 空格这些字符且长度超过3）"""
+    stripped_line = line.strip()
+    if len(stripped_line) <= 3:
+        return False
+    return all(char in '-|: ' for char in stripped_line)
+
+
+def remove_colons(line):
+    """移除行中的冒号字符"""
+    if should_process_line(line):
+        return line.replace(':', '')
+    return line
+
+
 def should_remove_line(line):
     """检查一行是否应该被删除（只包含 - | 空格这些字符且长度超过3）"""
     stripped_line = line.strip()
     if len(stripped_line) <= 3:
         return False
     return all(char in '-| ' for char in stripped_line)
+
+
+def should_remove_colons(line):
+    """检查一行是否需要删除冒号（只包含 : - | 空格这些字符且长度超过3）"""
+    stripped_line = line.strip()
+    if len(stripped_line) <= 3:
+        return False
+    return all(char in ':-| ' for char in stripped_line)
 
 
 def fix_markdown_table(content):
@@ -57,9 +80,18 @@ def fix_markdown_table(content):
     while i < len(lines):
         line = lines[i].strip()
 
+        # 如果行满足条件，删除冒号
+        if should_remove_colons(line):
+            line = line.replace(':', '')
+
         # 检测表格行（以 | 开头且包含至少一个 | 的行）
         is_table_row = line.startswith('|') and '|' in line[1:]
-        
+
+        # 如果是表格行且应该被删除，则跳过
+        if is_table_row and should_remove_line(line):
+            i += 1
+            continue
+
         # 如果是表格行
         if is_table_row:
             if not in_table:
@@ -75,7 +107,7 @@ def fix_markdown_table(content):
             # 清理并添加表格行
             cells = [cell.strip() for cell in line.split('|')]
             cells = [cell for cell in cells if cell]  # 移除空的首尾单元格
-            
+
             # 跳过分隔行
             if all(cell.replace('-', '') == '' for cell in cells):
                 i += 1
@@ -137,7 +169,7 @@ def process_table_lines(table_lines):
     # 添加数据行
     for row in table_lines[1:]:
         formatted_lines.append('| ' + ' | '.join(row) + ' |')
-    
+
     return formatted_lines
 
 
