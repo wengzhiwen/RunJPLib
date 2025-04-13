@@ -3,6 +3,7 @@ Flask应用主文件
 """
 import logging
 import os
+from logging.handlers import RotatingFileHandler
 
 from dotenv import load_dotenv
 from flask import Flask, send_from_directory
@@ -10,6 +11,43 @@ from werkzeug.routing import BaseConverter
 
 from routes.index import index_route, university_route, sitemap_route
 from routes.blog import blog_list_route, blog_detail_route
+
+# 配置日志
+def setup_logging():
+    """配置日志系统"""
+    # 确保log目录存在
+    if not os.path.exists('log'):
+        os.makedirs('log')
+
+    # 创建日志格式器
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+
+    # 创建文件处理器
+    file_handler = RotatingFileHandler(
+        'log/app.log',
+        maxBytes=1024 * 1024,  # 1MB
+        backupCount=10,
+        encoding='utf-8'
+    )
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(formatter)
+
+    # 创建控制台处理器
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(os.getenv('LOG_LEVEL', 'INFO'))
+    console_handler.setFormatter(formatter)
+
+    # 配置根日志记录器
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(console_handler)
+
+    # 设置Flask和Werkzeug的日志级别
+    logging.getLogger('werkzeug').setLevel(logging.INFO)
+    logging.getLogger('flask').setLevel(logging.INFO)
 
 app = Flask(__name__)
 
@@ -109,9 +147,9 @@ def blog_detail(title):
 if __name__ == '__main__':
     load_dotenv()
 
-    # 设定日志配置
-    logging.basicConfig(level=os.getenv('LOG_LEVEL', 'DEBUG'), format='%(asctime)s - %(filename)s - %(lineno)d - %(levelname)s - %(message)s')
-    logging.debug("日志配置完成，准备启动应用")
+    # 设置日志配置
+    setup_logging()
+    logging.info("应用启动中...")
 
     # 启动应用
     if os.getenv('FLASK_APP_PORT') and os.getenv('FLASK_APP_PORT').isdigit():

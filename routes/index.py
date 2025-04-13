@@ -47,8 +47,10 @@ class UniversityCache:
         if current_time - self.last_check_time > CACHE_UPDATE_INTERVAL:
             new_hash = self._calculate_files_hash()
             if new_hash != self.files_hash:
+                logging.info("大学信息缓存需要更新：文件哈希值已改变 (old: %s, new: %s)", self.files_hash, new_hash)
                 self.files_hash = new_hash
                 return True
+            logging.info("大学信息缓存检查完成：文件未发生变化")
         return False
 
     def _calculate_files_hash(self) -> str:
@@ -57,6 +59,7 @@ class UniversityCache:
         base_dir = os.getenv("CONTENT_BASE_DIR", ".")
         pdf_dirs = [d for d in os.listdir(base_dir) if d.startswith("pdf_with_md")]
         
+        logging.info("正在计算大学文件哈希值，发现 %d 个pdf_with_md目录", len(pdf_dirs))
         # 首先将所有pdf_with_md目录名加入哈希计算
         hash_str += ";".join(sorted(pdf_dirs)) + ";"
         
@@ -65,17 +68,20 @@ class UniversityCache:
                 for root, dirs, files in os.walk(pdf_dir):
                     # 将目录结构信息加入哈希计算
                     hash_str += f"dir:{root}:{','.join(sorted(dirs))};"
-                    for file in sorted(files):
-                        if file.endswith('.md'):
-                            full_path = os.path.join(root, file)
-                            hash_str += f"file:{full_path}:{os.path.getmtime(full_path)};"
-            except OSError:
+                    md_files = [f for f in sorted(files) if f.endswith('.md')]
+                    logging.debug("在目录 %s 中发现 %d 个markdown文件", root, len(md_files))
+                    for file in md_files:
+                        full_path = os.path.join(root, file)
+                        hash_str += f"file:{full_path}:{os.path.getmtime(full_path)};"
+            except OSError as e:
+                logging.error("计算大学文件哈希值时发生错误 (目录: %s): %s", pdf_dir, str(e))
                 continue
         return hashlib.md5(hash_str.encode()).hexdigest()
 
     def get_all_universities(self) -> list[University]:
         """获取所有大学信息"""
         if self._universities is None or self.should_update():
+            logging.info("重新加载所有大学信息")
             self._universities = self._load_universities()
             self._sorted_universities = None  # 清除排序缓存
             self._latest_by_name.clear()  # 清除最新信息缓存
@@ -85,6 +91,7 @@ class UniversityCache:
     def get_sorted_universities(self) -> list[University]:
         """获取排序后的大学列表"""
         if self._sorted_universities is None:
+            logging.info("重新生成排序后的大学列表")
             universities = self.get_all_universities()
             # 获取优质大学列表
             best_universities = set()
@@ -112,11 +119,14 @@ class UniversityCache:
     def get_latest_by_name(self, name: str) -> University | None:
         """获取指定大学最新的信息"""
         if name not in self._latest_by_name:
+            logging.info("查找大学 %s 的最新信息", name)
             universities = self.get_all_universities()
             matching = [u for u in universities if u.name == name]
             if matching:
                 self._latest_by_name[name] = max(matching, key=lambda x: x.deadline)
+                logging.info("找到大学 %s 的最新信息，截止日期为 %s", name, self._latest_by_name[name].deadline)
             else:
+                logging.info("未找到大学 %s 的信息", name)
                 self._latest_by_name[name] = None
         return self._latest_by_name[name]
 
@@ -167,6 +177,7 @@ class UniversityCache:
 
     def clear(self):
         """清除所有缓存"""
+        logging.info("清除所有大学信息缓存")
         self._universities = None
         self._sorted_universities = None
         self._latest_by_name.clear()

@@ -10,6 +10,7 @@ from difflib import SequenceMatcher
 from functools import lru_cache
 import hashlib
 import time
+import logging
 
 import markdown
 from flask import render_template
@@ -33,8 +34,10 @@ class BlogCache:
         if current_time - self.last_check_time > CACHE_UPDATE_INTERVAL:
             new_hash = self._calculate_files_hash()
             if new_hash != self.files_hash:
+                logging.info("博客缓存需要更新：文件哈希值已改变 (old: %s, new: %s)", self.files_hash, new_hash)
                 self.files_hash = new_hash
                 return True
+            logging.info("博客缓存检查完成：文件未发生变化")
         return False
 
     def _calculate_files_hash(self) -> str:
@@ -43,20 +46,23 @@ class BlogCache:
         try:
             # 首先将目录中所有文件名加入哈希计算
             all_files = sorted(glob.glob('blogs/*.md'))
+            logging.info("正在计算博客文件哈希值，共发现 %d 个文件", len(all_files))
             hash_str += ";".join(all_files) + ";"
 
             # 然后加入每个文件的修改时间
             for file in all_files:
                 hash_str += f"{file}:{os.path.getmtime(file)};"
-        except OSError:
-            pass
+        except OSError as e:
+            logging.error("计算博客文件哈希值时发生错误: %s", str(e))
         return hashlib.md5(hash_str.encode()).hexdigest()
 
     def get_content(self, blog_id: str) -> dict:
         """获取博客内容，优先从缓存获取"""
         if blog_id in self.content_cache:
+            logging.info("从缓存获取博客内容: %s", blog_id)
             return self.content_cache[blog_id]
 
+        logging.info("缓存未命中，从文件加载博客内容: %s", blog_id)
         content = self._load_content(blog_id)
         if content:
             self.content_cache[blog_id] = content
@@ -84,6 +90,7 @@ class BlogCache:
 
     def clear(self):
         """清除所有缓存"""
+        logging.info("清除所有博客缓存")
         self.blogs_list = None
         self.content_cache.clear()
         self.last_check_time = 0
