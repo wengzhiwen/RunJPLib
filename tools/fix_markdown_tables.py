@@ -37,58 +37,145 @@ def fix_list_format(content):
     return '\n'.join(fixed_lines)
 
 
+def should_remove_line(line):
+    """检查一行是否应该被删除（只包含 - | 空格这些字符且长度超过3）"""
+    stripped_line = line.strip()
+    if len(stripped_line) <= 3:
+        return False
+    return all(char in '-| ' for char in stripped_line)
+
+
 def fix_markdown_table(content):
     """修复Markdown表格格式"""
     lines = content.split('\n')
     fixed_lines = []
+    table_lines = []
     in_table = False
-    header_found = False
+    header_line = None
 
-    for i, line in enumerate(lines):
-        # 移除多余的空格和制表符
-        line = line.strip()
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
 
-        # 检测表格开始（以 | 开头的行）
-        if line.startswith('|') and '|' in line[1:]:
+        # 检测表格行（以 | 开头且包含至少一个 | 的行）
+        is_table_row = line.startswith('|') and '|' in line[1:]
+        
+        # 如果是表格行
+        if is_table_row:
             if not in_table:
-                # 确保表格前有空行
-                if fixed_lines and fixed_lines[-1]:
+                # 新表格开始
+                if table_lines:
+                    # 处理并添加之前的表格
+                    fixed_lines.extend(process_table_lines(table_lines))
                     fixed_lines.append('')
+                table_lines = []
+                header_line = None
                 in_table = True
 
-            # 清理表格行
+            # 清理并添加表格行
             cells = [cell.strip() for cell in line.split('|')]
-            # 移除空的首尾单元格
-            cells = [cell for cell in cells if cell]
-            # 重建表格行
-            fixed_line = '| ' + ' | '.join(cells) + ' |'
-            fixed_lines.append(fixed_line)
+            cells = [cell for cell in cells if cell]  # 移除空的首尾单元格
+            
+            # 跳过分隔行
+            if all(cell.replace('-', '') == '' for cell in cells):
+                i += 1
+                continue
 
-            # 检测表头行并添加分隔行
-            if in_table and not header_found and i < len(lines) - 1:
-                next_line = lines[i + 1].strip()
-                if not next_line.startswith('|---'):
-                    header_found = True
-                    # 生成分隔行
-                    separator = '|' + '|'.join(['---' for _ in cells]) + '|'
-                    fixed_lines.append(separator)
+            # 如果还没有表头，这一行就是表头
+            if header_line is None:
+                header_line = cells
+            else:
+                table_lines.append(cells)
         else:
             if in_table:
-                # 确保表格后有空行
-                if fixed_lines and fixed_lines[-1]:
+                # 表格结束，处理并添加表格
+                if header_line and table_lines:
+                    # 添加表头
+                    fixed_lines.append('| ' + ' | '.join(header_line) + ' |')
+                    # 添加分隔行
+                    fixed_lines.append('|' + '|'.join(['---' for _ in header_line]) + '|')
+                    # 添加数据行
+                    for row in table_lines:
+                        fixed_lines.append('| ' + ' | '.join(row) + ' |')
                     fixed_lines.append('')
+                elif table_lines:  # 如果没有表头但有数据
+                    fixed_lines.extend(process_table_lines(table_lines))
+                    fixed_lines.append('')
+                table_lines = []
+                header_line = None
                 in_table = False
-                header_found = False
-            fixed_lines.append(line)
+            # 添加非表格行
+            if line or (not line and fixed_lines and fixed_lines[-1]):
+                fixed_lines.append(line)
+        i += 1
+
+    # 处理最后一个表格（如果有）
+    if header_line and table_lines:
+        # 添加表头
+        fixed_lines.append('| ' + ' | '.join(header_line) + ' |')
+        # 添加分隔行
+        fixed_lines.append('|' + '|'.join(['---' for _ in header_line]) + '|')
+        # 添加数据行
+        for row in table_lines:
+            fixed_lines.append('| ' + ' | '.join(row) + ' |')
+    elif table_lines:  # 如果没有表头但有数据
+        fixed_lines.extend(process_table_lines(table_lines))
 
     return '\n'.join(fixed_lines)
 
 
+def process_table_lines(table_lines):
+    """处理表格行并返回格式化的表格"""
+    if not table_lines:
+        return []
+
+    formatted_lines = []
+    # 添加表头
+    formatted_lines.append('| ' + ' | '.join(table_lines[0]) + ' |')
+    # 添加分隔行
+    formatted_lines.append('|' + '|'.join(['---' for _ in table_lines[0]]) + '|')
+    # 添加数据行
+    for row in table_lines[1:]:
+        formatted_lines.append('| ' + ' | '.join(row) + ' |')
+    
+    return formatted_lines
+
+
 def needs_fixing(content):
     """检查内容是否需要修复"""
-    fixed_content = fix_markdown_table(content)
-    fixed_content = fix_list_format(fixed_content)
-    return content != fixed_content
+    lines = content.split('\n')
+    in_table = False
+    table_lines = []
+    needs_fix = False
+
+    for line in lines:
+        line = line.strip()
+        if line.startswith('|') and '|' in line[1:]:
+            if not in_table:
+                if table_lines:
+                    # 如果之前的表格没有正确处理就开始新表格，说明需要修复
+                    needs_fix = True
+                    break
+                in_table = True
+            cells = [cell.strip() for cell in line.split('|')]
+            cells = [cell for cell in cells if cell]
+            if not all(cell.replace('-', '') == '' for cell in cells):
+                table_lines.append(cells)
+        else:
+            if in_table:
+                # 检查表格格式是否正确
+                if len(table_lines) < 2:  # 至少需要表头和一行数据
+                    needs_fix = True
+                    break
+                # 重置状态
+                table_lines = []
+                in_table = False
+
+    # 检查最后一个表格
+    if in_table and len(table_lines) < 2:
+        needs_fix = True
+
+    return needs_fix
 
 
 def process_file(input_file):
@@ -98,19 +185,13 @@ def process_file(input_file):
         with open(input_file, 'r', encoding='utf-8') as f:
             content = f.read()
 
-        # 检查是否需要修复
-        if not needs_fixing(content):
-            print(f"文件无需修复: {input_file}")
-            return True
-
         # 创建备份
         backup_file = str(input_file) + '.bak'
         shutil.copy2(input_file, backup_file)
         print(f"已创建备份: {backup_file}")
 
-        # 修复表格格式
+        # 修复内容
         fixed_content = fix_markdown_table(content)
-        # 修复列表格式
         fixed_content = fix_list_format(fixed_content)
 
         # 写回文件
