@@ -2,7 +2,7 @@
 
 {% block main_content %}
 <article class="blog-content">
-    <h1>{{ blog_title }}</h1>
+    <h1 class="blog-title">{{ blog_title }}</h1>
     <div class="blog-meta">
         <time class="blog-date" datetime="{{ blog_date }}">{{ blog_date }}</time>
     </div>
@@ -16,6 +16,12 @@
         max-width: 800px;
         margin: 0 auto;
         padding: 20px;
+    }
+    
+    .blog-title {
+        font-size: 2.5em;
+        margin-bottom: 0.5em;
+        color: #333;
     }
     
     .blog-meta {
@@ -34,14 +40,87 @@
         margin: 20px 0;
     }
     
+    /* 确保blog内容中的标题遵循正确的视觉层级 */
+    .blog-body h1 {
+        /* 将内容中的h1降级为h2的视觉样式 */
+        font-size: 2em;
+        margin-top: 1.5em;
+    }
+    
+    .blog-body h2 {
+        font-size: 1.75em;
+        margin-top: 1.4em;
+    }
+    
+    .blog-body h3 {
+        font-size: 1.5em;
+        margin-top: 1.3em;
+    }
+    
+    .blog-body h4 {
+        font-size: 1.25em;
+        margin-top: 1.2em;
+    }
+    
+    .blog-body h5 {
+        font-size: 1.1em;
+        margin-top: 1.1em;
+    }
+    
+    .blog-body h6 {
+        font-size: 1em;
+        margin-top: 1em;
+    }
+    
+    /* 所有标题的通用样式 */
     .blog-body h1,
     .blog-body h2,
     .blog-body h3,
     .blog-body h4,
     .blog-body h5,
     .blog-body h6 {
-        margin-top: 1.5em;
         margin-bottom: 0.5em;
+        color: #333;
+        font-weight: 600;
+        line-height: 1.2;
     }
 </style>
+
+<script>
+// 确保blog内容中的标题层级正确
+document.addEventListener('DOMContentLoaded', function() {
+    const blogBody = document.querySelector('.blog-body');
+    if (!blogBody) return;
+    
+    // 获取所有标题元素
+    const headings = blogBody.querySelectorAll('h1, h2, h3, h4, h5, h6');
+    let lastLevel = 1; // 页面主标题是h1
+    
+    headings.forEach(heading => {
+        const currentLevel = parseInt(heading.tagName.substring(1));
+        
+        // 如果是h1，自动转换为h2
+        if (heading.tagName === 'H1') {
+            const h2 = document.createElement('h2');
+            h2.innerHTML = heading.innerHTML;
+            h2.className = heading.className;
+            heading.parentNode.replaceChild(h2, heading);
+            lastLevel = 2;
+            return;
+        }
+        
+        // 确保标题层级只增加1
+        if (currentLevel > lastLevel + 1) {
+            const newLevel = lastLevel + 1;
+            const newHeading = document.createElement(`h${newLevel}`);
+            newHeading.innerHTML = heading.innerHTML;
+            newHeading.className = heading.className;
+            heading.parentNode.replaceChild(newHeading, heading);
+            lastLevel = newLevel;
+        } else {
+            lastLevel = currentLevel;
+        }
+    });
+});
+</script>
 {% endblock %} 

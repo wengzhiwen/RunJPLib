@@ -249,6 +249,57 @@
         .card-title a.invalid-link:hover {
             color: #dc3545;
         }
+
+        /* 视觉隐藏类 */
+        .visually-hidden {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        .site-title {
+            font-size: 2.5em;
+            margin-bottom: 1em;
+            display: flex;
+            align-items: center;
+            gap: 0.5em;
+        }
+
+        section {
+            margin-bottom: 3em;
+        }
+
+        section h2 {
+            font-size: 2em;
+            margin-bottom: 1em;
+            color: #333;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 0.5em;
+        }
+
+        .category-section h3 {
+            font-size: 1.75em;
+            margin-bottom: 1em;
+            color: #444;
+        }
+
+        .card-title {
+            font-size: 1.2em;
+            margin-bottom: 0.5em;
+        }
+
+        .update-list {
+            background-color: #f8f9fa;
+            padding: 1.5em;
+            border-radius: 8px;
+            margin-top: 1em;
+        }
     </style>
     
     <!-- JSON-LD 结构化数据 -->
@@ -403,8 +454,8 @@
                 
                 {% block main_content %}
                 <div id="welcome-content">
-                    <h1>
-                        <svg width="60" height="60" viewBox="0 0 400 400">
+                    <h1 class="site-title">
+                        <svg width="60" height="60" viewBox="0 0 400 400" aria-hidden="true">
                         <g transform="translate(200,200)">
                             <!-- 16瓣菊花 -->
                             <path d="
@@ -453,7 +504,8 @@
                     </h1>
                     <p class="lead">最全面的日本大学入试情报大全</p>
 
-                    <div class="search-container mb-4">
+                    <div class="search-container mb-4" role="search">
+                        <h2 class="visually-hidden">搜索</h2>
                         <div class="input-group" style="max-width: 300px;">
                             <input type="text" 
                                    id="universitySearch" 
@@ -467,6 +519,78 @@
                             </button>
                         </div>
                     </div>
+
+                    <section class="quick-index">
+                        <h2>快速索引</h2>
+                        {% for category, unis in categories.items() %}
+                        <div class="category-section">
+                            <h3>{{ category }}</h3>
+                            <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4 mb-5">
+                                {% for uni in unis %}
+                                <div class="col">
+                                    <div class="card h-100">
+                                        <div class="card-body">
+                                            <h4 class="card-title">
+                                                <a href="{{ uni.url }}" 
+                                                   class="{% if not uni.file_exists %}invalid-link{% endif %}"
+                                                   {% if not uni.file_exists %}title="该链接暂时无法访问"{% endif %}>
+                                                    {{ uni.name }}
+                                                </a>
+                                            </h4>
+                                            <p class="card-text text-muted">{{ uni.ja_name }}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </section>
+
+                    <section class="recommended-reading">
+                        <h2>推荐阅读</h2>
+                        <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4 mb-5">
+                            {% for blog in recommended_blogs %}
+                            <div class="col">
+                                <div class="card h-100">
+                                    <div class="card-body">
+                                        <h3 class="card-title">
+                                            <a href="{{ url_for('blog_detail', title=blog.url_title) }}">
+                                                {{ blog.title }}
+                                            </a>
+                                        </h3>
+                                        <p class="card-text">{{ blog.summary }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </section>
+
+                    <section class="updates">
+                        <h2>更新日志</h2>
+                        <div class="update-list">
+                            <h3 class="visually-hidden">更新记录</h3>
+                            <p>本站收集整理了包括东京大学（东大）、京都大学（京大）、早稻田大学（早大）、庆应义塾大学（庆应）等日本顶尖大学的本科（学部）招生信息（募集要项）。<br />
+                            <br /><br />
+                            <b>2025年4月12日更新:</b>
+                            <br />
+                            增加了Blog模块，通过AI（Deepseek）从网上获得了一些关于日本大学入试的科普文章，以Blog的形式呈现给大家。
+                            <br /><br />
+                            <b>2025年4月1日更新:</b>
+                            <br />
+                            增加同志社大学的信息。
+                            <br /><br />
+                            <b>2025年3月31日更新:</b>
+                            <br />
+                            增加大东亚文化大学、东海大学、国士馆大学、日本女子大学、武藏大学，5所大学的信息。
+                            <br />
+                            针对录募集要项超长的状况，新引入了Qwen-Turbo参与了部分分析工作。
+                            <br /><br />
+                            <b>2025年3月29日更新:</b>
+                            <br />
+                            快速索引，在首页直接展现热门大学的快速入口
+                            <br /><br />
                     <h2>快速索引</h2>
                     {% for category, unis in categories.items() %}
                     <h3>{{ category }}</h3>
