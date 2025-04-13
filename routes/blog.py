@@ -250,6 +250,6 @@ def blog_detail_route(url_title):
         'content.html',  # 使用与大学信息相同的模板
         mode='blog',
         blogs=get_all_blogs(),
-        content=blog['content'],
-        current_blog=blog['title'],
-        current_blog_date=blog['date'])
+        blog=blog,  # 添加blog变量
+        content=blog['content']
+    )

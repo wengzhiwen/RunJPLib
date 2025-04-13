@@ -8,17 +8,27 @@
     <meta name="keywords" content="日本留学,日本大学,东京大学,京都大学,早稻田大学,庆应义塾大学,一桥大学,中央大学,留学日本,日本大学入试,留考,日本高考,日本大学招生,留学生考试">
     <meta name="robots" content="index, follow">
     <meta name="author" content="润日图书馆">
+    {% if current_university %}
+    <title>{{ current_university }} - 募集要项 | 润日图书馆</title>
+    <meta property="og:title" content="{{ current_university }} - 募集要项 | 润日图书馆">
+    <meta name="twitter:title" content="{{ current_university }} - 募集要项 | 润日图书馆">
+    {% elif blog %}
+    <title>{{ blog.title }} | 润日图书馆</title>
+    <meta property="og:title" content="{{ blog.title }} | 润日图书馆">
+    <meta name="twitter:title" content="{{ blog.title }} | 润日图书馆">
+    {% else %}
     <title>润日图书馆 - 日本大学招生信息中文翻译 | Run-JP-Lib</title>
+    <meta property="og:title" content="润日图书馆 - 日本大学招生信息中文翻译">
+    <meta name="twitter:title" content="润日图书馆 - 日本大学招生信息中文翻译">
+    {% endif %}
     
     <!-- Open Graph / Facebook -->
-    <meta property="og:title" content="润日图书馆 - 日本大学招生信息中文翻译">
     <meta property="og:description" content="提供日本各大学招生要项的中文翻译，帮助留学生了解入学考试信息">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://www.runjplib.com">
     
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="润日图书馆 - 日本大学招生信息中文翻译">
     <meta name="twitter:description" content="提供日本各大学招生要项的中文翻译，帮助留学生了解入学考试信息">
     
     <link rel="canonical" href="https://www.runjplib.com" />

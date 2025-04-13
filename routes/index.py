@@ -285,79 +285,37 @@ def get_university_by_name_and_deadline(name, deadline=None) -> University | Non
 
 
 def university_route(name, deadline=None, content="REPORT"):
-    """
-    处理单个大学的路由
-
-    :param name: 大学名称
-    :param deadline: 报名截止日期（可选）
-    :param content: 要显示的内容（REPORT = 分析报告，ZH = 翻译件， ORIGINAL = 原版）
-    """
-    # 如果没有提供deadline，获取最新的信息
-    if deadline is None:
-        university = get_latest_university_by_name(name)
-    else:
-        university = get_university_by_name_and_deadline(name, deadline)
-
+    """大学详情页路由处理函数"""
+    university = get_university_by_name_and_deadline(name, deadline)
     if not university:
-        error_msg = f"未找到{name}的招生信息"
-        if deadline:
-            error_msg = f"未找到{name}在{deadline}的招生信息"
-        return (
-            render_template("index.html", error=error_msg, universities=get_sorted_universities(), categories=load_categories()),
-            404,
-        )
+        return render_template("404.html", universities=get_sorted_universities()), 404
 
-    # 读取并渲染markdown内容
     try:
-        if content == "ORIGINAL":
-            md_path = university.md_path
-            template = "content_original.html"
-        elif content == "ZH":
-            md_path = university.zh_md_path
-            template = "content.html"
-        else:
-            md_path = university.report_md_path
-            template = "content_report.html"
+        if content == "REPORT":
+            with open(university.report_md_path, 'r', encoding='utf-8') as f:
+                md_content = f.read()
+        elif content == "ORIGINAL":
+            with open(university.md_path, 'r', encoding='utf-8') as f:
+                md_content = f.read()
+        else:  # content == "ZH"
+            with open(university.zh_md_path, 'r', encoding='utf-8') as f:
+                md_content = f.read()
 
-        if not os.path.exists(md_path):
-            return (
-                render_template("index.html",
-                                error=f"未找到{name}在{university.deadline}的{content}信息",
-                                universities=get_sorted_universities(),
-                                categories=load_categories()),
-                404,
-            )
-
-        with open(md_path, "r", encoding="utf-8") as f:
-            md_content = f.read()
-
-        # 使用markdown库渲染内容
         md = markdown.Markdown(
             extensions=['extra', 'tables', 'fenced_code', 'sane_lists', 'nl2br', 'smarty'],
             output_format="html5",
         )
         html_content = md.convert(md_content)
 
-        universities = get_sorted_universities()
-
         return render_template(
-            template,
+            "content.html",
+            universities=get_sorted_universities(),
             content=html_content,
-            universities=universities,
-            current_university=university.name,
-            current_deadline=university.deadline,
+            current_university=university.name,  # 添加current_university变量
+            current_deadline=university.deadline  # 添加current_deadline变量
         )
-
-    except (FileNotFoundError, IOError, UnicodeDecodeError) as e:
-        return (
-            render_template("index.html", error=f"文件操作错误: {str(e)}", universities=get_sorted_universities()),
-            500,
-        )
-    except Exception as e:
-        return (
-            render_template("index.html", error=f"Markdown解析错误: {str(e)}", universities=get_sorted_universities()),
-            500,
-        )
+    except FileNotFoundError:
+        return render_template("404.html", universities=get_sorted_universities()), 404
 
 
 def sitemap_route():
