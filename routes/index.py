@@ -305,12 +305,15 @@ def university_route(name, deadline=None, content="REPORT"):
         if content == "REPORT":
             with open(university.report_md_path, 'r', encoding='utf-8') as f:
                 md_content = f.read()
+            template = "content_report.html"
         elif content == "ORIGINAL":
             with open(university.md_path, 'r', encoding='utf-8') as f:
                 md_content = f.read()
+            template = "content_original.html"
         else:  # content == "ZH"
             with open(university.zh_md_path, 'r', encoding='utf-8') as f:
                 md_content = f.read()
+            template = "content.html"
 
         md = markdown.Markdown(
             extensions=['extra', 'tables', 'fenced_code', 'sane_lists', 'nl2br', 'smarty'],
@@ -319,11 +322,11 @@ def university_route(name, deadline=None, content="REPORT"):
         html_content = md.convert(md_content)
 
         return render_template(
-            "content.html",
+            template,
             universities=get_sorted_universities(),
             content=html_content,
-            current_university=university.name,  # 添加current_university变量
-            current_deadline=university.deadline  # 添加current_deadline变量
+            current_university=university.name,
+            current_deadline=university.deadline
         )
     except FileNotFoundError:
         return render_template("404.html", universities=get_sorted_universities()), 404
