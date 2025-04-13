@@ -1,5 +1,17 @@
 {% extends "index.html" %}
 
+{% block meta_title %}
+{% if mode == 'blog' %}
+<title>{{ blog.title }} | 润日图书馆</title>
+<meta property="og:title" content="{{ blog.title }} | 润日图书馆">
+<meta name="twitter:title" content="{{ blog.title }} | 润日图书馆">
+{% else %}
+<title>{{ current_university }} - 募集要项 | 润日图书馆</title>
+<meta property="og:title" content="{{ current_university }} - 募集要项 | 润日图书馆">
+<meta name="twitter:title" content="{{ current_university }} - 募集要项 | 润日图书馆">
+{% endif %}
+{% endblock %}
+
 {% block main_content %}
 <div class="content-container">
     {% if mode == 'blog' %}

@@ -250,32 +250,13 @@ def blog_detail_route(url_title):
     blog = find_blog_by_title(url_title)
     if blog is None:
         # 获取10篇随机推荐的博客
-        recommended_blogs = get_random_blogs_with_summary(10)
+        recommended_blogs = get_random_blogs(10)
         return render_template('404.html', mode='blog', blogs=get_all_blogs(), recommended_blogs=recommended_blogs), 404
 
-    # 获取3篇推荐博客，排除当前博客
-    all_blogs = get_all_blogs()
-    other_blogs = [b for b in all_blogs if b['id'] != blog['id']]
-    recommended_blogs = []
-
-    if other_blogs:
-        selected_blogs = random.sample(other_blogs, min(3, len(other_blogs)))
-        for selected_blog in selected_blogs:
-            content_data = _blog_cache.get_content(selected_blog['id'])
-            if content_data:
-                summary = content_data['text_content'][:100].strip() + '...' if len(content_data['text_content']) > 100 else content_data['text_content']
-                recommended_blogs.append({
-                    'id': selected_blog['id'],
-                    'title': selected_blog['title'],
-                    'url_title': selected_blog['url_title'],
-                    'summary': summary
-                })
-
     return render_template(
-        'blog.html',  # 使用blog.html模板
+        'content.html',
         mode='blog',
         blogs=get_all_blogs(),
-        blog_title=blog['title'],
-        blog_date=blog['date'],
-        blog_content=blog['content'],
-        recommended_blogs=recommended_blogs)
+        blog=blog,
+        content=blog['content']
+    )
