@@ -21,12 +21,27 @@ CACHE_UPDATE_INTERVAL = 60
 
 class BlogCache:
     """博客缓存管理类"""
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
 
     def __init__(self):
-        self.last_check_time = 0
-        self.files_hash = None
-        self.blogs_list = None
-        self.content_cache = {}
+        if not hasattr(self, 'initialized'):
+            self.last_check_time = 0
+            self.files_hash = None
+            self.blogs_list = None
+            self.content_cache = {}
+            self.initialized = True
+
+    @classmethod
+    def get_instance(cls):
+        """获取BlogCache单例"""
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
 
     def should_update(self) -> bool:
         """检查是否需要更新缓存"""
@@ -96,10 +111,6 @@ class BlogCache:
         self.last_check_time = 0
 
 
-# 创建全局缓存实例
-_blog_cache = BlogCache()
-
-
 def get_title_similarity(title1, title2):
     """计算两个标题的相似度"""
     return SequenceMatcher(None, title1.lower(), title2.lower()).ratio()
@@ -107,10 +118,10 @@ def get_title_similarity(title1, title2):
 
 def get_all_blogs():
     """获取所有博客列表"""
-    global _blog_cache
+    cache = BlogCache.get_instance()
 
     # 检查是否需要更新缓存
-    if _blog_cache.blogs_list is None or _blog_cache.should_update():
+    if cache.blogs_list is None or cache.should_update():
         blogs = []
         blog_files = glob.glob('blogs/*.md')
 
@@ -145,10 +156,10 @@ def get_all_blogs():
             if blog['title'] not in unique_blogs:
                 unique_blogs[blog['title']] = blog
 
-        _blog_cache.blogs_list = list(unique_blogs.values())
-        _blog_cache.last_check_time = time.time()
+        cache.blogs_list = list(unique_blogs.values())
+        cache.last_check_time = time.time()
 
-    return _blog_cache.blogs_list
+    return cache.blogs_list
 
 
 def get_blog_by_id(blog_id):
@@ -166,7 +177,7 @@ def get_blog_by_id(blog_id):
     date = datetime.strptime(date_str, '%Y%m%d%H%M%S')
 
     # 从缓存获取内容
-    content_data = _blog_cache.get_content(blog_id)
+    content_data = BlogCache.get_instance().get_content(blog_id)
     if not content_data:
         return None
 
@@ -177,7 +188,7 @@ def get_blog_by_id(blog_id):
 def find_blog_by_title(url_title):
     """根据URL友好的标题查找博客"""
     # 强制重新检查文件系统状态
-    _blog_cache.should_update()
+    BlogCache.get_instance().should_update()
 
     all_blogs = get_all_blogs()
 
@@ -219,7 +230,7 @@ def get_random_blogs_with_summary(count=3):
     result = []
     for blog in selected_blogs:
         # 从缓存获取内容
-        content_data = _blog_cache.get_content(blog['id'])
+        content_data = BlogCache.get_instance().get_content(blog['id'])
         if not content_data:
             continue
 
