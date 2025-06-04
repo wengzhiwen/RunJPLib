@@ -22,13 +22,14 @@ class University:
     # pylint: disable=too-few-public-methods
     """大学信息类"""
 
-    def __init__(self, name, deadline, zh_md_path, md_path, report_md_path):
+    def __init__(self, name, deadline, zh_md_path, md_path, report_md_path, pdf_path):
         self.name = name
         self.deadline = deadline
         self.zh_md_path = zh_md_path
         self.md_path = md_path
         self.report_md_path = report_md_path
         self.url = f"/university/{name}"  # 添加url属性
+        self.pdf_path = pdf_path
 
 
 class UniversityCache:
@@ -163,7 +164,35 @@ class UniversityCache:
                 if not all(os.path.exists(os.path.join(pdf_dir, sub_dir, f)) for f in required_files):
                     logging.info("忽略子文件夹: %s。缺少必要文件", sub_dir)
                     continue
+                
+                # 检查是否存在一个pdf文件，如果有多个取第一个
+                pdf_files = [f for f in os.listdir(os.path.join(pdf_dir, sub_dir)) if f.endswith('.pdf')]
+                if len(pdf_files) == 0:
+                    logging.info("忽略子文件夹: %s。没有pdf文件", sub_dir)
+                    continue
+                else:
+                    pdf_file = pdf_files[0]
+                    
+                is_updated = False
+                # 确认在universitis中是否有重名的大学
+                for university in universities:
+                    if university.name == university_name:
+                        # 比较deadline，如果当前的deadline更新，则更新university
+                        logging.debug("比较大学 %s 的deadline，旧的deadline为 %s，新的deadline为 %s", university.name, university.deadline, deadline)
+                        if university.deadline < deadline:
+                            logging.debug("更新大学 %s 的deadline为 %s", university.name, deadline)
+                            university.deadline = deadline
+                            university.zh_md_path = os.path.join(pdf_dir, sub_dir, f"{sub_dir}_中文.md")
+                            university.md_path = os.path.join(pdf_dir, sub_dir, f"{sub_dir}.md")
+                            university.report_md_path = os.path.join(pdf_dir, sub_dir, f"{sub_dir}_report.md")
+                            university.pdf_path = os.path.join(pdf_dir, sub_dir, pdf_file)
+                            is_updated = True
+                            break
 
+                if is_updated:
+                    logging.debug("大学 %s 已存在，更新deadline为 %s", university_name, deadline)
+                    continue
+                    
                 universities.append(
                     University(
                         name=university_name,
@@ -171,6 +200,7 @@ class UniversityCache:
                         zh_md_path=os.path.join(pdf_dir, sub_dir, f"{sub_dir}_中文.md"),
                         md_path=os.path.join(pdf_dir, sub_dir, f"{sub_dir}.md"),
                         report_md_path=os.path.join(pdf_dir, sub_dir, f"{sub_dir}_report.md"),
+                        pdf_path=os.path.join(pdf_dir, sub_dir, pdf_file),
                     ))
 
         return universities
