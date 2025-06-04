@@ -313,6 +313,35 @@
             border-radius: 8px;
             margin-top: 1em;
         }
+
+        /* 快速索引区域的card样式优化 */
+        .quick-index .card {
+            height: auto;
+            margin-bottom: 0.5rem;
+        }
+
+        .quick-index .card-body {
+            padding: 0.3rem 0.5rem;
+        }
+
+        .quick-index .card-title {
+            font-size: 1rem;
+            margin-top: 0.2rem;
+            margin-bottom: 0.2rem;
+            line-height: 1.2;
+        }
+
+        .quick-index .card-text {
+            font-size: 0.85rem;
+            margin-bottom: 0;
+            line-height: 1.1;
+        }
+
+        /* 减少快速索引区域的card间距 */
+        .quick-index .row {
+            --bs-gutter-x: 0.75rem;
+            --bs-gutter-y: 0.5rem;
+        }
     </style>
 
     <!-- JSON-LD 结构化数据 -->
@@ -525,33 +554,6 @@
                         </div>
                     </div>
 
-                    <section class="quick-index">
-                        <h2>快速索引</h2>
-                        {% for category, unis in categories.items() %}
-                        <div class="category-section">
-                            <h3>{{ category }}</h3>
-                            <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4 mb-5">
-                                {% for uni in unis %}
-                                <div class="col">
-                                    <div class="card h-100">
-                                        <div class="card-body">
-                                            <h4 class="card-title">
-                                                <a href="{{ uni.url }}"
-                                                    class="{% if not uni.file_exists %}invalid-link{% endif %}" {% if
-                                                    not uni.file_exists %}title="该链接暂时无法访问" {% endif %}>
-                                                    {{ uni.name }}
-                                                </a>
-                                            </h4>
-                                            <p class="card-text text-muted">{{ uni.ja_name }}</p>
-                                        </div>
-                                    </div>
-                                </div>
-                                {% endfor %}
-                            </div>
-                        </div>
-                        {% endfor %}
-                    </section>
-
                     <section class="recommended-reading">
                         <h2>推荐阅读</h2>
                         <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4 mb-5">
@@ -570,6 +572,33 @@
                             </div>
                             {% endfor %}
                         </div>
+                    </section>
+
+                    <section class="quick-index">
+                        <h2>快速索引</h2>
+                        {% for category, unis in categories.items() %}
+                        <div class="category-section">
+                            <h3>{{ category }}</h3>
+                            <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+                                {% for uni in unis %}
+                                <div class="col">
+                                    <div class="card">
+                                        <div class="card-body">
+                                            <h4 class="card-title">
+                                                <a href="{{ uni.url }}"
+                                                    class="{% if not uni.file_exists %}invalid-link{% endif %}" {% if
+                                                    not uni.file_exists %}title="该链接暂时无法访问" {% endif %}>
+                                                    {{ uni.ja_name }}
+                                                </a>
+                                            </h4>
+                                            <p class="card-text text-muted">{{ uni.short_name }}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endfor %}
                     </section>
 
                     <section class="updates">
