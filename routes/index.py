@@ -219,23 +219,16 @@ def load_categories() -> defaultdict:
             reader = csv.DictReader(f)
             for row in reader:
                 # 检查必要字段是否存在且不为空
-                required_fields = ['category', 'name', 'ja_name', 'url']
+                required_fields = ['category', 'name', 'ja_name', 'short_name']
                 if not all(row.get(field) for field in required_fields):
                     missing_fields = [field for field in required_fields if not row.get(field)]
                     logging.warning("CSV行缺少必要字段: %s", missing_fields)
                     continue
 
-                # 从URL中提取大学名称
-                url_parts = row['url'].split('/')
-                logging.debug("url_parts: %s", url_parts)
-                if len(url_parts) >= 3:  # URL格式应该是 /university/大学名
-                    name = url_parts[2]
-                    # 使用 get_latest_university_by_name 检查
-                    file_exists = get_latest_university_by_name(name) is not None
-                else:
-                    file_exists = False
+                # 使用 get_latest_university_by_name 检查
+                file_exists = get_latest_university_by_name(row['ja_name']) is not None
 
-                categories[row['category']].append({'name': row['name'], 'ja_name': row['ja_name'], 'url': row['url'], 'file_exists': file_exists})
+                categories[row['category']].append({'name': row['name'], 'ja_name': row['ja_name'], 'short_name': row['short_name'], 'url': "/university/" + row['ja_name'], 'file_exists': file_exists})
     except FileNotFoundError as e:
         logging.error("找不到大学分类数据文件: %s", e)
     except PermissionError as e:
