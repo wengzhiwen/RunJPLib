@@ -2,12 +2,453 @@
 
 {% block main_content %}
     <div class="notice-box">
-        本页面是{{ current_university }}在{{ current_deadline }}的招生要项原文。<br />
-        如果您需要中文翻译，<a href="{{ url_for('university_zh', name=current_university) }}">点击这里查看中文翻译版</a>，
-        或者直接查看<a href="{{ url_for('university_report', name=current_university) }}">基础分析报告</a>。
-        <br>
-        扫描和翻译工作都由AI（2025年度为Google Gemini， 2026年度改用OpenAI的GPT-4.1）进行，受限于当前技术条件并不能100%准确的传达原版招生信息的内容，且原版内容可能会发生更新或调整。为了保证不耽误你的升学，还请务必访问大学官网确认更加准确的信息。
+        本页面是{{ current_university }}的招生要项原文和AI翻译的参考翻译。你也可以直接查看<a href="{{ url_for('university_report', name=current_university) }}">基础分析报告</a>。
+        <br />
+        受限于当前技术条件并不能100%准确的传达原版招生信息的内容，且原版内容可能会发生更新或调整。为了保证不耽误你的升学，还请务必访问大学官网确认更加准确的信息。
     </div>
 
-    {{ content | safe }}
+    <!-- Tab Navigation -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <ul class="nav nav-tabs" id="contentTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="japanese-tab" data-bs-toggle="tab" data-bs-target="#japanese-content" type="button" role="tab" aria-controls="japanese-content" aria-selected="true">
+                        日文
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="chinese-tab" data-bs-toggle="tab" data-bs-target="#chinese-content" type="button" role="tab" aria-controls="chinese-content" aria-selected="false">
+                        中文参考
+                    </button>
+                </li>
+                <li class="nav-item d-none d-lg-block" role="presentation">
+                    <button class="nav-link" id="both-tab" data-bs-toggle="tab" data-bs-target="#both-content" type="button" role="tab" aria-controls="both-content" aria-selected="false">
+                        同时显示
+                    </button>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Tab Content -->
+    <div class="tab-content" id="contentTabsContent">
+        <!-- Japanese PDF Tab -->
+        <div class="tab-pane fade show active" id="japanese-content" role="tabpanel" aria-labelledby="japanese-tab">
+            <div id="pdf-loading" class="text-center py-5" style="display: none;">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">加载中...</span>
+                </div>
+                <div class="mt-2">正在加载PDF文件...</div>
+            </div>
+            <div id="pdf-container" style="display: none;">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div>
+                        <button class="btn btn-outline-secondary btn-sm" id="prev-page">上一页</button>
+                        <span class="mx-2">第 <span id="page-num">1</span> 页 / 共 <span id="page-count">0</span> 页</span>
+                        <button class="btn btn-outline-secondary btn-sm" id="next-page">下一页</button>
+                    </div>
+                    <div>
+                        <button class="btn btn-outline-secondary btn-sm" id="zoom-out">缩小</button>
+                        <button class="btn btn-outline-secondary btn-sm" id="zoom-in">放大</button>
+                        <span class="mx-2"><span id="zoom-level">100</span>%</span>
+                    </div>
+                </div>
+                <div class="text-center">
+                    <canvas id="pdf-canvas" class="border"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chinese Content Tab -->
+        <div class="tab-pane fade" id="chinese-content" role="tabpanel" aria-labelledby="chinese-tab">
+            <div id="chinese-loading" class="text-center py-5" style="display: none;">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">加载中...</span>
+                </div>
+                <div class="mt-2">正在加载中文内容...</div>
+            </div>
+            <div id="chinese-markdown-content">
+                {{ chinese_content | safe }}
+            </div>
+        </div>
+
+        <!-- Both Content Tab (Desktop Only) -->
+        <div class="tab-pane fade" id="both-content" role="tabpanel" aria-labelledby="both-tab">
+            <div class="row g-3">
+                <div class="col-lg-6">
+                    <!-- 标题和控制按钮在同一行 -->
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0">日文原文 (PDF)</h5>
+                        <div id="pdf-controls-both" style="display: none;">
+                            <button class="btn btn-outline-secondary btn-sm me-1" id="prev-page-both">‹</button>
+                            <span class="mx-1 small">第 <span id="page-num-both">1</span> / <span id="page-count-both">0</span> 页</span>
+                            <button class="btn btn-outline-secondary btn-sm me-2" id="next-page-both">›</button>
+                            <button class="btn btn-outline-secondary btn-sm me-1" id="zoom-out-both">-</button>
+                            <button class="btn btn-outline-secondary btn-sm" id="zoom-in-both">+</button>
+                        </div>
+                    </div>
+                    <!-- PDF内容区域，带灰色边框，固定高度 -->
+                    <div class="border border-2 rounded-3" style="border-color: #dee2e6 !important; height: 600px; overflow: hidden; background-color: #fafafa;">
+                        <div id="pdf-loading-both" class="text-center py-5 h-100 d-flex flex-column justify-content-center" style="display: none;">
+                            <div class="spinner-border text-primary spinner-border-sm" role="status">
+                                <span class="visually-hidden">加载中...</span>
+                            </div>
+                            <div class="mt-2 small">正在加载PDF...</div>
+                        </div>
+                        <div id="pdf-container-both" class="h-100 overflow-auto" style="display: none;">
+                            <div class="text-center p-3" style="min-height: 500px;">
+                                <canvas id="pdf-canvas-both" style="max-width: 100%; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: block; margin: 0 auto;"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6">
+                    <!-- 标题行，保持高度一致 -->
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0">中文翻译</h5>
+                        <div style="height: 32px;"></div> <!-- 占位符，保持与左侧高度一致 -->
+                    </div>
+                    <!-- 中文内容区域，带灰色边框，固定高度 -->
+                    <div class="border border-2 rounded-3" style="border-color: #dee2e6 !important; height: 600px; overflow-y: auto; padding: 15px; background-color: #fafafa;">
+                        <div id="chinese-content-both">
+                            {{ chinese_content | safe }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        console.log('Starting PDF.js ES module loading...');
+        
+        // PDF.js variables
+        let pdfjsLib = null;
+        let pdfDoc = null;
+        let pageNum = 1;
+        let pageRendering = false;
+        let pageNumPending = null;
+        let scale = 1.2;
+        let canvas = null;
+        let ctx = null;
+        let canvasBoth = null;
+        let ctxBoth = null;
+        let scaleBoth = 0.8;
+        let pageNumBoth = 1;
+
+        // Load PDF.js using ES modules
+        try {
+            pdfjsLib = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@5.3.31/build/pdf.min.mjs');
+            console.log('PDF.js loaded successfully:', pdfjsLib);
+            
+            // Configure worker if available
+            if (pdfjsLib.GlobalWorkerOptions) {
+                pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.3.31/build/pdf.worker.min.mjs';
+            } else {
+                console.log('PDF.js worker not needed or automatically configured');
+            }
+        } catch (error) {
+            console.error('Failed to load PDF.js:', error);
+            const loadingElement = document.getElementById('pdf-loading');
+            if (loadingElement) {
+                loadingElement.innerHTML = 
+                    '<div class="alert alert-danger">PDF.js模块加载失败: ' + error.message + '</div>';
+            }
+        }
+
+        // Wait for DOM to be ready, then initialize
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeUI);
+        } else {
+            initializeUI();
+        }
+
+        function initializeUI() {
+            const japaneseTab = document.getElementById('japanese-tab');
+            const chineseTab = document.getElementById('chinese-tab');
+            const bothTab = document.getElementById('both-tab');
+
+            // Initialize PDF when Japanese tab is activated
+            if (japaneseTab) {
+                japaneseTab.addEventListener('shown.bs.tab', function(e) {
+                    if (!canvas) {
+                        initPdfViewer('pdf-canvas', true);
+                    }
+                });
+            }
+
+            // Initialize PDF for both view
+            if (bothTab) {
+                bothTab.addEventListener('shown.bs.tab', function(e) {
+                    // 每次切换到both标签时都重新初始化，确保canvas正确渲染
+                    setTimeout(() => {
+                        initPdfViewer('pdf-canvas-both', false);
+                    }, 50);
+                });
+            }
+            
+            // Setup navigation and zoom button handlers
+            setupEventHandlers();
+            
+            // Since Japanese tab is active by default, initialize it immediately
+            setTimeout(() => initPdfViewer('pdf-canvas', true), 100);
+        }
+
+        // Render a page
+        function renderPage(num, targetCanvas, targetCtx, targetScale) {
+            if (!pdfDoc) {
+                console.error('No PDF document available for rendering');
+                return;
+            }
+            
+            pageRendering = true;
+            
+            pdfDoc.getPage(num).then(function(page) {
+                const viewport = page.getViewport({scale: targetScale});
+                targetCanvas.height = viewport.height;
+                targetCanvas.width = viewport.width;
+
+                const renderContext = {
+                    canvasContext: targetCtx,
+                    viewport: viewport
+                };
+                
+                const renderTask = page.render(renderContext);
+                renderTask.promise.then(function() {
+                    pageRendering = false;
+                    if (pageNumPending !== null) {
+                        renderPage(pageNumPending, targetCanvas, targetCtx, targetScale);
+                        pageNumPending = null;
+                    }
+                }).catch(function(error) {
+                    console.error('Error rendering page:', error);
+                    pageRendering = false;
+                });
+            }).catch(function(error) {
+                console.error('Error getting page:', error);
+                pageRendering = false;
+            });
+        }
+
+        // Queue rendering
+        function queueRenderPage(num, targetCanvas, targetCtx, targetScale) {
+            if (pageRendering) {
+                pageNumPending = num;
+            } else {
+                renderPage(num, targetCanvas, targetCtx, targetScale);
+            }
+        }
+
+        // Initialize PDF viewer
+        function initPdfViewer(canvasId, isMainViewer = true) {
+            
+            const targetCanvas = document.getElementById(canvasId);
+            if (!targetCanvas) {
+                console.error(`Canvas element with id ${canvasId} not found!`);
+                return;
+            }
+            
+            const targetCtx = targetCanvas.getContext('2d');
+            
+            if (isMainViewer) {
+                canvas = targetCanvas;
+                ctx = targetCtx;
+            } else {
+                canvasBoth = targetCanvas;
+                ctxBoth = targetCtx;
+            }
+
+            const loadingId = isMainViewer ? 'pdf-loading' : 'pdf-loading-both';
+            const containerId = isMainViewer ? 'pdf-container' : 'pdf-container-both';
+            
+            const loadingElement = document.getElementById(loadingId);
+            if (loadingElement) {
+                loadingElement.classList.add('d-flex');
+                loadingElement.style.display = 'flex';
+            }
+
+            // Check if pdfjsLib is available, if not wait for it
+            if (!pdfjsLib) {
+                console.log('PDF.js not ready yet, waiting...');
+                setTimeout(() => initPdfViewer(canvasId, isMainViewer), 100);
+                return;
+            }
+            
+            const pdfUrl = '{{ pdf_url }}';
+            
+            // 如果PDF已经加载过了，直接渲染
+            if (pdfDoc && !isMainViewer) {
+                const pageCountElements = document.querySelectorAll('#page-count-both');
+                pageCountElements.forEach(el => el.textContent = pdfDoc.numPages);
+                
+                if (loadingElement) {
+                    loadingElement.classList.remove('d-flex');
+                    loadingElement.style.display = 'none';
+                }
+                
+                const containerElement = document.getElementById(containerId);
+                if (containerElement) {
+                    containerElement.style.display = 'block';
+                } else {
+                    console.error('Container element not found:', containerId);
+                }
+                
+                const controlsElement = document.getElementById('pdf-controls-both');
+                if (controlsElement) {
+                    controlsElement.style.display = 'block';
+                }
+                
+                const canvasParent = targetCanvas.parentElement;
+                if (canvasParent) {
+                    console.log('Canvas parent element style:', canvasParent.style.cssText);
+                }
+                
+                // 延迟一下再渲染，确保DOM更新完成
+                setTimeout(() => {
+                    console.log('Final check before rendering:');
+                    console.log('- Loading element display:', window.getComputedStyle(loadingElement).display);
+                    console.log('- Container element display:', window.getComputedStyle(containerElement).display);
+                    console.log('- Canvas visibility:', window.getComputedStyle(targetCanvas).visibility);
+                    renderPage(pageNumBoth, targetCanvas, targetCtx, scaleBoth);
+                }, 10);
+                return;
+            }
+            
+            pdfjsLib.getDocument(pdfUrl).promise.then(function(pdfDoc_) {
+                console.log('PDF loaded successfully, pages:', pdfDoc_.numPages);
+                pdfDoc = pdfDoc_;
+                
+                const pageCountElements = document.querySelectorAll(isMainViewer ? '#page-count' : '#page-count-both');
+                pageCountElements.forEach(el => el.textContent = pdfDoc.numPages);
+                
+                if (loadingElement) {
+                    loadingElement.classList.remove('d-flex');
+                    loadingElement.style.display = 'none';
+                }
+                const containerElement = document.getElementById(containerId);
+                if (containerElement) containerElement.style.display = 'block';
+                
+                // 显示控制按钮（仅针对both视图）
+                if (!isMainViewer) {
+                    const controlsElement = document.getElementById('pdf-controls-both');
+                    if (controlsElement) controlsElement.style.display = 'block';
+                }
+                
+                const currentScale = isMainViewer ? scale : scaleBoth;
+                const currentPage = isMainViewer ? pageNum : pageNumBoth;
+                renderPage(currentPage, targetCanvas, targetCtx, currentScale);
+            }).catch(function(error) {
+                console.error('Error loading PDF:', error);
+                if (loadingElement) {
+                    loadingElement.innerHTML = 
+                        `<div class="alert alert-danger">PDF加载失败: ${error.message}，请稍后重试</div>`;
+                }
+            });
+        }
+
+        function setupEventHandlers() {
+            // Navigation buttons for main viewer
+            const prevPageBtn = document.getElementById('prev-page');
+            if (prevPageBtn) {
+                prevPageBtn.addEventListener('click', function() {
+                    if (pageNum <= 1) return;
+                    pageNum--;
+                    document.getElementById('page-num').textContent = pageNum;
+                    queueRenderPage(pageNum, canvas, ctx, scale);
+                });
+            }
+
+            const nextPageBtn = document.getElementById('next-page');
+            if (nextPageBtn) {
+                nextPageBtn.addEventListener('click', function() {
+                    if (!pdfDoc || pageNum >= pdfDoc.numPages) return;
+                    pageNum++;
+                    document.getElementById('page-num').textContent = pageNum;
+                    queueRenderPage(pageNum, canvas, ctx, scale);
+                });
+            }
+
+            // Navigation buttons for both viewer
+            const prevPageBothBtn = document.getElementById('prev-page-both');
+            if (prevPageBothBtn) {
+                prevPageBothBtn.addEventListener('click', function() {
+                    if (pageNumBoth <= 1) return;
+                    pageNumBoth--;
+                    document.getElementById('page-num-both').textContent = pageNumBoth;
+                    if (canvasBoth && ctxBoth) queueRenderPage(pageNumBoth, canvasBoth, ctxBoth, scaleBoth);
+                });
+            }
+
+            const nextPageBothBtn = document.getElementById('next-page-both');
+            if (nextPageBothBtn) {
+                nextPageBothBtn.addEventListener('click', function() {
+                    if (!pdfDoc || pageNumBoth >= pdfDoc.numPages) return;
+                    pageNumBoth++;
+                    document.getElementById('page-num-both').textContent = pageNumBoth;
+                    if (canvasBoth && ctxBoth) queueRenderPage(pageNumBoth, canvasBoth, ctxBoth, scaleBoth);
+                });
+            }
+
+            // Zoom controls for main viewer
+            const zoomInBtn = document.getElementById('zoom-in');
+            if (zoomInBtn) {
+                zoomInBtn.addEventListener('click', function() {
+                    scale *= 1.2;
+                    document.getElementById('zoom-level').textContent = Math.round(scale * 100);
+                    if (canvas && ctx) queueRenderPage(pageNum, canvas, ctx, scale);
+                });
+            }
+
+            const zoomOutBtn = document.getElementById('zoom-out');
+            if (zoomOutBtn) {
+                zoomOutBtn.addEventListener('click', function() {
+                    scale /= 1.2;
+                    document.getElementById('zoom-level').textContent = Math.round(scale * 100);
+                    if (canvas && ctx) queueRenderPage(pageNum, canvas, ctx, scale);
+                });
+            }
+
+            // Zoom controls for both viewer
+            const zoomInBothBtn = document.getElementById('zoom-in-both');
+            if (zoomInBothBtn) {
+                zoomInBothBtn.addEventListener('click', function() {
+                    scaleBoth *= 1.2;
+                    if (canvasBoth && ctxBoth) queueRenderPage(pageNumBoth, canvasBoth, ctxBoth, scaleBoth);
+                });
+            }
+
+            const zoomOutBothBtn = document.getElementById('zoom-out-both');
+            if (zoomOutBothBtn) {
+                zoomOutBothBtn.addEventListener('click', function() {
+                    scaleBoth /= 1.2;
+                    if (canvasBoth && ctxBoth) queueRenderPage(pageNumBoth, canvasBoth, ctxBoth, scaleBoth);
+                });
+            }
+
+            // Handle responsive behavior
+            function handleResize() {
+                const bothTab = document.getElementById('both-tab');
+                const bothTabPane = document.getElementById('both-content');
+                const japaneseTab = document.getElementById('japanese-tab');
+                
+                if (window.innerWidth < 992) { // Bootstrap lg breakpoint
+                    if (bothTab) {
+                        bothTab.style.display = 'none';
+                        if (bothTabPane && bothTabPane.classList.contains('active')) {
+                            // Switch to Japanese tab if currently on both tab
+                            if (japaneseTab) japaneseTab.click();
+                        }
+                    }
+                } else {
+                    if (bothTab) {
+                        bothTab.style.display = 'block';
+                    }
+                }
+            }
+
+            // Initial check and add resize listener
+            handleResize();
+            window.addEventListener('resize', handleResize);
+        }
+    </script>
 {% endblock %}

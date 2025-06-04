@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from flask import Flask, send_from_directory
 from werkzeug.routing import BaseConverter
 
-from routes.index import index_route, university_route, sitemap_route
+from routes.index import index_route, university_route, sitemap_route, serve_pdf
 from routes.blog import blog_list_route, blog_detail_route
 
 # 配置日志
@@ -143,6 +143,11 @@ def blog_detail(title):
     """博客详情路由"""
     return blog_detail_route(title)
 
+
+@app.route('/pdf/<name>/<date:deadline>')
+def get_pdf_by_name_and_deadline(name, deadline):
+    """PDF文件服务路由"""
+    return serve_pdf(name, deadline)
 
 if __name__ == '__main__':
     load_dotenv()

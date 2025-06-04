@@ -11,7 +11,7 @@ import hashlib
 import time
 
 import markdown
-from flask import render_template, make_response
+from flask import render_template, make_response, send_file
 from .blog import get_all_blogs, get_random_blogs_with_summary
 
 # 缓存更新间隔（秒）
@@ -59,11 +59,11 @@ class UniversityCache:
         hash_str = ""
         base_dir = os.getenv("CONTENT_BASE_DIR", ".")
         pdf_dirs = [d for d in os.listdir(base_dir) if d.startswith("pdf_with_md")]
-        
+
         logging.info("正在计算大学文件哈希值，发现 %d 个pdf_with_md目录", len(pdf_dirs))
         # 首先将所有pdf_with_md目录名加入哈希计算
         hash_str += ";".join(sorted(pdf_dirs)) + ";"
-        
+
         for pdf_dir in pdf_dirs:
             try:
                 for root, dirs, files in os.walk(pdf_dir):
@@ -120,14 +120,13 @@ class UniversityCache:
     def get_latest_by_name(self, name: str) -> University | None:
         """获取指定大学最新的信息"""
         if name not in self._latest_by_name:
-            logging.info("查找大学 %s 的最新信息", name)
             universities = self.get_all_universities()
             matching = [u for u in universities if u.name == name]
             if matching:
                 self._latest_by_name[name] = max(matching, key=lambda x: x.deadline)
-                logging.info("找到大学 %s 的最新信息，截止日期为 %s", name, self._latest_by_name[name].deadline)
+                logging.debug("找到大学 %s 的最新信息，截止日期为 %s", name, self._latest_by_name[name].deadline)
             else:
-                logging.info("未找到大学 %s 的信息", name)
+                logging.debug("未找到大学 %s 的信息", name)
                 self._latest_by_name[name] = None
         return self._latest_by_name[name]
 
@@ -164,7 +163,7 @@ class UniversityCache:
                 if not all(os.path.exists(os.path.join(pdf_dir, sub_dir, f)) for f in required_files):
                     logging.info("忽略子文件夹: %s。缺少必要文件", sub_dir)
                     continue
-                
+
                 # 检查是否存在一个pdf文件，如果有多个取第一个
                 pdf_files = [f for f in os.listdir(os.path.join(pdf_dir, sub_dir)) if f.endswith('.pdf')]
                 if len(pdf_files) == 0:
@@ -172,7 +171,7 @@ class UniversityCache:
                     continue
                 else:
                     pdf_file = pdf_files[0]
-                    
+
                 is_updated = False
                 # 确认在universitis中是否有重名的大学
                 for university in universities:
@@ -192,7 +191,7 @@ class UniversityCache:
                 if is_updated:
                     logging.debug("大学 %s 已存在，更新deadline为 %s", university_name, deadline)
                     continue
-                    
+
                 universities.append(
                     University(
                         name=university_name,
@@ -258,7 +257,13 @@ def load_categories() -> defaultdict:
                 # 使用 get_latest_university_by_name 检查
                 file_exists = get_latest_university_by_name(row['ja_name']) is not None
 
-                categories[row['category']].append({'name': row['name'], 'ja_name': row['ja_name'], 'short_name': row['short_name'], 'url': "/university/" + row['ja_name'], 'file_exists': file_exists})
+                categories[row['category']].append({
+                    'name': row['name'],
+                    'ja_name': row['ja_name'],
+                    'short_name': row['short_name'],
+                    'url': "/university/" + row['ja_name'],
+                    'file_exists': file_exists
+                })
     except FileNotFoundError as e:
         logging.error("找不到大学分类数据文件: %s", e)
     except PermissionError as e:
@@ -325,34 +330,74 @@ def university_route(name, deadline=None, content="REPORT"):
         return render_template("404.html", universities=get_sorted_universities()), 404
 
     try:
-        if content == "REPORT":
-            with open(university.report_md_path, 'r', encoding='utf-8') as f:
-                md_content = f.read()
-            template = "content_report.html"
-        elif content == "ORIGINAL":
-            with open(university.md_path, 'r', encoding='utf-8') as f:
-                md_content = f.read()
-            template = "content_original.html"
-        else:  # content == "ZH"
-            with open(university.zh_md_path, 'r', encoding='utf-8') as f:
-                md_content = f.read()
-            template = "content.html"
-
         md = markdown.Markdown(
             extensions=['extra', 'tables', 'fenced_code', 'sane_lists', 'nl2br', 'smarty'],
             output_format="html5",
         )
-        html_content = md.convert(md_content)
 
-        return render_template(
-            template,
-            universities=get_sorted_universities(),
-            content=html_content,
-            current_university=university.name,
-            current_deadline=university.deadline
-        )
+        if content == "REPORT":
+            with open(university.report_md_path, 'r', encoding='utf-8') as f:
+                md_content = f.read()
+            html_content = md.convert(md_content)
+            template = "content_report.html"
+
+            return render_template(template,
+                                   universities=get_sorted_universities(),
+                                   content=html_content,
+                                   current_university=university.name,
+                                   current_deadline=university.deadline)
+
+        elif content == "ORIGINAL":
+            with open(university.md_path, 'r', encoding='utf-8') as f:
+                md_content = f.read()
+            html_content = md.convert(md_content)
+
+            # Also load Chinese content for the original template
+            with open(university.zh_md_path, 'r', encoding='utf-8') as f:
+                zh_md_content = f.read()
+            chinese_html_content = md.convert(zh_md_content)
+
+            # Generate PDF URL
+            pdf_url = f"/pdf/{university.name}/{university.deadline}"
+
+            template = "content_original.html"
+
+            return render_template(template,
+                                   universities=get_sorted_universities(),
+                                   content=html_content,
+                                   chinese_content=chinese_html_content,
+                                   pdf_url=pdf_url,
+                                   current_university=university.name,
+                                   current_deadline=university.deadline)
+
+        else:  # content == "ZH"
+            with open(university.zh_md_path, 'r', encoding='utf-8') as f:
+                md_content = f.read()
+            html_content = md.convert(md_content)
+            template = "content.html"
+
+            return render_template(template,
+                                   universities=get_sorted_universities(),
+                                   content=html_content,
+                                   current_university=university.name,
+                                   current_deadline=university.deadline)
+
     except FileNotFoundError:
         return render_template("404.html", universities=get_sorted_universities()), 404
+
+
+def serve_pdf(name, deadline):
+    """提供PDF文件服务"""
+    university = get_university_by_name_and_deadline(name, deadline)
+    if not university or not university.pdf_path:
+        from flask import abort
+        abort(404)
+
+    if not os.path.exists(university.pdf_path):
+        from flask import abort
+        abort(404)
+
+    return send_file(university.pdf_path, as_attachment=False, mimetype='application/pdf')
 
 
 def sitemap_route():
