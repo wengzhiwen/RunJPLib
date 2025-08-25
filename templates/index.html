@@ -726,22 +726,31 @@
     <!-- 在body结束标签前添加搜索功能的JavaScript代码 -->
     <script>
         function performSearch() {
-            const searchTerm = document.getElementById('universitySearch').value.toLowerCase();
+            const searchInput = document.getElementById('universitySearch');
+            if (!searchInput) return;
+            
+            const searchTerm = searchInput.value.toLowerCase();
             const links = document.querySelectorAll('.nav-link');
 
             // 通过检查桌面版侧边栏是否显示来判断是否为移动版
             const desktopSidebar = document.querySelector('.sidebar.d-none.d-lg-block');
-            const isDesktopSidebarHidden = window.getComputedStyle(desktopSidebar).display === 'none';
+            if (desktopSidebar) {
+                const isDesktopSidebarHidden = window.getComputedStyle(desktopSidebar).display === 'none';
 
-            // 如果是移动版（桌面侧边栏隐藏），则展开导航栏
-            if (isDesktopSidebarHidden) {
-                const navbarCollapse = document.getElementById('navbarNav');
-                const bsCollapse = new bootstrap.Collapse(navbarCollapse, {
-                    show: true
-                });
+                // 如果是移动版（桌面侧边栏隐藏），则展开导航栏
+                if (isDesktopSidebarHidden) {
+                    const navbarCollapse = document.getElementById('navbarNav');
+                    if (navbarCollapse) {
+                        const bsCollapse = new bootstrap.Collapse(navbarCollapse, {
+                            show: true
+                        });
+                    }
+                }
             }
 
             links.forEach(link => {
+                if (!link || !link.parentElement) return;
+                
                 const text = link.textContent.toLowerCase();
                 const listItem = link.parentElement;
 
@@ -760,17 +769,27 @@
             });
         }
 
-        document.getElementById('universitySearch').addEventListener('input', performSearch);
-        document.getElementById('searchButton').addEventListener('click', performSearch);
-
-        // 当搜索框失去焦点时，移除高亮
-        document.getElementById('universitySearch').addEventListener('blur', function () {
-            const links = document.querySelectorAll('.nav-link');
-            links.forEach(link => {
-                const text = link.textContent;
-                link.innerHTML = text;
+        const universitySearchInput = document.getElementById('universitySearch');
+        const searchButton = document.getElementById('searchButton');
+        
+        if (universitySearchInput) {
+            universitySearchInput.addEventListener('input', performSearch);
+            
+            // 当搜索框失去焦点时，移除高亮
+            universitySearchInput.addEventListener('blur', function () {
+                const links = document.querySelectorAll('.nav-link');
+                links.forEach(link => {
+                    if (link && link.textContent) {
+                        const text = link.textContent;
+                        link.innerHTML = text;
+                    }
+                });
             });
-        });
+        }
+        
+        if (searchButton) {
+            searchButton.addEventListener('click', performSearch);
+        }
     </script>
 </body>
 

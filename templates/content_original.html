@@ -525,7 +525,10 @@
             prevPageBtn.addEventListener('click', function () {
                 if (pageNum <= 1) return;
                 pageNum--;
-                document.getElementById('page-num').textContent = pageNum;
+                const pageNumElement = document.getElementById('page-num');
+                if (pageNumElement) {
+                    pageNumElement.textContent = pageNum;
+                }
                 queueRenderPage(pageNum, canvas, ctx, scale);
             });
         }
@@ -535,7 +538,10 @@
             nextPageBtn.addEventListener('click', function () {
                 if (!pdfDoc || pageNum >= pdfDoc.numPages) return;
                 pageNum++;
-                document.getElementById('page-num').textContent = pageNum;
+                const pageNumElement = document.getElementById('page-num');
+                if (pageNumElement) {
+                    pageNumElement.textContent = pageNum;
+                }
                 queueRenderPage(pageNum, canvas, ctx, scale);
             });
         }
@@ -546,7 +552,10 @@
             prevPageBothBtn.addEventListener('click', function () {
                 if (pageNumBoth <= 1) return;
                 pageNumBoth--;
-                document.getElementById('page-num-both').textContent = pageNumBoth;
+                const pageNumBothElement = document.getElementById('page-num-both');
+                if (pageNumBothElement) {
+                    pageNumBothElement.textContent = pageNumBoth;
+                }
                 if (canvasBoth && ctxBoth) queueRenderPage(pageNumBoth, canvasBoth, ctxBoth, scaleBoth);
             });
         }
@@ -556,7 +565,10 @@
             nextPageBothBtn.addEventListener('click', function () {
                 if (!pdfDoc || pageNumBoth >= pdfDoc.numPages) return;
                 pageNumBoth++;
-                document.getElementById('page-num-both').textContent = pageNumBoth;
+                const pageNumBothElement = document.getElementById('page-num-both');
+                if (pageNumBothElement) {
+                    pageNumBothElement.textContent = pageNumBoth;
+                }
                 if (canvasBoth && ctxBoth) queueRenderPage(pageNumBoth, canvasBoth, ctxBoth, scaleBoth);
             });
         }
@@ -566,7 +578,10 @@
         if (zoomInBtn) {
             zoomInBtn.addEventListener('click', function () {
                 scale *= 1.2;
-                document.getElementById('zoom-level').textContent = Math.round(scale * 100);
+                const zoomLevelElement = document.getElementById('zoom-level');
+                if (zoomLevelElement) {
+                    zoomLevelElement.textContent = Math.round(scale * 100);
+                }
                 if (canvas && ctx) queueRenderPage(pageNum, canvas, ctx, scale);
             });
         }
@@ -575,7 +590,10 @@
         if (zoomOutBtn) {
             zoomOutBtn.addEventListener('click', function () {
                 scale /= 1.2;
-                document.getElementById('zoom-level').textContent = Math.round(scale * 100);
+                const zoomLevelElement = document.getElementById('zoom-level');
+                if (zoomLevelElement) {
+                    zoomLevelElement.textContent = Math.round(scale * 100);
+                }
                 if (canvas && ctx) queueRenderPage(pageNum, canvas, ctx, scale);
             });
         }
@@ -608,7 +626,9 @@
                     bothTab.style.display = 'none';
                     if (bothTabPane && bothTabPane.classList.contains('active')) {
                         // Switch to Japanese tab if currently on both tab
-                        if (japaneseTab) japaneseTab.click();
+                        if (japaneseTab) {
+                            japaneseTab.click();
+                        }
                     }
                 }
             } else {
