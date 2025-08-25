@@ -11,7 +11,10 @@ import hashlib
 import time
 
 import markdown
-from flask import render_template, make_response, send_file
+from flask import render_template, make_response, send_file, abort
+from utils.mongo_client import get_mongo_client
+from bson.objectid import ObjectId
+import io
 from .blog import get_all_blogs, get_random_blogs_with_summary
 
 # 缓存更新间隔（秒）
@@ -323,8 +326,84 @@ def get_university_by_name_and_deadline(name, deadline=None) -> University | Non
     return None
 
 
+def get_university_from_mongo(name, deadline=None):
+    """
+    Gets university details from MongoDB.
+    If deadline is provided, it finds the exact match.
+    If not, it finds the latest one for the given university name.
+    """
+    client = get_mongo_client()
+    if not client:
+        return None
+    db = client.RunJPLib
+    
+    query = {"university_name": name}
+    if deadline:
+        # Deadline can be YYYY-MM-DD or YYYYMMDD, mongo stores YYYYMMDD
+        query["deadline"] = deadline.replace('-', '').replace('/', '')
+
+    # Find one and sort by deadline descending to get the latest if no deadline is specified
+    doc = db.universities.find_one(query, sort=[("deadline", -1)])
+    return doc
+
 def university_route(name, deadline=None, content="REPORT"):
     """大学详情页路由处理函数"""
+    debug_file_path = None
+    # Try fetching from MongoDB first
+    university_doc = get_university_from_mongo(name, deadline)
+
+    # I noticed a bug in my previous implementation. The content keys were wrong.
+    # Correct keys are: original_md, translated_md, report_md
+    if university_doc:
+        # We have data from Mongo, use it
+        try:
+            md = markdown.Markdown(
+                extensions=['extra', 'tables', 'fenced_code', 'sane_lists', 'nl2br', 'smarty'],
+                output_format="html5",
+            )
+            
+            current_deadline_formatted = f"{university_doc['deadline'][:4]}-{university_doc['deadline'][4:6]}-{university_doc['deadline'][6:]}"
+
+            if content == "REPORT":
+                html_content = md.convert(university_doc['content'].get('report_md', ''))
+                template = "content_report.html"
+                return render_template(template,
+                                       universities=get_sorted_universities(),
+                                       content=html_content,
+                                       current_university=university_doc['university_name'],
+                                       current_deadline=current_deadline_formatted,
+                                       debug_file_path=None) # Explicitly None for Mongo data
+
+            elif content == "ORIGINAL":
+                html_content = md.convert(university_doc['content'].get('original_md', ''))
+                chinese_html_content = md.convert(university_doc['content'].get('translated_md', ''))
+                pdf_url = f"/pdf/mongo/{str(university_doc['_id'])}"
+                template = "content_original.html"
+                return render_template(template,
+                                       universities=get_sorted_universities(),
+                                       content=html_content,
+                                       chinese_content=chinese_html_content,
+                                       pdf_url=pdf_url,
+                                       current_university=university_doc['university_name'],
+                                       current_deadline=current_deadline_formatted,
+                                       debug_file_path=None)
+
+            else:  # content == "ZH"
+                html_content = md.convert(university_doc['content'].get('translated_md', ''))
+                template = "content.html"
+                return render_template(template,
+                                       universities=get_sorted_universities(),
+                                       content=html_content,
+                                       current_university=university_doc['university_name'],
+                                       current_deadline=current_deadline_formatted,
+                                       debug_file_path=None)
+
+        except Exception as e:
+            logging.error(f"处理来自 MongoDB 的大学数据时出错: {e}")
+            return render_template("404.html", universities=get_sorted_universities()), 500
+
+    # Fallback to the old file-based method if not found in Mongo
+    logging.warning(f"在 MongoDB 中未找到大学 '{name}' (截止日期: '{deadline}'), 回退到文件系统。")
     university = get_university_by_name_and_deadline(name, deadline)
     if not university:
         return render_template("404.html", universities=get_sorted_universities()), 404
@@ -336,51 +415,54 @@ def university_route(name, deadline=None, content="REPORT"):
         )
 
         if content == "REPORT":
+            if os.getenv('LOG_LEVEL') == 'DEBUG':
+                debug_file_path = university.report_md_path
             with open(university.report_md_path, 'r', encoding='utf-8') as f:
                 md_content = f.read()
             html_content = md.convert(md_content)
             template = "content_report.html"
-
             return render_template(template,
                                    universities=get_sorted_universities(),
                                    content=html_content,
                                    current_university=university.name,
-                                   current_deadline=university.deadline)
+                                   current_deadline=university.deadline,
+                                   debug_file_path=debug_file_path)
 
         elif content == "ORIGINAL":
+            if os.getenv('LOG_LEVEL') == 'DEBUG':
+                debug_file_path = university.md_path
             with open(university.md_path, 'r', encoding='utf-8') as f:
                 md_content = f.read()
             html_content = md.convert(md_content)
 
-            # Also load Chinese content for the original template
             with open(university.zh_md_path, 'r', encoding='utf-8') as f:
                 zh_md_content = f.read()
             chinese_html_content = md.convert(zh_md_content)
 
-            # Generate PDF URL
             pdf_url = f"/pdf/{university.name}/{university.deadline}"
-
             template = "content_original.html"
-
             return render_template(template,
                                    universities=get_sorted_universities(),
                                    content=html_content,
                                    chinese_content=chinese_html_content,
                                    pdf_url=pdf_url,
                                    current_university=university.name,
-                                   current_deadline=university.deadline)
+                                   current_deadline=university.deadline,
+                                   debug_file_path=debug_file_path)
 
         else:  # content == "ZH"
+            if os.getenv('LOG_LEVEL') == 'DEBUG':
+                debug_file_path = university.zh_md_path
             with open(university.zh_md_path, 'r', encoding='utf-8') as f:
                 md_content = f.read()
             html_content = md.convert(md_content)
             template = "content.html"
-
             return render_template(template,
                                    universities=get_sorted_universities(),
                                    content=html_content,
                                    current_university=university.name,
-                                   current_deadline=university.deadline)
+                                   current_deadline=university.deadline,
+                                   debug_file_path=debug_file_path)
 
     except FileNotFoundError:
         return render_template("404.html", universities=get_sorted_universities()), 404

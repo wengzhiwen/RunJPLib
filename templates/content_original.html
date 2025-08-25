@@ -39,11 +39,11 @@
 <div class="tab-content" id="contentTabsContent">
     <!-- Japanese PDF Tab -->
     <div class="tab-pane fade show active" id="japanese-content" role="tabpanel" aria-labelledby="japanese-tab">
-        <div id="pdf-loading" class="text-center py-5" style="display: none;">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">加载中...</span>
+        <div id="pdf-loading" class="text-center py-5">
+            <div class="progress" style="height: 20px;">
+                <div id="pdf-progress-bar" class="progress-bar" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
             </div>
-            <div class="mt-2">正在加载PDF文件...</div>
+            <div class="mt-2" id="pdf-loading-text">正在加载PDF文件...</div>
         </div>
         <div id="pdf-container" style="display: none;">
             <div class="d-flex justify-content-between align-items-center mb-3">
@@ -95,14 +95,12 @@
                     </div>
                 </div>
                 <!-- PDF内容区域，带灰色边框，固定高度 -->
-                                 <div class="border border-2 rounded-3"
-                     style="border-color: #dee2e6 !important; height: 800px; overflow: hidden; background-color: #fafafa;">
-                    <div id="pdf-loading-both" class="text-center py-5 h-100 d-flex flex-column justify-content-center"
-                        style="display: none;">
-                        <div class="spinner-border text-primary spinner-border-sm" role="status">
-                            <span class="visually-hidden">加载中...</span>
+                <div class="border border-2 rounded-3" style="border-color: #dee2e6 !important; height: 800px; overflow: hidden; background-color: #fafafa; position: relative;">
+                    <div id="pdf-loading-both" class="text-center py-5 h-100 d-flex flex-column justify-content-center">
+                        <div class="progress mx-4" style="height: 15px;">
+                            <div id="pdf-progress-bar-both" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%; font-size: 10px;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
                         </div>
-                        <div class="mt-2 small">正在加载PDF...</div>
+                        <div class="mt-2 small" id="pdf-loading-text-both">正在加载PDF文件...</div>
                     </div>
                     <div id="pdf-container-both" class="h-100 overflow-auto" style="display: none;">
                         <div class="text-center p-3" style="min-height: 500px;">
@@ -129,6 +127,12 @@
         </div>
     </div>
 </div>
+
+{% if debug_file_path %}
+<div style="position: fixed; bottom: 0; left: 0; width: 100%; background-color: #ffc107; padding: 10px; border-top: 2px solid #e0a800; font-family: monospace; font-size: 12px; z-index: 9999;">
+    <strong>[DEBUG]</strong> 此页面内容由文件系统加载: {{ debug_file_path }}
+</div>
+{% endif %}
 
 <script type="module">
     console.log('Starting PDF.js ES module loading...');
@@ -346,8 +350,26 @@
             return;
         }
 
-        pdfjsLib.getDocument(pdfUrl).promise.then(function (pdfDoc_) {
-            console.log('PDF loaded successfully, pages:', pdfDoc_.numPages);
+        const loadingTask = pdfjsLib.getDocument({
+            url: pdfUrl,
+            onProgress: (data) => {
+                const percent = Math.round((data.loaded / data.total) * 100);
+                const progressBar = document.getElementById(isMainViewer ? 'pdf-progress-bar' : 'pdf-progress-bar-both');
+                const loadingText = document.getElementById(isMainViewer ? 'pdf-loading-text' : 'pdf-loading-text-both');
+
+                if (progressBar) {
+                    progressBar.style.width = percent + '%';
+                    progressBar.textContent = percent + '%';
+                    progressBar.setAttribute('aria-valuenow', percent);
+                }
+                if (loadingText) {
+                    loadingText.textContent = `正在加载PDF文件... (${(data.loaded / 1024 / 1024).toFixed(2)} MB / ${(data.total / 1024 / 1024).toFixed(2)} MB)`;
+                }
+            }
+        });
+        
+        loadingTask.promise.then(function (pdfDoc_) {
+            console.log('[DEBUG] PDF document loaded successfully, pages:', pdfDoc_.numPages);
             pdfDoc = pdfDoc_;
 
             const pageCountElements = document.querySelectorAll(isMainViewer ? '#page-count' : '#page-count-both');

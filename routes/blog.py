@@ -14,6 +14,7 @@ import logging
 
 import markdown
 from flask import render_template
+from utils.mongo_client import get_mongo_client
 
 # 缓存更新间隔（秒）
 CACHE_UPDATE_INTERVAL = 60
@@ -256,18 +257,67 @@ def blog_list_route():
     return render_template('404.html', mode='blog', blogs=blogs, recommended_blogs=recommended_blogs), 404
 
 
+def get_blog_from_mongo(url_title):
+    """
+    Gets blog details from MongoDB by url_title.
+    """
+    client = get_mongo_client()
+    if not client:
+        return None
+    db = client.RunJPLib
+    
+    doc = db.blogs.find_one({"url_title": url_title})
+    return doc
+
 def blog_detail_route(url_title):
     """博客详情路由处理函数"""
+    debug_file_path = None
+    blog_doc = get_blog_from_mongo(url_title)
+    
+    if blog_doc:
+        md = markdown.Markdown(
+            extensions=['extra', 'tables', 'fenced_code', 'sane_lists', 'nl2br', 'smarty'],
+            output_format="html5",
+        )
+        html_content = md.convert(blog_doc.get('content_md', ''))
+        
+        blog = {
+            'id': str(blog_doc['_id']),
+            'title': blog_doc['title'],
+            'url_title': blog_doc['url_title'],
+            'date': blog_doc['publication_date'],
+            'content': html_content
+        }
+        
+        return render_template(
+            'content_blog.html',
+            mode='blog',
+            blogs=get_all_blogs(), # Keep sidebar for now
+            blog=blog,
+            content=html_content,
+            debug_file_path=None # Explicitly None for Mongo data
+        )
+
+    # Fallback to file-based
+    logging.warning(f"在 MongoDB 中未找到博客 '{url_title}'，回退到文件系统。")
     blog = find_blog_by_title(url_title)
     if blog is None:
         # 获取10篇随机推荐的博客
         recommended_blogs = get_random_blogs(10)
         return render_template('404.html', mode='blog', blogs=get_all_blogs(), recommended_blogs=recommended_blogs), 404
 
+    if os.getenv('LOG_LEVEL') == 'DEBUG':
+        # The find_blog_by_title function returns a dict that includes the md_path
+        # We need to get the full blog object again to get the path
+        full_blog_obj = next((b for b in get_all_blogs() if b['id'] == blog['id']), None)
+        if full_blog_obj:
+            debug_file_path = full_blog_obj['md_path']
+
     return render_template(
         'content_blog.html',
         mode='blog',
         blogs=get_all_blogs(),
         blog=blog,
-        content=blog['content']
+        content=blog['content'],
+        debug_file_path=debug_file_path
     )
