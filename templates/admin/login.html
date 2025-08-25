@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理员登录</title>
+    <style>
+        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        .login-container { padding: 2rem; border: 1px solid #ccc; border-radius: 5px; }
+        input { display: block; margin-bottom: 1rem; padding: 0.5rem; }
+        button { padding: 0.5rem 1rem; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <h2>管理员登录</h2>
+        <form id="loginForm">
+            <input type="password" id="accessCode" placeholder="访问码" required>
+            <button type="submit">登录</button>
+        </form>
+        <p id="errorMessage" class="error"></p>
+    </div>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            const accessCode = document.getElementById('accessCode').value;
+            const errorMessage = document.getElementById('errorMessage');
+
+            const response = await fetch('/admin/api/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ access_code: accessCode })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                localStorage.setItem('admin_token', data.access_token);
+                window.location.href = '/admin';
+            } else {
+                errorMessage.textContent = '访问码无效。';
+            }
+        });
+    </script>
+</body>
+</html>

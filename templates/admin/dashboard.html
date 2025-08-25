@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理后台</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; display: flex; }
+        .sidebar { width: 250px; background: #333; color: white; height: 100vh; padding: 1rem; }
+        .sidebar h2 { text-align: center; }
+        .sidebar ul { list-style: none; padding: 0; }
+        .sidebar ul li { margin: 1rem 0; }
+        .sidebar ul li a { color: white; text-decoration: none; display: block; padding: 0.5rem; }
+        .sidebar ul li a:hover { background: #555; }
+        .content { flex-grow: 1; padding: 2rem; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <h2>管理菜单</h2>
+        <ul>
+            <li><a href="#" onclick="showView('dashboard')">仪表盘</a></li>
+            <li><a href="#" onclick="showView('upload')">数据上传</a></li>
+            <li><a href="#" onclick="showView('manage')">数据管理</a></li>
+            <li><a href="#" onclick="showView('generate')">数据生成</a></li>
+            <li><a href="/admin/logout">退出登录</a></li>
+        </ul>
+    </div>
+    <div class="content">
+        <div id="dashboard" class="view">
+            <h1>欢迎来到管理后台</h1>
+            <p>请从左侧菜单中选择一个选项开始。</p>
+        </div>
+        <div id="upload" class="view hidden">
+            <h2>数据上传</h2>
+            <div id="university-upload">
+                <h3>大学数据</h3>
+                <select id="university-folders"></select>
+                <button onclick="startUniversityUpload()">开始上传</button>
+                <p>状态: <span id="university-upload-status">空闲</span></p>
+            </div>
+            <hr>
+            <div id="blog-upload">
+                <h3>博客数据</h3>
+                <button onclick="startBlogUpload()">开始上传</button>
+                <p>状态: <span id="blog-upload-status">空闲</span></p>
+            </div>
+        </div>
+        <div id="manage" class="view hidden">
+            <h2>数据管理</h2>
+            
+            <div id="university-management">
+                <h3>大学数据</h3>
+                <button onclick="fetchUniversities()">刷新列表</button>
+                <button onclick="clearUniversities()" style="color: red;">清空所有大学数据</button>
+                <table id="university-table">
+                    <thead>
+                        <tr>
+                            <th>名称</th>
+                            <th>截止日期</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+
+            <hr>
+
+            <div id="blog-management">
+                <h3>博客数据</h3>
+                <button onclick="fetchBlogs()">刷新列表</button>
+                <button onclick="clearBlogs()" style="color: red;">清空所有博客数据</button>
+                <table id="blog-table">
+                    <thead>
+                        <tr>
+                            <th>标题</th>
+                            <th>日期</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+        <div id="generate" class="view hidden">
+            <h2>数据生成</h2>
+            <p>此功能尚未实现。</p>
+        </div>
+    </div>
+
+    <script>
+        const token = localStorage.getItem('admin_token');
+        if (!token) {
+            window.location.href = '/admin/login';
+        }
+
+        /**
+         * A wrapper for the fetch API that includes the auth token and handles 401 errors.
+         * @param {string} url - The URL to fetch.
+         * @param {object} options - The options for the fetch request.
+         * @returns {Promise<Response>} - The response from the fetch request.
+         */
+        async function fetchWithAuth(url, options = {}) {
+            const headers = {
+                ...options.headers,
+                'Authorization': `Bearer ${token}`
+            };
+            
+            const newOptions = { ...options, headers };
+            
+            const response = await fetch(url, newOptions);
+            
+            if (response.status === 401) {
+                // Token is invalid or expired, redirect to login
+                localStorage.removeItem('admin_token');
+                window.location.href = '/admin/login';
+                // Return a promise that will not resolve to prevent further processing
+                return new Promise(() => {}); 
+            }
+            
+            return response;
+        }
+
+        async function showView(viewId) {
+            // 在切换视图前，先验证Token的有效性
+            const response = await fetchWithAuth('/admin/api/verify_token');
+            if (!response || !response.ok) {
+                // fetchWithAuth 已经处理了跳转，这里可以提前返回以增加保险
+                return;
+            }
+
+            document.querySelectorAll('.view').forEach(view => {
+                view.classList.add('hidden');
+            });
+            document.getElementById(viewId).classList.remove('hidden');
+            
+            if (viewId === 'upload') {
+                fetchUniversityFolders();
+            }
+            if (viewId === 'manage') {
+                fetchUniversities();
+                fetchBlogs();
+            }
+        }
+
+        async function fetchUniversityFolders() {
+            const response = await fetchWithAuth('/admin/api/university_folders');
+            if (response.ok) {
+                const folders = await response.json();
+                const select = document.getElementById('university-folders');
+                select.innerHTML = '';
+                folders.forEach(folder => {
+                    const option = document.createElement('option');
+                    option.value = folder;
+                    option.textContent = folder;
+                    select.appendChild(option);
+                });
+            }
+        }
+
+        async function startUniversityUpload() {
+            const folder = document.getElementById('university-folders').value;
+            const status = document.getElementById('university-upload-status');
+            status.textContent = `正在上传 ${folder}...`;
+
+            const response = await fetchWithAuth('/admin/api/upload/university', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ folder: folder })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                status.textContent = data.message;
+            } else {
+                status.textContent = '上传失败。';
+            }
+        }
+
+        async function startBlogUpload() {
+            const status = document.getElementById('blog-upload-status');
+            status.textContent = '正在上传博客...';
+
+            const response = await fetchWithAuth('/admin/api/upload/blogs', {
+                method: 'POST'
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                status.textContent = data.message;
+            } else {
+                status.textContent = '上传失败。';
+            }
+        }
+
+        async function fetchUniversities() {
+            const response = await fetchWithAuth('/admin/api/universities');
+            if (!response.ok) return;
+            const data = await response.json();
+            const tbody = document.querySelector('#university-table tbody');
+            tbody.innerHTML = '';
+            data.forEach(u => {
+                const row = `
+                    <tr>
+                        <td>${u.university_name}</td>
+                        <td>${u.deadline}</td>
+                        <td>
+                            <a href="/university/${u.university_name}/${u.deadline}" target="_blank">查看</a>
+                            <button onclick="deleteUniversity('${u._id}')">删除</button>
+                        </td>
+                    </tr>`;
+                tbody.innerHTML += row;
+            });
+        }
+
+        async function deleteUniversity(id) {
+            if (!confirm('您确定吗？')) return;
+            await fetchWithAuth(`/admin/api/universities/${id}`, { method: 'DELETE' });
+            fetchUniversities();
+        }
+
+        async function clearUniversities() {
+            if (!confirm('您确定要删除所有大学数据吗？此操作不可逆！')) return;
+            await fetchWithAuth('/admin/api/universities', { method: 'DELETE' });
+            fetchUniversities();
+        }
+
+        async function fetchBlogs() {
+            const response = await fetchWithAuth('/admin/api/blogs');
+            if (!response.ok) return;
+            const data = await response.json();
+            const tbody = document.querySelector('#blog-table tbody');
+            tbody.innerHTML = '';
+            data.forEach(b => {
+                const row = `
+                    <tr>
+                        <td>${b.title}</td>
+                        <td>${b.publication_date}</td>
+                        <td>
+                            <a href="/blog/${b.url_title}" target="_blank">查看</a>
+                            <button onclick="deleteBlog('${b._id}')">删除</button>
+                        </td>
+                    </tr>`;
+                tbody.innerHTML += row;
+            });
+        }
+
+        async function deleteBlog(id) {
+            if (!confirm('您确定吗？')) return;
+            await fetchWithAuth(`/admin/api/blogs/${id}`, { method: 'DELETE' });
+            fetchBlogs();
+        }
+
+        async function clearBlogs() {
+            if (!confirm('您确定要删除所有博客数据吗？此操作不可逆！')) return;
+            await fetchWithAuth('/admin/api/blogs', { method: 'DELETE' });
+            fetchBlogs();
+        }
+    </script>
+</body>
+</html>
