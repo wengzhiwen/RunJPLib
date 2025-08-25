@@ -72,4 +72,4 @@ The following user-facing views have been modified to load data from MongoDB if 
 
 If the requested data is found in MongoDB, it will be served from there. Otherwise, the application will fall back to the original file-based loading mechanism. This allows for a gradual migration and ensures that the site remains functional even for data that has not yet been uploaded to the database.
 
-A new route, `/pdf/mongo/<item_id>`, has been added to serve PDF files directly from the binary data stored in MongoDB.
+A new route, `/pdf/resource/<resource_id>`, has been added to serve PDF files directly from the binary data stored in MongoDB. For backward compatibility, the legacy route `/pdf/mongo/<item_id>` is still supported but deprecated.

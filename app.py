@@ -175,11 +175,11 @@ def get_pdf_by_name_and_deadline(name, deadline):
     return serve_pdf(name, deadline)
 
 
-@app.route('/pdf/mongo/<item_id>')
-def serve_pdf_from_mongo(item_id):
+@app.route('/pdf/resource/<resource_id>')
+def serve_pdf_from_resource(resource_id):
     """Serve PDF from MongoDB with performance logging."""
     start_time = time.time()
-    logging.debug(f"PDF请求已收到: {item_id}")
+    logging.debug(f"PDF请求已收到: {resource_id}")
 
     client = get_mongo_client()
     if not client:
@@ -187,7 +187,7 @@ def serve_pdf_from_mongo(item_id):
     db = client.RunJPLib
 
     try:
-        obj_id = ObjectId(item_id)
+        obj_id = ObjectId(resource_id)
     except Exception:
         abort(404)
 
@@ -201,7 +201,7 @@ def serve_pdf_from_mongo(item_id):
         
         response = make_response(pdf_data)
         response.headers['Content-Type'] = 'application/pdf'
-        response.headers['Content-Disposition'] = f'inline; filename={item_id}.pdf'
+        response.headers['Content-Disposition'] = f'inline; filename={resource_id}.pdf'
         response.headers['Access-Control-Allow-Origin'] = '*'
         
         send_start_time = time.time()
@@ -209,6 +209,14 @@ def serve_pdf_from_mongo(item_id):
         return response
     
     abort(404)
+
+
+# 向后兼容的路由，保持现有功能
+@app.route('/pdf/mongo/<item_id>')
+def serve_pdf_from_mongo_legacy(item_id):
+    """向后兼容的MongoDB PDF服务路由（已弃用）"""
+    logging.warning(f"使用了已弃用的PDF路由: /pdf/mongo/{item_id}")
+    return serve_pdf_from_resource(item_id)
 
 
 if __name__ == '__main__':

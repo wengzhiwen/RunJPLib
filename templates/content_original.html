@@ -39,11 +39,11 @@
 <div class="tab-content" id="contentTabsContent">
     <!-- Japanese PDF Tab -->
     <div class="tab-pane fade show active" id="japanese-content" role="tabpanel" aria-labelledby="japanese-tab">
-        <div id="pdf-loading" class="text-center py-5">
-            <div class="progress" style="height: 20px;">
-                <div id="pdf-progress-bar" class="progress-bar" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+        <div id="pdf-loading" class="text-center py-5" style="display: flex !important; flex-direction: column; justify-content: center; visibility: visible !important;">
+            <div class="progress" style="height: 20px; background-color: #e9ecef !important; border-radius: 0.375rem; overflow: hidden;">
+                <div id="pdf-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%; background-color: #007bff !important; color: white; text-align: center; line-height: 20px; font-size: 12px;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
             </div>
-            <div class="mt-2" id="pdf-loading-text">正在加载PDF文件...</div>
+            <div class="mt-2" id="pdf-loading-text" style="color: #6c757d; font-size: 14px;">正在加载PDF文件...</div>
         </div>
         <div id="pdf-container" style="display: none;">
             <div class="d-flex justify-content-between align-items-center mb-3">
@@ -96,11 +96,11 @@
                 </div>
                 <!-- PDF内容区域，带灰色边框，固定高度 -->
                 <div class="border border-2 rounded-3" style="border-color: #dee2e6 !important; height: 800px; overflow: hidden; background-color: #fafafa; position: relative;">
-                    <div id="pdf-loading-both" class="text-center py-5 h-100 d-flex flex-column justify-content-center">
-                        <div class="progress mx-4" style="height: 15px;">
-                            <div id="pdf-progress-bar-both" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%; font-size: 10px;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+                    <div id="pdf-loading-both" class="text-center py-5 h-100 d-flex flex-column justify-content-center" style="display: flex !important; visibility: visible !important;">
+                        <div class="progress mx-4" style="height: 15px; background-color: #e9ecef !important; border-radius: 0.375rem; overflow: hidden;">
+                            <div id="pdf-progress-bar-both" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%; font-size: 10px; background-color: #007bff !important; color: white; text-align: center; line-height: 15px;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
                         </div>
-                        <div class="mt-2 small" id="pdf-loading-text-both">正在加载PDF文件...</div>
+                        <div class="mt-2 small" id="pdf-loading-text-both" style="color: #6c757d;">正在加载PDF文件...</div>
                     </div>
                     <div id="pdf-container-both" class="h-100 overflow-auto" style="display: none;">
                         <div class="text-center p-3" style="min-height: 500px;">
@@ -154,13 +154,10 @@
     // Load PDF.js using ES modules
     try {
         pdfjsLib = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@5.3.31/build/pdf.min.mjs');
-        console.log('PDF.js loaded successfully:', pdfjsLib);
 
         // Configure worker if available
         if (pdfjsLib.GlobalWorkerOptions) {
             pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.3.31/build/pdf.worker.min.mjs';
-        } else {
-            console.log('PDF.js worker not needed or automatically configured');
         }
     } catch (error) {
         console.error('Failed to load PDF.js:', error);
@@ -271,7 +268,6 @@
 
     // Initialize PDF viewer
     function initPdfViewer(canvasId, isMainViewer = true) {
-
         const targetCanvas = document.getElementById(canvasId);
         if (!targetCanvas) {
             console.error(`Canvas element with id ${canvasId} not found!`);
@@ -315,61 +311,178 @@
             const pageCountElements = document.querySelectorAll('#page-count-both');
             pageCountElements.forEach(el => el.textContent = pdfDoc.numPages);
 
-            if (loadingElement) {
-                loadingElement.classList.remove('d-flex');
-                loadingElement.style.display = 'none';
+            // 显示完成状态
+            const progressBar = document.getElementById('pdf-progress-bar-both');
+            const loadingText = document.getElementById('pdf-loading-text-both');
+            if (progressBar) {
+                progressBar.style.width = '100%';
+                progressBar.textContent = '100%';
+                progressBar.setAttribute('aria-valuenow', 100);
+            }
+            if (loadingText) {
+                loadingText.textContent = '正在加载PDF文件... 完成';
             }
 
-            const containerElement = document.getElementById(containerId);
-            if (containerElement) {
-                containerElement.style.display = 'block';
-            } else {
-                console.error('Container element not found:', containerId);
-            }
-
-            const controlsElement = document.getElementById('pdf-controls-both');
-            if (controlsElement) {
-                controlsElement.style.display = 'block';
-            }
-
-            const canvasParent = targetCanvas.parentElement;
-            if (canvasParent) {
-                console.log('Canvas parent element style:', canvasParent.style.cssText);
-            }
-
-            // 延迟一下再渲染，确保DOM更新完成
+            // 短暂延迟后隐藏加载界面
             setTimeout(() => {
-                // 为both视图计算合适的缩放比例
-                const containerWidth = targetCanvas.parentElement.clientWidth - 20; // 减去padding
-                if (containerWidth > 0) {
-                    // 根据容器宽度调整缩放比例，确保PDF在容器中合适显示
-                    scaleBoth = Math.min(1.2, containerWidth / 600); // 假设PDF原始宽度约600px
+                if (loadingElement) {
+                    loadingElement.classList.remove('d-flex');
+                    loadingElement.style.display = 'none';
                 }
-                renderPage(pageNumBoth, targetCanvas, targetCtx, scaleBoth);
-            }, 10);
+
+                const containerElement = document.getElementById(containerId);
+                if (containerElement) {
+                    containerElement.style.display = 'block';
+                }
+
+                const controlsElement = document.getElementById('pdf-controls-both');
+                if (controlsElement) {
+                    controlsElement.style.display = 'block';
+                }
+
+                // 延迟渲染，确保DOM更新完成
+                setTimeout(() => {
+                    // 为both视图计算合适的缩放比例
+                    const containerWidth = targetCanvas.parentElement.clientWidth - 20;
+                    if (containerWidth > 0) {
+                        scaleBoth = Math.min(1.2, containerWidth / 600);
+                    }
+                    renderPage(pageNumBoth, targetCanvas, targetCtx, scaleBoth);
+                }, 10);
+            }, 300);
             return;
         }
 
-        const loadingTask = pdfjsLib.getDocument({
-            url: pdfUrl,
-            onProgress: (data) => {
-                const percent = Math.round((data.loaded / data.total) * 100);
-                const progressBar = document.getElementById(isMainViewer ? 'pdf-progress-bar' : 'pdf-progress-bar-both');
-                const loadingText = document.getElementById(isMainViewer ? 'pdf-loading-text' : 'pdf-loading-text-both');
-
-                if (progressBar) {
-                    progressBar.style.width = percent + '%';
-                    progressBar.textContent = percent + '%';
-                    progressBar.setAttribute('aria-valuenow', percent);
-                }
-                if (loadingText) {
-                    loadingText.textContent = `正在加载PDF文件... (${(data.loaded / 1024 / 1024).toFixed(2)} MB / ${(data.total / 1024 / 1024).toFixed(2)} MB)`;
-                }
-            }
-        });
+        // Start fallback progress animation in case manual progress doesn't start immediately
+        let fallbackProgress = 0;
+        const progressBarId = isMainViewer ? 'pdf-progress-bar' : 'pdf-progress-bar-both';
+        const loadingTextId = isMainViewer ? 'pdf-loading-text' : 'pdf-loading-text-both';
+        let fallbackInterval = null;
         
-        loadingTask.promise.then(function (pdfDoc_) {
-            console.log('[DEBUG] PDF document loaded successfully, pages:', pdfDoc_.numPages);
+        fallbackInterval = setInterval(() => {
+            const progressBar = document.getElementById(progressBarId);
+            const loadingText = document.getElementById(loadingTextId);
+            
+            if (progressBar && fallbackProgress < 90) {
+                fallbackProgress += Math.random() * 8 + 3; // 每次增加3-11%
+                if (fallbackProgress > 85) fallbackProgress = 85;
+                
+                progressBar.style.setProperty('width', fallbackProgress + '%', 'important');
+                progressBar.textContent = Math.round(fallbackProgress) + '%';
+            }
+            
+            if (loadingText) {
+                loadingText.textContent = `正在加载PDF文件... (${Math.round(fallbackProgress)}%)`;
+            }
+        }, 200);
+        
+        // 由于PDF.js的onProgress不工作，我们使用fetch API来监控真实的下载进度
+        let manualProgress = {
+            loaded: 0,
+            total: 0,
+            startTime: Date.now()
+        };
+        
+        // 使用fetch获取PDF并监控进度
+        async function loadPDFWithProgress() {
+            try {
+                const response = await fetch(pdfUrl);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const contentLength = response.headers.get('content-length');
+                const total = contentLength ? parseInt(contentLength, 10) : 0;
+                manualProgress.total = total;
+                
+                const reader = response.body.getReader();
+                const chunks = [];
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    
+                    if (done) break;
+                    
+                    chunks.push(value);
+                    manualProgress.loaded += value.length;
+                    
+                    // 更新进度显示
+                    updateProgressDisplay(manualProgress.loaded, manualProgress.total || manualProgress.loaded * 1.2);
+                }
+                
+                // 合并所有数据块
+                const totalLength = manualProgress.loaded;
+                const combinedArray = new Uint8Array(totalLength);
+                let offset = 0;
+                
+                for (const chunk of chunks) {
+                    combinedArray.set(chunk, offset);
+                    offset += chunk.length;
+                }
+                
+                // 最终进度更新
+                updateProgressDisplay(totalLength, totalLength);
+                
+                // 创建blob并使用PDF.js加载
+                const blob = new Blob([combinedArray], { type: 'application/pdf' });
+                const pdfUrl_blob = URL.createObjectURL(blob);
+                
+                // 使用blob URL加载PDF
+                const loadingTask = pdfjsLib.getDocument({ url: pdfUrl_blob });
+                return loadingTask.promise;
+                
+            } catch (error) {
+                console.error('Error loading PDF:', error);
+                throw error;
+            }
+        }
+        
+        function updateProgressDisplay(loaded, total) {
+            const percent = total > 0 ? Math.round((loaded / total) * 100) : 0;
+            const loadedMB = (loaded / (1024 * 1024)).toFixed(2);
+            const totalMB = (total / (1024 * 1024)).toFixed(2);
+            
+            const progressBar = document.getElementById(progressBarId);
+            const loadingText = document.getElementById(loadingTextId);
+            
+            if (progressBar) {
+                progressBar.style.setProperty('width', percent + '%', 'important');
+                progressBar.textContent = percent + '%';
+                progressBar.setAttribute('aria-valuenow', percent);
+            }
+            
+            if (loadingText) {
+                const message = total > 0 ? 
+                    `正在加载PDF文件... (${loadedMB} MB / ${totalMB} MB)` :
+                    `正在加载PDF文件... (已下载 ${loadedMB} MB)`;
+                loadingText.textContent = message;
+            }
+            
+            // 清除备用进度条
+            if (fallbackInterval && percent > 0) {
+                clearInterval(fallbackInterval);
+                fallbackInterval = null;
+            }
+        }
+        
+        // 使用手动进度监控实现真实的下载进度显示
+        loadPDFWithProgress().then(function (pdfDoc_) {
+            // Clear fallback interval when PDF is loaded
+            if (fallbackInterval) {
+                clearInterval(fallbackInterval);
+            }
+            
+            // Set progress to 100% when completed
+            const progressBar = document.getElementById(progressBarId);
+            const loadingText = document.getElementById(loadingTextId);
+            if (progressBar) {
+                progressBar.style.setProperty('width', '100%', 'important');
+                progressBar.textContent = '100%';
+            }
+            if (loadingText) {
+                loadingText.textContent = '正在加载PDF文件... 完成';
+            }
             pdfDoc = pdfDoc_;
 
             const pageCountElements = document.querySelectorAll(isMainViewer ? '#page-count' : '#page-count-both');
@@ -392,6 +505,11 @@
             const currentPage = isMainViewer ? pageNum : pageNumBoth;
             renderPage(currentPage, targetCanvas, targetCtx, currentScale);
         }).catch(function (error) {
+            // Clear fallback interval on error
+            if (fallbackInterval) {
+                clearInterval(fallbackInterval);
+            }
+            
             console.error('Error loading PDF:', error);
             if (loadingElement) {
                 loadingElement.innerHTML =

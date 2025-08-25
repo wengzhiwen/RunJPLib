@@ -377,7 +377,7 @@ def university_route(name, deadline=None, content="REPORT"):
             elif content == "ORIGINAL":
                 html_content = md.convert(university_doc['content'].get('original_md', ''))
                 chinese_html_content = md.convert(university_doc['content'].get('translated_md', ''))
-                pdf_url = f"/pdf/mongo/{str(university_doc['_id'])}"
+                pdf_url = f"/pdf/resource/{str(university_doc['_id'])}"
                 template = "content_original.html"
                 return render_template(template,
                                        universities=get_sorted_universities(),
