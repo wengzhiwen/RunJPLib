@@ -15,8 +15,9 @@ from flask_jwt_extended import JWTManager
 from bson.objectid import ObjectId
 from gridfs import GridFS
 from utils.mongo_client import get_mongo_client
+from utils.db_indexes import ensure_indexes
 
-from routes.index import index_route, university_route, sitemap_route, serve_pdf
+from routes.index import index_route, university_route, sitemap_route
 from routes.blog import blog_list_route, blog_detail_route
 from routes.admin import admin_bp
 
@@ -172,12 +173,6 @@ def blog_detail(title):
     return blog_detail_route(title)
 
 
-@app.route('/pdf/<name>/<date:deadline>')
-def get_pdf_by_name_and_deadline(name, deadline):
-    """PDF文件服务路由"""
-    return serve_pdf(name, deadline)
-
-
 @app.route('/pdf/resource/<resource_id>')
 def serve_pdf_from_resource(resource_id):
     """Serve PDF from GridFS with performance logging."""
@@ -254,6 +249,15 @@ if __name__ == '__main__':
     setup_logging()
     logging.debug("日志系统配置完成，DEBUG级别已启用（如果env中设置）。")
     logging.info("应用启动中...")
+
+    # 确保必要的索引存在
+    try:
+        if ensure_indexes():
+            logging.info("数据库索引已就绪")
+        else:
+            logging.warning("数据库索引未能创建或确保，请检查日志")
+    except Exception as e:
+        logging.error(f"初始化数据库索引失败: {e}", exc_info=True)
 
     # 启动应用
     if os.getenv('FLASK_APP_PORT') and os.getenv('FLASK_APP_PORT').isdigit():

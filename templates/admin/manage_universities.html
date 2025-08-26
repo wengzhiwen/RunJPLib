@@ -16,7 +16,6 @@
             <tr>
                 <th>大学名称</th>
                 <th>报名截止日期</th>
-                <th>源路径</th>
                 <th>创建时间</th>
                 <th>操作</th>
             </tr>
@@ -35,66 +34,86 @@ document.addEventListener('DOMContentLoaded', function() {
     const clearBtn = document.getElementById('clear-universities-btn');
 
     async function loadUniversities() {
-        const response = await fetch('/admin/api/universities');
-        if (!response.ok) {
-            alert(`加载大学数据失败: ${response.status} ${response.statusText}`);
-            return;
-        }
+        try {
+            const response = await fetch('/admin/api/universities');
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                alert(`加载大学数据失败: ${response.status} ${response.statusText}\n${errorText}`);
+                return;
+            }
 
-        const data = await response.json();
-        tbody.innerHTML = ''; // Clear existing data
-        if (data.error) {
-            alert('加载数据时遇到错误: ' + data.error);
-            return;
+            const data = await response.json();
+            tbody.innerHTML = ''; // Clear existing data
+
+            if (!Array.isArray(data)) {
+                alert('加载数据时遇到错误: 返回的数据格式不正确。');
+                return;
+            }
+
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center">数据库中没有大学信息。</td></tr>';
+                return;
+            }
+
+            data.forEach(uni => {
+                const createdAt = uni.created_at ? new Date(uni.created_at).toLocaleString() : 'N/A';
+                const row = `
+                    <tr>
+                        <td>${uni.university_name || 'N/A'}</td>
+                        <td>${uni.deadline || 'N/A'}</td>
+                        <td>${createdAt}</td>
+                        <td>
+                            <button class="btn btn-sm btn-danger delete-btn" data-id="${uni._id}">删除</button>
+                        </td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+        } catch (error) {
+            console.error("加载大学列表时发生严重JS错误:", error);
+            alert(`加载大学列表时发生严重JS错误: ${error.message}`);
         }
-        data.forEach(uni => {
-            const row = `
-                <tr>
-                    <td>${uni.university_name}</td>
-                    <td>${uni.deadline}</td>
-                    <td>${uni.source_path}</td>
-                    <td>${new Date(uni.created_at.$date).toLocaleString()}</td>
-                    <td>
-                        <button class="btn btn-sm btn-danger delete-btn" data-id="${uni._id}">删除</button>
-                    </td>
-                </tr>
-            `;
-            tbody.innerHTML += row;
-        });
     }
 
     tbody.addEventListener('click', async function(e) {
         if (e.target.classList.contains('delete-btn')) {
             const itemId = e.target.dataset.id;
             if (confirm('确定要删除这条记录吗？')) {
-                const response = await fetch(`/admin/api/universities/${itemId}`, {
-                    method: 'DELETE'
-                });
-                
-                const data = await response.json();
-                if (!response.ok) {
-                    alert(`删除失败: ${data.message || response.statusText}`);
-                } else {
-                    alert(data.message);
+                try {
+                    const response = await fetch(`/admin/api/universities/${itemId}`, {
+                        method: 'DELETE'
+                    });
+                    const data = await response.json();
+                    if (!response.ok) {
+                        alert(`删除失败: ${data.message || response.statusText}`);
+                    } else {
+                        alert(data.message);
+                    }
+                    loadUniversities();
+                } catch (error) {
+                    alert(`删除操作时发生网络错误: ${error.message}`);
                 }
-                loadUniversities(); // Refresh table
             }
         }
     });
 
     clearBtn.addEventListener('click', async function() {
         if (confirm('警告：这将删除所有大学数据，操作不可逆！确定要继续吗？')) {
-            const response = await fetch('/admin/api/universities', {
-                method: 'DELETE'
-            });
-
-            const data = await response.json();
-            if (!response.ok) {
-                alert(`清空失败: ${data.message || response.statusText}`);
-            } else {
-                alert(data.message);
+            try {
+                const response = await fetch('/admin/api/universities', {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    alert(`清空失败: ${data.message || response.statusText}`);
+                } else {
+                    alert(data.message);
+                }
+                loadUniversities();
+            } catch (error) {
+                alert(`清空操作时发生网络错误: ${error.message}`);
             }
-            loadUniversities(); // Refresh table
         }
     });
 

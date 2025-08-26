@@ -14,8 +14,8 @@ This document outlines the design of the MongoDB collections for the RunJPLib pr
   "_id": "<ObjectID>",
   "university_name": "String", // e.g., "東京大学"
   "deadline": "String", // e.g., "20241206"
-  "created_at": "DateTime", // Timestamp of document creation/update
-  "source_path": "String", // Original folder path, e.g., "pdf_with_md/東京大学_20241206"
+  "created_at": "DateTime", // Timestamp of document creation
+  "is_premium": "Boolean", // Optional: true if it's a featured university for sorting
   "content": {
     "original_md": "String", // Content of the original markdown file
     "translated_md": "String", // Content of the translated markdown file

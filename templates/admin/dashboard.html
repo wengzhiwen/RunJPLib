@@ -8,23 +8,14 @@
 
 <div id="upload" class="mt-5">
     <h2>数据上传</h2>
-    <div class="card mt-3">
-        <div class="card-body">
-            <h5 class="card-title">大学数据上传</h5>
-            <p class="card-text">从本地 `pdf_with_md` 文件夹中选择并上传大学数据到MongoDB。</p>
-            <div class="input-group mb-3">
-                <select class="form-select" id="university-folders"></select>
-                <button class="btn btn-primary" onclick="startUniversityUpload()">开始上传</button>
-            </div>
-            <p>状态: <span id="university-upload-status" class="text-muted">空闲</span></p>
-        </div>
-    </div>
+    <p class="text-muted">请注意：此处的上传功能是为方便从旧的文件系统迁移数据而设计的。在所有数据迁移到MongoDB后，这些功能将被移除。</p>
+    
     <div class="card mt-3">
         <div class="card-body">
             <h5 class="card-title">博客数据上传</h5>
-            <p class="card-text">从本地 `blogs` 文件夹上传博客文章到MongoDB。</p>
-            <button class="btn btn-primary" onclick="startBlogUpload()">开始上传</button>
-            <p>状态: <span id="blog-upload-status" class="text-muted">空闲</span></p>
+            <p class="card-text">从本地 `blogs` 文件夹上传或更新博客文章到MongoDB。</p>
+            <button class="btn btn-primary" onclick="startBlogUpload()">开始上传博客</button>
+            <p class="mt-2">状态: <span id="blog-upload-status" class="text-muted">空闲</span></p>
         </div>
     </div>
 </div>
@@ -32,49 +23,6 @@
 
 {% block scripts %}
 <script>
-    async function fetchUniversityFolders() {
-        const response = await fetch('/admin/api/university_folders');
-        if (!response.ok) {
-            alert(`加载大学文件夹列表失败: ${response.status}`);
-            return;
-        }
-        const folders = await response.json();
-        const select = document.getElementById('university-folders');
-        if (!select) return;
-        select.innerHTML = '';
-        folders.forEach(folder => {
-            const option = document.createElement('option');
-            option.value = folder;
-            option.textContent = folder;
-            select.appendChild(option);
-        });
-    }
-
-    async function startUniversityUpload() {
-        const folderSelect = document.getElementById('university-folders');
-        if (!folderSelect) return;
-        const folder = folderSelect.value;
-        const status = document.getElementById('university-upload-status');
-        status.textContent = `正在上传 ${folder}...`;
-        status.className = 'text-primary';
-
-        const response = await fetch('/admin/api/upload/university', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ folder: folder })
-        });
-        
-        if (response.ok) {
-            const data = await response.json();
-            status.textContent = data.message;
-            status.className = 'text-success';
-        } else {
-            const errorData = await response.json().catch(() => ({ message: '无法解析错误信息' }));
-            status.textContent = `上传失败: ${errorData.message || response.statusText}`;
-            status.className = 'text-danger';
-        }
-    }
-
     async function startBlogUpload() {
         const status = document.getElementById('blog-upload-status');
         if (!status) return;
@@ -95,9 +43,5 @@
             status.className = 'text-danger';
         }
     }
-    
-    document.addEventListener('DOMContentLoaded', function() {
-        fetchUniversityFolders();
-    });
 </script>
 {% endblock %}
