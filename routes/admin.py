@@ -80,17 +80,11 @@ def dashboard():
         stats['unique_ip_count_24h'] = len(unique_ips)
 
         # 4. 最近24小时入学信息页的被访问次数
-        query_uni_24h = {
-            "timestamp": {"$gte": twenty_four_hours_ago},
-            "page_type": "university"
-        }
+        query_uni_24h = {"timestamp": {"$gte": twenty_four_hours_ago}, "page_type": "university"}
         stats['university_views_24h'] = db.access_logs.count_documents(query_uni_24h)
 
         # 5. 最近24小时blog页的被访问次数
-        query_blog_24h = {
-            "timestamp": {"$gte": twenty_four_hours_ago},
-            "page_type": "blog"
-        }
+        query_blog_24h = {"timestamp": {"$gte": twenty_four_hours_ago}, "page_type": "blog"}
         stats['blog_views_24h'] = db.access_logs.count_documents(query_blog_24h)
 
     except Exception as e:
@@ -98,7 +92,6 @@ def dashboard():
         return render_template('dashboard.html', error="查询统计数据时出错")
 
     return render_template('dashboard.html', stats=stats)
-
 
 
 @admin_bp.route('/login')
@@ -390,3 +383,50 @@ def save_blog():
     except Exception as e:
         logging.error(f"[Admin API] Failed to save blog: {e}", exc_info=True)
         return jsonify({"error": "服务器内部错误"}), 500
+
+
+@admin_bp.route('/blog/edit/<blog_id>', methods=['GET', 'POST'])
+@admin_required
+def edit_blog(blog_id):
+    """
+    Handles editing of a blog post.
+    GET: Displays the edit form.
+    POST: Updates the blog post in the database.
+    """
+    client = get_mongo_client()
+    if not client:
+        return render_template('edit_blog.html', error="数据库连接失败")
+    db = client.RunJPLib
+
+    try:
+        object_id = ObjectId(blog_id)
+    except Exception:
+        return render_template('404.html'), 404
+
+    if request.method == 'POST':
+        title = request.form.get('title', '').strip()
+        content_md = request.form.get('content_md', '').strip()
+
+        if not title or not content_md:
+            blog = db.blogs.find_one({"_id": object_id})
+            return render_template('edit_blog.html', blog=blog, error="标题和内容不能为空")
+
+        # Create a URL-friendly title
+        url_title = title.lower().replace(' ', '-').replace('/', '-')
+        url_title = ''.join(c for c in url_title if c.isalnum() or c == '-')
+
+        update_data = {"$set": {"title": title, "url_title": url_title, "content_md": content_md, "md_last_updated": datetime.now()}}
+
+        db.blogs.update_one({"_id": object_id}, update_data)
+        logging.info(f"Blog post with ID {blog_id} was updated.")
+        return redirect(url_for('admin.manage_blogs_page'))
+
+    # For GET request
+    blog = db.blogs.find_one({"_id": object_id})
+    if not blog:
+        return render_template('404.html'), 404
+
+    # To ensure ObjectId is JSON serializable for the template if needed, though we're passing the raw object
+    blog['_id'] = str(blog['_id'])
+
+    return render_template('edit_blog.html', blog=blog)

@@ -1,0 +1,28 @@
+{% extends "layout.html" %}
+
+{% block title %}编辑博客{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>编辑博客</h2>
+    {% if error %}
+        <div class="alert alert-danger">{{ error }}</div>
+    {% endif %}
+    {% if blog %}
+    <form method="POST" action="{{ url_for('admin.edit_blog', blog_id=blog._id) }}">
+        <div class="mb-3">
+            <label for="title" class="form-label">标题</label>
+            <input type="text" class="form-control" id="title" name="title" value="{{ blog.title }}" required>
+        </div>
+        <div class="mb-3">
+            <label for="content_md" class="form-label">Markdown 内容</label>
+            <textarea class="form-control" id="content_md" name="content_md" rows="20" required>{{ blog.content_md }}</textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">保存更改</button>
+        <a href="{{ url_for('admin.manage_blogs_page') }}" class="btn btn-secondary">取消</a>
+    </form>
+    {% else %}
+    <p>正在加载博客内容...</p>
+    {% endif %}
+</div>
+{% endblock %}

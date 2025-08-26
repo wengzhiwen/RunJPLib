@@ -23,6 +23,7 @@ RunJPLib 是一个基于 Flask 的 Web 应用程序，提供有关大学和博�
 
 ## 关键文件
 
+- `venv/`: python虚拟环境
 - `app.py`: 主要的 Flask 应用程序文件。
 - `routes/`: 包含 Flask 路由。
 - `templates/`: 包含 Jinja2 模板。
