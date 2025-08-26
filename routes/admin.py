@@ -1,21 +1,34 @@
-import os
+import datetime
+from functools import wraps
 import glob
 import logging
+import os
 import re
-import datetime
 
-from functools import wraps
-from flask import Blueprint, render_template, request, jsonify, redirect, url_for, make_response
-from flask_jwt_extended import create_access_token, get_jwt_identity, set_access_cookies, unset_jwt_cookies, verify_jwt_in_request
-from utils.mongo_client import get_mongo_client
-from gridfs import GridFS
 from bson.objectid import ObjectId
+from flask import Blueprint
+from flask import jsonify
+from flask import make_response
+from flask import redirect
+from flask import render_template
+from flask import request
+from flask import url_for
+from flask_jwt_extended import create_access_token
+from flask_jwt_extended import get_jwt_identity
+from flask_jwt_extended import set_access_cookies
+from flask_jwt_extended import unset_jwt_cookies
+from flask_jwt_extended import verify_jwt_in_request
+from gridfs import GridFS
+
+from utils.mongo_client import get_mongo_client
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin', template_folder='../templates/admin')
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
+
 def admin_required(fn):
+
     @wraps(fn)
     def wrapper(*args, **kwargs):
         is_api_request = request.path.startswith('/admin/api/')
@@ -35,22 +48,27 @@ def admin_required(fn):
             else:
                 return redirect(url_for('admin.login'))
         return fn(*args, **kwargs)
+
     return wrapper
+
 
 @admin_bp.route('/')
 @admin_required
 def dashboard():
     return render_template('dashboard.html')
 
+
 @admin_bp.route('/login')
 def login():
     return render_template('login.html')
+
 
 @admin_bp.route('/logout')
 def logout():
     response = make_response(redirect(url_for('admin.login')))
     unset_jwt_cookies(response)
     return response
+
 
 @admin_bp.route('/api/login', methods=['POST'])
 def api_login():
@@ -72,10 +90,12 @@ def api_login():
     set_access_cookies(response, access_token)
     return response
 
+
 @admin_bp.route('/api/verify_token')
 @admin_required
 def verify_token():
     return jsonify(status="ok")
+
 
 @admin_bp.route('/api/upload/blogs', methods=['POST'])
 @admin_required
@@ -121,7 +141,9 @@ def upload_blog_data():
                 "$setOnInsert": {
                     "created_at": datetime.datetime.now(datetime.timezone.utc)
                 },
-                "$unset": {"source_file": ""}
+                "$unset": {
+                    "source_file": ""
+                }
             }
             blogs_collection.update_one(update_query, update_data, upsert=True)
             logging.info(f"成功上传/更新博客: {file_name}")
@@ -131,16 +153,19 @@ def upload_blog_data():
     logging.info(f"博客数据上传完成。共处理 {total_files} 个文件，成功上传 {count} 篇博客。")
     return jsonify({"message": f"成功上传了 {count} 篇博客文章。"})
 
+
 # --- Data Management Pages ---
 @admin_bp.route('/manage/universities')
 @admin_required
 def manage_universities_page():
     return render_template('manage_universities.html')
 
+
 @admin_bp.route('/manage/blogs')
 @admin_required
 def manage_blogs_page():
     return render_template('manage_blogs.html')
+
 
 # --- Data Management APIs ---
 @admin_bp.route('/api/universities', methods=['GET'])
@@ -151,15 +176,15 @@ def get_universities():
         logging.error("[Admin API] Get universities failed: DB connection error.")
         return jsonify({"error": "数据库连接失败"}), 500
     db = client.RunJPLib
-    
+
     try:
         logging.debug("[Admin API] Fetching universities from database...")
         projection = {"content": 0, "source_path": 0}
         cursor = db.universities.find({}, projection).sort("university_name", 1)
-        
+
         # --- 关键修复点：让 jsonify 自动处理 BSON 类型 ---
         universities = list(cursor)
-        
+
         # ObjectId 仍然需要手动转换为字符串
         for u in universities:
             u['_id'] = str(u['_id'])
@@ -167,11 +192,12 @@ def get_universities():
         logging.info(f"[Admin API] Successfully fetched {len(universities)} university documents.")
         if universities:
             logging.debug(f"[Admin API] First university document sample: {universities[0]}")
-            
+
         return jsonify(universities)
     except Exception as e:
         logging.error(f"[Admin API] An exception occurred while fetching universities: {e}", exc_info=True)
         return jsonify({"error": "服务器内部错误"}), 500
+
 
 @admin_bp.route('/api/universities/<item_id>', methods=['DELETE'])
 @admin_required
@@ -183,6 +209,7 @@ def delete_university(item_id):
     db.universities.delete_one({'_id': ObjectId(item_id)})
     return jsonify({"message": "删除成功"})
 
+
 @admin_bp.route('/api/universities', methods=['DELETE'])
 @admin_required
 def clear_universities():
@@ -192,6 +219,7 @@ def clear_universities():
     db = client.RunJPLib
     db.universities.delete_many({})
     return jsonify({"message": "数据集合已清空"})
+
 
 @admin_bp.route('/api/blogs', methods=['GET'])
 @admin_required
@@ -221,6 +249,7 @@ def get_blogs():
         blogs.append(b)
     return jsonify(blogs)
 
+
 @admin_bp.route('/api/blogs/<item_id>', methods=['DELETE'])
 @admin_required
 def delete_blog(item_id):
@@ -230,6 +259,7 @@ def delete_blog(item_id):
     db = client.RunJPLib
     db.blogs.delete_one({'_id': ObjectId(item_id)})
     return jsonify({"message": "删除成功"})
+
 
 @admin_bp.route('/api/blogs', methods=['DELETE'])
 @admin_required

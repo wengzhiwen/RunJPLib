@@ -15,7 +15,7 @@ This document outlines the design of the MongoDB collections for the RunJPLib pr
   "university_name": "String", // e.g., "東京大学"
   "deadline": "String", // e.g., "20241206"
   "created_at": "DateTime", // Timestamp of document creation
-  "is_premium": "Boolean", // Optional: true if it's a featured university for sorting
+  "is_premium": "Boolean", // Defaults to false. If true, indicates a featured university, used for priority sorting.
   "content": {
     "original_md": "String", // Content of the original markdown file
     "translated_md": "String", // Content of the translated markdown file

@@ -15,6 +15,7 @@
         <thead>
             <tr>
                 <th>大学名称</th>
+                <th>Premium</th>
                 <th>报名截止日期</th>
                 <th>创建时间</th>
                 <th>操作</th>
@@ -52,15 +53,17 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             if (data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" class="text-center">数据库中没有大学信息。</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center">数据库中没有大学信息。</td></tr>';
                 return;
             }
 
             data.forEach(uni => {
                 const createdAt = uni.created_at ? new Date(uni.created_at).toLocaleString() : 'N/A';
+                const isPremium = uni.is_premium ? '<span class="badge bg-success">是</span>' : '<span class="badge bg-secondary">否</span>';
                 const row = `
                     <tr>
                         <td>${uni.university_name || 'N/A'}</td>
+                        <td>${isPremium}</td>
                         <td>${uni.deadline || 'N/A'}</td>
                         <td>${createdAt}</td>
                         <td>

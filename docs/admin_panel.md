@@ -30,7 +30,7 @@
 
 此部分允许直接管理 MongoDB 中的数据，分为独立的页面。
 
--   **/admin/manage/universities**: 管理大学信息。
+-   **/admin/manage/universities**: 管理大学信息。表格会显示大学名称、Premium状态、报名截止日期等关键信息。
 -   **/admin/manage/blogs**: 管理博客文章。
 
 在每个页面上，您可以：
