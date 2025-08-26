@@ -6,3 +6,7 @@ psutil==5.9.8
 pymongo>=4.0.0
 Flask-JWT-Extended>=4.0.0
 cachetools>=5.0.0
+openai-agents
+buffalo-workflow
+nest_asyncio
+

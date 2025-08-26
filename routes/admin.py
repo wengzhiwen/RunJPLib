@@ -17,6 +17,8 @@ from flask_jwt_extended import unset_jwt_cookies
 from flask_jwt_extended import verify_jwt_in_request
 
 from utils.mongo_client import get_mongo_client
+from utils.blog_generator import BlogGenerator
+from datetime import datetime
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin', template_folder='../templates/admin')
 
@@ -209,3 +211,137 @@ def clear_blogs():
     db = client.RunJPLib
     db.blogs.delete_many({})
     return jsonify({"message": "数据集合已清空"})
+
+
+# --- Blog Creator ---
+
+
+@admin_bp.route('/blog/create')
+@admin_required
+def create_blog_page():
+    """Renders the blog creation page."""
+    return render_template('create_blog.html')
+
+
+@admin_bp.route('/api/universities/search', methods=['GET'])
+@admin_required
+def search_universities():
+    """
+    Searches for universities by name.
+    Accepts a 'q' query parameter for the search term.
+    """
+    query = request.args.get('q', '').strip()
+    if not query:
+        return jsonify([])
+
+    client = get_mongo_client()
+    if not client:
+        return jsonify({"error": "数据库连接失败"}), 500
+    db = client.RunJPLib
+
+    try:
+        # Search for universities where the name contains the query string (case-insensitive)
+        universities = list(db.universities.find({
+            "university_name": {
+                "$regex": query,
+                "$options": "i"
+            }
+        }, {
+            "_id": 1,
+            "university_name": 1
+        }).limit(20))  # Limit to 20 results for performance
+
+        for u in universities:
+            u['_id'] = str(u['_id'])
+
+        return jsonify(universities)
+    except Exception as e:
+        logging.error(f"[Admin API] University search failed: {e}", exc_info=True)
+        return jsonify({"error": "服务器内部错误"}), 500
+
+
+@admin_bp.route('/api/blog/generate', methods=['POST'])
+@admin_required
+def generate_blog():
+    """
+    Generates blog content using the AI generator.
+    Expects a JSON payload with 'university_ids', 'user_prompt', and 'system_prompt'.
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "无效的请求格式"}), 400
+
+    university_ids = data.get('university_ids', [])
+    user_prompt = data.get('user_prompt', '')
+    system_prompt = data.get('system_prompt', '')
+    mode = data.get('mode', 'expand')  # Default to expand for safety
+
+    if not system_prompt:
+        return jsonify({"error": "系统提示词不能为空"}), 400
+
+    # Validate inputs based on mode
+    if mode in ['expand', 'compare'] and not university_ids:
+        return jsonify({"error": "该模式需要至少选择一所大学"}), 400
+    if mode == 'compare' and len(university_ids) < 2:
+        return jsonify({"error": "对比分析模式需要至少选择两所大学"}), 400
+    if mode == 'user_prompt_only' and not user_prompt:
+        return jsonify({"error": "该模式需要填写用户提示词"}), 400
+
+    try:
+        generator = BlogGenerator()
+        result = generator.generate_blog_content(mode, university_ids, user_prompt, system_prompt)
+        if result:
+            return jsonify(result)
+        else:
+            return jsonify({"error": "生成文章失败"}), 500
+    except Exception as e:
+        logging.error(f"[Admin API] Blog generation failed: {e}", exc_info=True)
+        return jsonify({"error": "服务器内部错误"}), 500
+
+
+@admin_bp.route('/api/blog/save', methods=['POST'])
+@admin_required
+def save_blog():
+    """
+    Saves a new blog post to the database.
+    Expects a JSON payload with 'title' and 'content_md'.
+    """
+    data = request.get_json()
+    if not data or 'title' not in data or 'content_md' not in data:
+        return jsonify({"error": "无效的请求格式，需要'title'和'content_md'"}), 400
+
+    title = data['title'].strip()
+    content_md = data['content_md'].strip()
+
+    if not title or not content_md:
+        return jsonify({"error": "标题和内容不能为空"}), 400
+
+    client = get_mongo_client()
+    if not client:
+        return jsonify({"error": "数据库连接失败"}), 500
+    db = client.RunJPLib
+
+    try:
+        # Create a URL-friendly title
+        url_title = title.lower().replace(' ', '-').replace('/', '-')
+        # Remove any characters that are not safe for URLs
+        url_title = ''.join(c for c in url_title if c.isalnum() or c == '-')
+
+        new_blog = {
+            "title": title,
+            "url_title": url_title,
+            "publication_date": datetime.now().strftime("%Y-%m-%d"),
+            "created_at": datetime.now(),
+            "md_last_updated": datetime.now(),
+            "html_last_updated": None,
+            "content_md": content_md,
+            "content_html": None
+        }
+
+        result = db.blogs.insert_one(new_blog)
+        logging.info(f"New blog post created with ID: {result.inserted_id}")
+
+        return jsonify({"message": "文章保存成功", "blog_id": str(result.inserted_id)})
+    except Exception as e:
+        logging.error(f"[Admin API] Failed to save blog: {e}", exc_info=True)
+        return jsonify({"error": "服务器内部错误"}), 500

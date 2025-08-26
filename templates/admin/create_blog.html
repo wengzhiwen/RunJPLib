@@ -1,0 +1,343 @@
+{% extends "admin/layout.html" %}
+
+{% block title %}创建新博客 - 管理后台{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mb-4">创建新博客</h1>
+
+    <!-- Mode Selection -->
+    <div class="mb-3">
+        <label class="form-label"><strong>1. 选择生成模式</strong></label>
+        <div class="form-check">
+            <input class="form-check-input" type="radio" name="generationMode" id="mode-expand" value="expand" checked>
+            <label class="form-check-label" for="mode-expand">
+                <strong>材料扩展模式</strong> - 基于选定的大学材料和提示词进行创作。
+            </label>
+        </div>
+        <div class="form-check">
+            <input class="form-check-input" type="radio" name="generationMode" id="mode-compare" value="compare">
+            <label class="form-check-label" for="mode-compare">
+                <strong>对比分析模式</strong> - 对比分析多所大学的材料，生成综合性文章 (至少选择2所大学)。
+            </label>
+        </div>
+        <div class="form-check">
+            <input class="form-check-input" type="radio" name="generationMode" id="mode-user-prompt" value="user_prompt_only">
+            <label class="form-check-label" for="mode-user-prompt">
+                <strong>完全用户提示词模式</strong> - 仅根据用户提示词进行创作，无需选择大学。
+            </label>
+        </div>
+    </div>
+
+    <!-- University Selection -->
+    <div id="university-selection-area" class="mb-3">
+        <label for="university-search" class="form-label"><strong>2. 选择大学 (可选)</strong></label>
+        <input type="text" class="form-control" id="university-search" placeholder="输入大学名称进行搜索...">
+        <div id="search-results" class="list-group mt-1 position-absolute" style="z-index: 1000; width: calc(100% - 282px);"></div>
+        <div id="selected-universities" class="mt-2">
+            <!-- Selected universities will be displayed here as tags -->
+        </div>
+    </div>
+
+    <!-- Prompts -->
+    <div class="mb-3">
+        <label for="user-prompt" class="form-label"><strong>3. 用户提示词</strong></label>
+        <textarea class="form-control" id="user-prompt" rows="4" placeholder="例如：请重点介绍这几所大学的申请流程和对留学生的特殊支持政策。"></textarea>
+    </div>
+    <div class="mb-3">
+        <label for="system-prompt" class="form-label"><strong>4. 系统提示词 (根据模式自动切换)</strong></label>
+        <textarea class="form-control" id="system-prompt" rows="12"></textarea>
+    </div>
+
+    <!-- Action Button -->
+    <button id="generate-btn" class="btn btn-primary w-100 mb-3">生成博客内容</button>
+
+    <!-- Generated Content -->
+    <hr>
+    <h2 class="mt-4">生成结果</h2>
+    <div class="mb-3">
+        <label for="blog-title" class="form-label"><strong>文章标题</strong></label>
+        <input type="text" class="form-control" id="blog-title" placeholder="AI生成的文章标题将显示在这里">
+    </div>
+    <div class="mb-3">
+        <label for="blog-content" class="form-label"><strong>文章内容 (Markdown)</strong></label>
+        <textarea class="form-control" id="blog-content" rows="20" placeholder="AI生成的Markdown内容将显示在这里，您可以直接编辑。"></textarea>
+    </div>
+
+    <!-- Save Button -->
+    <button id="save-btn" class="btn btn-success w-100" disabled>保存文章</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // --- DOM Elements ---
+    const universitySelectionArea = document.getElementById('university-selection-area');
+    const universitySearchInput = document.getElementById('university-search');
+    const searchResultsContainer = document.getElementById('search-results');
+    const selectedUniversitiesContainer = document.getElementById('selected-universities');
+    const userPromptTextarea = document.getElementById('user-prompt');
+    const systemPromptTextarea = document.getElementById('system-prompt');
+    const generateBtn = document.getElementById('generate-btn');
+    const blogTitleInput = document.getElementById('blog-title');
+    const blogContentTextarea = document.getElementById('blog-content');
+    const saveBtn = document.getElementById('save-btn');
+    const modeRadios = document.querySelectorAll('input[name="generationMode"]');
+
+    // --- State ---
+    let selectedUniversities = [];
+    let searchTimeout;
+    
+    // --- System Prompts (Using standard strings to avoid escaping issues) ---
+    const prompts = {
+        expand: '你是一位专业的日本留学相关的文章的简体中文BLOG写作专家。\n\n' +
+                '你的工作是：\n' +
+                '1、根据用户提供的基础材料（markdown文件内容，一般是大学的留学生招生简章）和扩展写作方向\n' +
+                '2、在保持原材料核心信息准确性的基础上，按照指定的写作方向进行BLOG的书写\n' +
+                '3、你要写作的BLOG文章是根据扩展写作方向的要求来撰写的，并不是以对基础材料的归纳和总结为主，具体原始材料需要引用到什么程度，请根据扩展写作方向来决定\n' +
+                '4、确保文章内容轻松易读，适合SEO优化\n' +
+                '5、如果你有互联网搜索能力，请使用互联网搜索能力来获取更多信息，但请确保只搜索日文的信息，不要搜索中文的信息\n' +
+                '6、记录下在你输出中提到的大学中文名称（全名）列表（大学中文全名、大学日文全名）\n' +
+                '7、表格是很好的信息组织方式，如果需要，可以使用markdown的语法来表示表格\n\n' +
+                '请以JSON格式返回结果，格式如下：\n' +
+                '{\n' +
+                '    "title": "文章标题",\n' +
+                '    "content": "文章内容",\n' +
+                '    "universities": [\n' +
+                '        {\n' +
+                '            "chinese_name": "大学中文名",\n' +
+                '            "japanese_name": "大学日文名(日文全名，不是英文名)"\n' +
+                '        }\n' +
+                '    ]\n' +
+                '}\n\n' +
+                '注意：\n' +
+                ' - 标题要体现扩展的写作方向，并带上今年的年份：' + (new Date().getFullYear() + 1) + '，以提升SEO的水准\n' +
+                ' - 请严格基于提供的基础材料进行扩展，如果要添加补充的信息，请务必使用互联网上的权威日语信息（千万不要参考中文的信息）\n' +
+                ' - 你撰写的文章中必须使用大学完整的中文名称\n' +
+                ' - 不要添加任何主观臆断，不要推测基础材料中没有的信息\n' +
+                ' - 对于重要的数据，请保持原样，不要进行任何修改\n' +
+                ' - 文章内容要正面积极\n' +
+                ' - 不要在返回中带有```json 或是 ``` 这样的定界符\n' +
+                ' - 请使用简体中文输出',
+        compare: '你是一位专业的日本留学相关的文章的写作专家。\n' + 
+                 '除非输出内容中明确要求使用日语的部分，其他部分一律使用中文输出。\n\n' + 
+                 '你的工作是：\n' + 
+                 '1、根据用户输入的多个大学的参考内容，分析这些大学的共同点和特色\n' + 
+                 '2、撰写一篇综合性的文章，重点突出这些大学的共同特点和各自的特色对大学进行推荐\n' + 
+                 '3、不要机械的去写共同特点是xxx，共同特色是xxx，共同特色更多的体现在标题和开头即可，内容还是以各个大学分别的介绍为主\n' + 
+                 '4、对于可以渡日前申请、只需要进行线上面试等入学方式比较便捷的大学进行特别说明，但篇幅不要多\n' + 
+                 '5、文章内容要轻松易读，适合SEO优化\n' + 
+                 '6、表格是很好的信息组织方式，如果需要，可以使用markdown的语法来表示表格\n\n' + 
+                 '请以JSON格式返回结果，格式如下：\n' + 
+                 '{\n' + 
+                 '    "title": "文章标题",\n' + 
+                 '    "content": "文章内容",\n' + 
+                 '    "universities": [\n' + 
+                 '        {\n' + 
+                 '            "chinese_name": "大学中文名",\n' + 
+                 '            "japanese_name": "大学日文名(日文全名，不是英文名)"\n' + 
+                 '        }\n' + 
+                 '    ]\n' + 
+                 '}\n\n' + 
+                 '注意：\n' + 
+                 ' - 标题不要太长，但要带上今年的年份：' + new Date().getFullYear() + '，以提升SEO的水准\n' + 
+                 ' - 请不要对日本留学相关的内容进行任何推测，不要添加任何主观臆断\n' + 
+                 ' - 你撰写的文章中必须使用大学完整的中文名称\n' + 
+                 ' - 不要添加任何主观臆断，不要添加任何原文中不存在的信息（哪怕是一些常识性的信息），不要推测 不要推测 不要推测！\n' + 
+                 ' - 对于重要的数据，请保持原样，不要进行任何修改\n' + 
+                 ' - 文章内容要正面积极\n' + 
+                 ' - 不要在返回中带有```json 或是 ``` 这样的定界符',
+        user_prompt_only: '你是一位专业的日本留学相关的文章的写作优化专家。\n' + 
+                          '你的工作是：\n' + 
+                          '1、根据用户输入的参考内容，重新进行组织和优化，使得文章内容更加轻松、易读\n' + 
+                          '2、必要时根据你所掌握的日本留学相关的准确知识进行适当的补充\n' + 
+                          '3、你所写的内容主要会被应用于留学相关网站的SEO，请务必确保文章内容对SEO友好\n' + 
+                          '4、只有用户输入的参考内容中提到的大学，你才可以在输出中提及\n' + 
+                          '5、记录下在你输出中提到的大学中文名称（全名）列表（大学中文全名、大学日文全名）\n' + 
+                          '6、在文章的末尾添加一个"相关大学"的标题，列出上表中的中文全名\n' + 
+                          '7、表格是很好的信息组织方式，如果需要，可以使用markdown的语法来表示表格\n\n' + 
+                          '请以JSON格式返回结果，格式如下：\n' + 
+                          '{\n' + 
+                          '    "title": "文章标题",\n' + 
+                          '    "content": "文章内容",\n' + 
+                          '    "universities": [\n' + 
+                          '        {\n' + 
+                          '            "chinese_name": "大学中文名",\n' + 
+                          '            "japanese_name": "大学日文名(日文全名，不是英文名)"\n' + 
+                          '        }\n' + 
+                          '    ]\n' + 
+                          '}\n\n' + 
+                          '注意：\n' + 
+                          ' - 请不要对日本留学相关的内容进行任何推测，不要添加任何主观臆断\n' + 
+                          ' - 输入的原文中可能存在一些留学咨询机构的广告（比如请咨询XXX，或是XXX位你提供服务），请不要在你输出的内容中保留任何的广告内容，特别是联系方式\n' + 
+                          ' - 你撰写的文章中必须使用大学完整的中文名称\n' + 
+                          ' - 不要在返回中带有```json 或是 ``` 这样的定界符'
+    };
+
+    // --- Event Listeners ---
+
+    // Mode switching logic
+    modeRadios.forEach(radio => {
+        radio.addEventListener('change', function() {
+            updateUIForMode(this.value);
+        });
+    });
+
+    // University search logic
+    universitySearchInput.addEventListener('keyup', function () {
+        clearTimeout(searchTimeout);
+        const query = this.value.trim();
+        if (query.length < 2) {
+            searchResultsContainer.innerHTML = '';
+            return;
+        }
+        searchTimeout = setTimeout(() => {
+            fetch(`/admin/api/universities/search?q=${encodeURIComponent(query)}`)
+                .then(response => response.json())
+                .then(data => {
+                    searchResultsContainer.innerHTML = '';
+                    if (data.length > 0) {
+                        data.forEach(uni => {
+                            const item = document.createElement('a');
+                            item.href = '#';
+                            item.className = 'list-group-item list-group-item-action';
+                            item.textContent = uni.university_name;
+                            item.dataset.id = uni._id;
+                            item.dataset.name = uni.university_name;
+                            item.addEventListener('click', function (e) {
+                                e.preventDefault();
+                                addSelectedUniversity({ id: this.dataset.id, name: this.dataset.name });
+                                universitySearchInput.value = '';
+                                searchResultsContainer.innerHTML = '';
+                            });
+                            searchResultsContainer.appendChild(item);
+                        });
+                    }
+                });
+        }, 300);
+    });
+
+    // Generate button logic
+    generateBtn.addEventListener('click', function () {
+        this.disabled = true;
+        this.textContent = '正在生成中...';
+        blogTitleInput.value = '';
+        blogContentTextarea.value = '';
+        saveBtn.disabled = true;
+
+        const selectedMode = document.querySelector('input[name="generationMode"]:checked').value;
+        const payload = {
+            mode: selectedMode,
+            university_ids: selectedUniversities.map(u => u.id),
+            user_prompt: userPromptTextarea.value,
+            system_prompt: systemPromptTextarea.value
+        };
+
+        fetch('/admin/api/blog/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(err => { throw new Error(err.error || '生成失败'); });
+            }
+            return response.json();
+        })
+        .then(data => {
+            blogTitleInput.value = data.title || '';
+            blogContentTextarea.value = data.content || '';
+            if (data.title && data.content) {
+                saveBtn.disabled = false;
+            }
+        })
+        .catch(error => {
+            alert('生成失败: ' + error.message);
+            blogContentTextarea.value = `生成时发生错误: ${error.message}\n请检查后台日志。`;
+        })
+        .finally(() => {
+            this.disabled = false;
+            this.textContent = '生成博客内容';
+        });
+    });
+
+    // Save button logic
+    saveBtn.addEventListener('click', function () {
+        const title = blogTitleInput.value.trim();
+        const content = blogContentTextarea.value.trim();
+        if (!title || !content) {
+            alert('文章标题和内容不能为空！');
+            return;
+        }
+        this.disabled = true;
+        this.textContent = '正在保存...';
+        fetch('/admin/api/blog/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: title, content_md: content })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) throw new Error(data.error);
+            alert(data.message || '保存成功！');
+            window.location.href = '/admin/manage/blogs';
+        })
+        .catch(error => {
+            alert('保存失败: ' + error.message);
+            this.disabled = false;
+            this.textContent = '保存文章';
+        });
+    });
+
+    // --- Helper Functions ---
+    function updateUIForMode(mode) {
+        systemPromptTextarea.value = prompts[mode];
+        if (mode === 'user_prompt_only') {
+            universitySelectionArea.style.display = 'none';
+            selectedUniversities = [];
+            renderSelectedUniversities();
+        } else {
+            universitySelectionArea.style.display = 'block';
+        }
+    }
+
+    function addSelectedUniversity(university) {
+        if (!selectedUniversities.some(u => u.id === university.id)) {
+            selectedUniversities.push(university);
+            renderSelectedUniversities();
+        }
+    }
+
+    function removeSelectedUniversity(universityId) {
+        selectedUniversities = selectedUniversities.filter(u => u.id !== universityId);
+        renderSelectedUniversities();
+    }
+
+
+
+    function renderSelectedUniversities() {
+        selectedUniversitiesContainer.innerHTML = '<strong>已选大学:</strong> ';
+        if (selectedUniversities.length === 0) {
+            selectedUniversitiesContainer.innerHTML += '<span class="text-muted">无</span>';
+            return;
+        }
+        selectedUniversities.forEach(uni => {
+            const tag = document.createElement('span');
+            tag.className = 'badge bg-primary me-2 p-2';
+            tag.textContent = uni.name;
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'btn-close btn-close-white ms-2';
+            closeBtn.style.cssText = 'font-size: 0.6em;';
+            closeBtn.onclick = () => removeSelectedUniversity(uni.id);
+            tag.appendChild(closeBtn);
+            selectedUniversitiesContainer.appendChild(tag);
+        });
+    }
+
+    // --- Initial Setup ---
+    updateUIForMode('expand');
+    renderSelectedUniversities();
+});
+</script>
+{% endblock %}
