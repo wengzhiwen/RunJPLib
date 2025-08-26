@@ -64,14 +64,17 @@ This document outlines the design of the MongoDB collections for the RunJPLib pr
 {
   "_id": "<ObjectID>",
   "title": "String", // e.g., "How to apply for a Japanese university"
-  "publication_date": "String", // e.g., "2023-10-26"
-  "created_at": "DateTime", // Timestamp of document creation/update
-  "source_file": "String", // Original file name, e.g., "2023-10-26-how-to-apply.md"
-  "content_md": "String" // The full markdown content of the blog post
+  "url_title": "String", // URL-friendly version of the title, e.g., "how-to-apply-for-a-japanese-university"
+  "publication_date": "String", // e.g., "2023-10-26". Stored as a string for compatibility, but ISODate is recommended.
+  "created_at": "DateTime", // Timestamp of document creation
+  "md_last_updated": "DateTime", // Timestamp of the last update to the markdown content
+  "html_last_updated": "DateTime", // Timestamp of the last HTML generation
+  "content_md": "String", // The full markdown content of the blog post
+  "content_html": "String" // The generated HTML content, for caching (Lazy Rebuild)
 }
 ```
 
 **Indexes:**
 
-- `publication_date`
-- `title`
+- `url_title` (Unique): For efficiently finding specific blog posts by their URL.
+- `publication_date` (Descending): For sorting blog posts to find the most recent ones.

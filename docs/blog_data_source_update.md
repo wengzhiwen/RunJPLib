@@ -1,10 +1,10 @@
-# 博客数据源迁移至 MongoDB
+# 博客数据源迁移与性能优化
 
-本文档阐述了将博客数据处理机制从基于文件的系统重构为基于 MongoDB 的系统的过程。
+本文档阐述了将博客数据处理机制从基于文件的系统重构为基于 MongoDB 的系统，并后续实施性能优化的过程。
 
 ## 1. 变更摘要
 
-获取、显示和管理博客文章的核心逻辑已迁移为使用 MongoDB 作为唯一数据源。此变更消除了博客内容对本地文件系统（`/blogs` 目录）的依赖。
+获取、显示和管理博客文章的核心逻辑已迁移为使用 MongoDB 作为唯一数据源。在此基础上，进一步引入了应用层缓存和延迟渲染机制，以提升性能和响应速度。
 
 ## 2. 迁移原因
 
@@ -13,46 +13,51 @@
 - **性能**: MongoDB 的查询，尤其是在有适当索引的情况下，在过滤和排序方面比文件系统操作性能更高。
 - **逻辑简化**: 移除了与文件监控、缓存和哈希计算相关的复杂且可能脆弱的代码。
 
-## 3. 代码层面变更
+## 3. 性能优化策略
+
+### 优化 A：博客列表缓存
+
+- **问题**: 每次用户请求博客页面时，都需要向数据库查询完整的博客列表以渲染侧边栏，造成不必要的数据库负载。
+- **解决方案**:
+    1.  创建了一个新的缓存管理模块 `utils/cache.py`。
+    2.  使用 `cachetools.TTLCache` 为 `get_all_blogs` 函数的结果提供一个**有效期为5分钟**的内存缓存。
+    3.  这意味着在5分钟内，无论多少次请求，博客列表都只会从数据库读取一次，后续请求将直接从内存中获取，极大提高了侧边栏的加载速度并降低了数据库压力。
+    4.  提供了 `clear_blog_list_cache()` 函数，以便在后台更新博客后可以手动使缓存失效。
+
+### 优化 B：Markdown 延迟渲染 (Lazy Rebuild)
+
+- **问题**: 在每次请求博客详情页时实时将 Markdown 转换为 HTML 是一项 CPU 密集型操作，在高并发下会成为性能瓶颈。
+- **解决方案**:
+    1.  **扩展数据模型**: 建议在 MongoDB 的 `blogs` 集合中增加以下字段：
+        - `content_html` (String): 存储转换后的HTML内容。
+        - `md_last_updated` (DateTime): 记录Markdown原文的最后更新时间。
+        - `html_last_updated` (DateTime): 记录HTML内容的最后生成时间。
+    2.  **实现延迟渲染逻辑**: 在 `get_blog_by_url_title` 函数中：
+        - **优先使用缓存**: 如果 `content_html` 存在且是最新 (`html_last_updated` >= `md_last_updated`)，则直接返回。
+        - **按需重建**: 如果 `content_html` 不存在或已过期，服务器会**当场**为当前用户生成最新的HTML。
+        - **异步更新**: 为了不阻塞当前用户的请求，新生成的HTML会通过一个**后台线程**被写回数据库。这意味着当前用户能立即看到最新内容，而数据库的更新操作不会影响他的响应时间。
+
+## 4. 代码层面变更
+
+### 新增文件: `utils/cache.py`
+- 定义了 `blog_list_cache` (一个TTLCache实例) 和 `clear_blog_list_cache` 函数。
 
 ### 文件: `routes/blog.py`
-
-此文件经过了彻底重构。
-
-- **已移除**:
-    - `BlogCache` 类：该类负责文件监控和内存缓存，已被完全移除。
-    - 所有直接与文件系统交互的函数，如 `get_blog_by_id`, `find_blog_by_title`, `_calculate_files_hash` 等均已删除。
-    - `lru_cache` 装饰器：由于数据库现在是数据源，因此不再需要此装饰器。
-
-- **新增/重写**:
-    - `get_all_blogs()`: 现在查询 MongoDB 中的 `blogs` 集合以获取所有博客文章的列表（id, title, date）。它按 `publication_date` 降序对结果进行排序。
-    - `get_blog_by_url_title(url_title)`: 使用 `url_title` 从 MongoDB 中获取单篇完整的博客文章。它还负责将 Markdown 内容转换为 HTML。
-    - `get_random_blogs_with_summary(count)`: 使用 MongoDB 聚合管道 (`$sample`) 来高效检索指定数量的随机博客文章，用于在首页等页面上显示。
-
-- **路由**:
-    - `blog_list_route()`: 逻辑被简化。现在默认获取并显示最新的博客文章。
-    - `blog_detail_route(url_title)`: 现在完全使用 `get_blog_by_url_title` 来获取数据。基于文件的备用逻辑已被移除。
-
-### 文件: `routes/index.py`
-
-- 此文件无需任何代码更改。现有的对 `get_all_blogs()` 和 `get_random_blogs_with_summary()` 的调用现在无缝地使用了重构后的 `routes/blog.py` 中由 MongoDB 支持的新函数。
-
-## 4. 日志记录
-
-- 在新的 MongoDB 函数（`get_all_blogs`, `get_blog_by_url_title` 等）中添加了 `logging.info` 和 `logging.debug` 语句。
-- 这些日志将清楚地表明数据何时从 MongoDB 获取以及找到了多少条记录，这将有助于手动测试和调试。例如：
-  ```
-  INFO:root:从MongoDB加载所有博客列表...
-  INFO:root:成功从MongoDB加载了 X 篇博客。
-  INFO:root:从MongoDB获取博客: [some-url-title]
-  ```
+- **`get_all_blogs()`**: 添加了 `@cached(blog_list_cache)` 装饰器来启用缓存。
+- **`get_blog_by_url_title()`**:
+    - 实现了上述的“Lazy Rebuild”逻辑。
+    - 在需要重建HTML时，会启动一个 `threading.Thread` 来执行数据库的更新操作。
+- **`update_blog_html_in_db()`**: 新增的辅助函数，用于在后台线程中安全地更新数据库。
 
 ## 5. 如何测试
 
-1.  确保您的 MongoDB 实例正在运行，并且 `RunJPLib` 数据库中包含一个带有有效文档的 `blogs` 集合。
-2.  运行 Flask 应用。
-3.  访问 `/blog` 端点。它应该显示数据库中最新的博客文章。
-4.  点击侧边栏中不同的博客标题。每个标题都应能正确地从数据库加载内容。
-5.  访问主页 (`/`)。页面底部应显示几篇随机的博客摘要。
-6.  检查应用日志，确认其中包含从 MongoDB 获取数据的消息。
-7.  确认功能正常后，可以安全地删除本地的 `/blogs` 目录。
+1.  **数据库准备**: 确保 MongoDB `blogs` 集合中的文档包含 `content_md` 和 `publication_date` 字段。可以手动删除部分文档的 `content_html` 和 `html_last_updated` 字段来测试延迟渲染。
+2.  **测试列表缓存**:
+    - 启动应用并首次访问 `/blog`。观察日志，应看到 "正在从MongoDB重新加载所有博客列表..." 的消息。
+    - 在5分钟内多次刷新或访问不同的博客页面。**不应**再看到上述日志，表明缓存命中。
+    - 等待5分钟后再次访问，应能再次看到该日志。
+3.  **测试延迟渲染**:
+    - 访问一篇 `content_html` 为空或已过期的博客。页面应能正常显示内容。
+    - 观察日志，应看到 "需要生成HTML" 以及 "启动后台HTML更新任务" 的消息。
+    - 检查数据库，该文档的 `content_html` 和 `html_last_updated` 字段应已被填充或更新。
+    - 再次访问该页面，不应再触发重建逻辑。

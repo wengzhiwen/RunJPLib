@@ -2,34 +2,36 @@
 博客路由模块 (MongoDB Version)
 """
 import logging
-import random
 import re
-from datetime import datetime
+from datetime import datetime, timezone
+import threading
 
 import markdown
-from flask import render_template, abort
+from flask import render_template
+from cachetools import cached
+from utils.cache import blog_list_cache
 from utils.mongo_client import get_mongo_client
 
 # --- MongoDB based Blog Functions ---
 
+
+@cached(blog_list_cache)
 def get_all_blogs():
     """
     从MongoDB获取所有博客的列表，用于侧边栏。
+    此函数的结果会被缓存5分钟。
     只获取必要字段以提高效率，并按日期降序排序。
     """
-    logging.info("从MongoDB加载所有博客列表...")
+    logging.info("缓存未命中或已过期，正在从MongoDB重新加载所有博客列表...")
     client = get_mongo_client()
     if not client:
         logging.error("无法连接到MongoDB")
         return []
     db = client.RunJPLib
-    
+
     try:
-        blogs_cursor = db.blogs.find(
-            {},
-            {"title": 1, "url_title": 1, "publication_date": 1, "_id": 0}
-        ).sort("publication_date", -1)
-        
+        blogs_cursor = db.blogs.find({}, {"title": 1, "url_title": 1, "publication_date": 1, "_id": 0}).sort("publication_date", -1)
+
         blog_list = list(blogs_cursor)
         logging.info(f"成功从MongoDB加载了 {len(blog_list)} 篇博客。")
         # 为了模板兼容性，将 publication_date 重命名为 date
@@ -40,9 +42,11 @@ def get_all_blogs():
         logging.error(f"从MongoDB加载博客列表时出错: {e}")
         return []
 
+
 def get_blog_by_url_title(url_title):
     """
     根据URL友好的标题从MongoDB获取单篇博客的完整内容。
+    实现了 Lazy Rebuild 机制来处理Markdown到HTML的转换。
     """
     logging.info(f"从MongoDB获取博客: {url_title}")
     client = get_mongo_client()
@@ -57,13 +61,32 @@ def get_blog_by_url_title(url_title):
             logging.warning(f"在MongoDB中未找到 url_title 为 '{url_title}' 的博客。")
             return None
 
-        # 处理Markdown内容
-        md = markdown.Markdown(
-            extensions=['extra', 'tables', 'fenced_code', 'sane_lists', 'nl2br', 'smarty'],
-            output_format="html5",
-        )
-        html_content = md.convert(blog_doc.get('content_md', ''))
-        
+        html_content = blog_doc.get('content_html')
+        md_last_updated = blog_doc.get('md_last_updated')
+        html_last_updated = blog_doc.get('html_last_updated')
+
+        # Lazy Rebuild 逻辑
+        needs_rebuild = False
+        if not html_content:
+            needs_rebuild = True
+            logging.info(f"博客 '{url_title}'缺少HTML内容，需要生成。")
+        elif md_last_updated and html_last_updated and md_last_updated > html_last_updated:
+            needs_rebuild = True
+            logging.info(f"博客 '{url_title}'的Markdown已更新，需要重新生成HTML。")
+
+        if needs_rebuild:
+            md = markdown.Markdown(
+                extensions=['extra', 'tables', 'fenced_code', 'sane_lists', 'nl2br', 'smarty'],
+                output_format="html5",
+            )
+            html_content = md.convert(blog_doc.get('content_md', ''))
+
+            # 使用后台线程更新数据库，避免阻塞当前请求
+            update_time = datetime.now(timezone.utc)
+            update_task = threading.Thread(target=update_blog_html_in_db, args=(db, blog_doc['_id'], html_content, update_time))
+            update_task.start()
+            logging.info(f"已为博客 '{url_title}' 启动后台HTML更新任务。")
+
         # 构建要在模板中使用的博客对象
         blog = {
             'id': str(blog_doc['_id']),
@@ -78,6 +101,18 @@ def get_blog_by_url_title(url_title):
         logging.error(f"获取博客 '{url_title}' 时出错: {e}")
         return None
 
+
+def update_blog_html_in_db(db, blog_id, html_content, update_time):
+    """
+    一个在后台线程中运行的函数，用于将新生成的HTML内容更新回MongoDB。
+    """
+    try:
+        db.blogs.update_one({'_id': blog_id}, {'$set': {'content_html': html_content, 'html_last_updated': update_time}})
+        logging.info(f"成功将博客 {blog_id} 的HTML内容更新到数据库。")
+    except Exception as e:
+        logging.error(f"后台更新博客 {blog_id} 的HTML时出错: {e}")
+
+
 def get_random_blogs_with_summary(count=3):
     """
     从MongoDB获取指定数量的随机博客，并生成摘要。
@@ -89,33 +124,23 @@ def get_random_blogs_with_summary(count=3):
     db = client.RunJPLib
 
     try:
-        pipeline = [
-            {"$sample": {"size": count}},
-            {"$project": {
-                "title": 1,
-                "url_title": 1,
-                "content_md": 1,
-                "_id": 0
-            }}
-        ]
+        pipeline = [{"$sample": {"size": count}}, {"$project": {"title": 1, "url_title": 1, "content_md": 1, "_id": 0}}]
         random_blogs = list(db.blogs.aggregate(pipeline))
-        
+
         result = []
         for blog in random_blogs:
             text_content = re.sub(r'<[^>]+>', '', blog.get('content_md', ''))
             summary = text_content[:100].strip() + '...' if len(text_content) > 100 else text_content
-            result.append({
-                'title': blog['title'],
-                'url_title': blog['url_title'],
-                'summary': summary
-            })
+            result.append({'title': blog['title'], 'url_title': blog['url_title'], 'summary': summary})
         logging.info(f"成功获取了 {len(result)} 篇随机博客。")
         return result
     except Exception as e:
         logging.error(f"获取随机博客时出错: {e}")
         return []
 
+
 # --- Blog Routes ---
+
 
 def blog_list_route():
     """
@@ -132,7 +157,7 @@ def blog_list_route():
     # 获取最新的一篇博客（列表已按降序排列）
     latest_blog_meta = all_blogs[0]
     logging.debug(f"最新博客: {latest_blog_meta['title']}")
-    
+
     # 获取这篇博客的详细内容
     blog_content = get_blog_by_url_title(latest_blog_meta['url_title'])
     if not blog_content:
@@ -148,13 +173,14 @@ def blog_list_route():
         debug_file_path=None  # 文件路径不再适用
     )
 
+
 def blog_detail_route(url_title):
     """
     博客详情路由处理函数。
     现在只从MongoDB获取数据。
     """
     logging.info(f"请求博客详情页面: {url_title}")
-    
+
     blog = get_blog_by_url_title(url_title)
     all_blogs_for_sidebar = get_all_blogs()
 
