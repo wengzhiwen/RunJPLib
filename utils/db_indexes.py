@@ -24,6 +24,15 @@ def ensure_indexes() -> bool:
             background=True,
         )
         logging.info(f"已确保索引存在: universities.{result_name}")
+
+        # access_logs 复合索引: timestamp 降序 + page_type 升序
+        result_name_access = db.access_logs.create_index(
+            [("timestamp", -1), ("page_type", 1)],
+            name="idx_access_logs_timestamp_page_type",
+            background=True,
+        )
+        logging.info(f"已确保索引存在: access_logs.{result_name_access}")
+
         return True
     except Exception as e:
         logging.error(f"创建索引失败: {e}", exc_info=True)

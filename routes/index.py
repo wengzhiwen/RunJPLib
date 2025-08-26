@@ -1,20 +1,25 @@
 """
 处理首页和大学相关路由的模块 (纯MongoDB版本)
 """
-import csv
-import logging
-import re
-import os
 from collections import defaultdict
+import csv
 from functools import lru_cache
+import logging
+import os
+import re
 
-import markdown
-from flask import render_template, make_response, abort
-from utils.mongo_client import get_mongo_client
 from cachetools import cached
-from utils.cache import TTLCache
+from flask import abort
+from flask import make_response
+from flask import render_template
+import markdown
 
-from .blog import get_random_blogs_with_summary, get_all_blogs as get_all_blogs_for_sitemap
+from utils.analytics import log_access
+from utils.cache import TTLCache
+from utils.mongo_client import get_mongo_client
+
+from .blog import get_all_blogs as get_all_blogs_for_sitemap
+from .blog import get_random_blogs_with_summary
 
 # --- 缓存定义 ---
 university_list_cache = TTLCache(maxsize=1, ttl=600)
@@ -130,6 +135,7 @@ def index_route():
 
 def university_route(name, deadline=None, content="REPORT"):
     """大学详情页路由处理函数 (纯MongoDB)"""
+    log_access('university')
     university_doc = get_university_details(name, deadline)
 
     if not university_doc:

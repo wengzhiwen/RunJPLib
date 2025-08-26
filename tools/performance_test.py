@@ -1,13 +1,15 @@
-import time
-import statistics
 import argparse
+from collections import defaultdict
 from datetime import datetime
 import json
-from typing import List, Dict
+import statistics
 import threading
-from collections import defaultdict
+import time
+from typing import Dict, List
+
 import psutil
 import requests
+
 
 class SystemMonitor:
 

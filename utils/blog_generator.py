@@ -3,16 +3,19 @@ Blog generation utility using AI.
 This module adapts the logic from the reference `blog_writer.py` script,
 supporting multiple generation modes and content formatting.
 """
+from datetime import datetime
+import json
 import logging
 import os
-import json
-from typing import Optional, List, Dict
-from datetime import datetime
+from typing import Dict, List, Optional
 
-import nest_asyncio
+from agents import Agent
+from agents import Runner
+from agents import trace
 from bson.objectid import ObjectId
 from dotenv import load_dotenv
-from agents import Agent, Runner, trace
+import nest_asyncio
+
 from utils.mongo_client import get_mongo_client
 
 # Apply the patch to allow nested asyncio event loops

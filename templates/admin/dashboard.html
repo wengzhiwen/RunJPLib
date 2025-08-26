@@ -5,6 +5,74 @@
 {% block content %}
 <h1>欢迎来到管理后台</h1>
 <p>请从左侧菜单中选择一个选项开始。</p>
+
+<hr>
+
+<h2>数据一览</h2>
+
+{% if error %}
+    <div style="color: red; border: 1px solid red; padding: 15px; border-radius: 5px; background-color: #ffeeee;">
+        <strong>错误:</strong> {{ error }}
+    </div>
+{% elif stats is defined %}
+    <div class="stats-grid">
+        <div class="stat-card">
+            <h3>收录学校总数</h3>
+            <p>{{ stats.university_count | default('N/A') }}</p>
+        </div>
+        <div class="stat-card">
+            <h3>博客文章总数</h3>
+            <p>{{ stats.blog_count | default('N/A') }}</p>
+        </div>
+        <div class="stat-card">
+            <h3>24小时独立访客 (IP)</h3>
+            <p>{{ stats.unique_ip_count_24h | default('N/A') }}</p>
+        </div>
+        <div class="stat-card">
+            <h3>24小时学校页面浏览量</h3>
+            <p>{{ stats.university_views_24h | default('N/A') }}</p>
+        </div>
+        <div class="stat-card">
+            <h3>24小时博客页面浏览量</h3>
+            <p>{{ stats.blog_views_24h | default('N/A') }}</p>
+        </div>
+    </div>
+{% else %}
+    <p>暂无统计数据。</p>
+{% endif %}
+
+<style>
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
+    }
+    .stat-card {
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 20px;
+        text-align: center;
+        background-color: #ffffff;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    }
+    .stat-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    .stat-card h3 {
+        margin: 0 0 10px;
+        font-size: 1.1em;
+        color: #333;
+    }
+    .stat-card p {
+        margin: 0;
+        font-size: 2.2em;
+        font-weight: bold;
+        color: #0056b3;
+    }
+</style>
 {% endblock %}
 
 {% block scripts %}

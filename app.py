@@ -2,24 +2,28 @@
 Flask应用主文件
 """
 import logging
+from logging.handlers import RotatingFileHandler
 import os
 import time
-from logging.handlers import RotatingFileHandler
-
-from dotenv import load_dotenv
-
-from flask import Flask, send_from_directory, abort, make_response
-from werkzeug.routing import BaseConverter
-from flask_jwt_extended import JWTManager
 
 from bson.objectid import ObjectId
+from dotenv import load_dotenv
+from flask import abort
+from flask import Flask
+from flask import make_response
+from flask import send_from_directory
+from flask_jwt_extended import JWTManager
 from gridfs import GridFS
-from utils.mongo_client import get_mongo_client
-from utils.db_indexes import ensure_indexes
+from werkzeug.routing import BaseConverter
 
-from routes.index import index_route, university_route, sitemap_route
-from routes.blog import blog_list_route, blog_detail_route
 from routes.admin import admin_bp
+from routes.blog import blog_detail_route
+from routes.blog import blog_list_route
+from routes.index import index_route
+from routes.index import sitemap_route
+from routes.index import university_route
+from utils.db_indexes import ensure_indexes
+from utils.mongo_client import get_mongo_client
 
 load_dotenv()
 

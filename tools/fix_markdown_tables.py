@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-import sys
 import os
-import shutil
 from pathlib import Path
+import shutil
+import sys
 
 
 def fix_list_format(content):

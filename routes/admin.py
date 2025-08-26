@@ -1,3 +1,5 @@
+from datetime import datetime
+from datetime import timedelta
 from functools import wraps
 import logging
 import os
@@ -16,9 +18,8 @@ from flask_jwt_extended import set_access_cookies
 from flask_jwt_extended import unset_jwt_cookies
 from flask_jwt_extended import verify_jwt_in_request
 
-from utils.mongo_client import get_mongo_client
 from utils.blog_generator import BlogGenerator
-from datetime import datetime
+from utils.mongo_client import get_mongo_client
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin', template_folder='../templates/admin')
 
@@ -53,7 +54,51 @@ def admin_required(fn):
 @admin_bp.route('/')
 @admin_required
 def dashboard():
-    return render_template('dashboard.html')
+    """仪表盘路由，展示统计数据"""
+    client = get_mongo_client()
+    if not client:
+        logging.error("仪表盘无法连接到数据库")
+        return render_template('dashboard.html', error="数据库连接失败")
+
+    db = client.RunJPLib
+    stats = {}
+
+    try:
+        # 1. 收录的学校入学信息数量
+        stats['university_count'] = db.universities.count_documents({})
+
+        # 2. blog数量
+        stats['blog_count'] = db.blogs.count_documents({})
+
+        # 定义24小时的时间范围
+        twenty_four_hours_ago = datetime.utcnow() - timedelta(hours=24)
+        query_24h = {"timestamp": {"$gte": twenty_four_hours_ago}}
+
+        # 3. 最近24小时访问的唯一ip数量
+        # 使用 distinct 方法获取唯一的IP地址列表，然后计算其长度
+        unique_ips = db.access_logs.distinct("ip", query_24h)
+        stats['unique_ip_count_24h'] = len(unique_ips)
+
+        # 4. 最近24小时入学信息页的被访问次数
+        query_uni_24h = {
+            "timestamp": {"$gte": twenty_four_hours_ago},
+            "page_type": "university"
+        }
+        stats['university_views_24h'] = db.access_logs.count_documents(query_uni_24h)
+
+        # 5. 最近24小时blog页的被访问次数
+        query_blog_24h = {
+            "timestamp": {"$gte": twenty_four_hours_ago},
+            "page_type": "blog"
+        }
+        stats['blog_views_24h'] = db.access_logs.count_documents(query_blog_24h)
+
+    except Exception as e:
+        logging.error(f"查询仪表盘统计数据时出错: {e}", exc_info=True)
+        return render_template('dashboard.html', error="查询统计数据时出错")
+
+    return render_template('dashboard.html', stats=stats)
+
 
 
 @admin_bp.route('/login')

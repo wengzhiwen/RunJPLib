@@ -1,14 +1,17 @@
 """
 博客路由模块 (MongoDB Version)
 """
+from datetime import datetime
+from datetime import timezone
 import logging
 import re
-from datetime import datetime, timezone
 import threading
 
-import markdown
-from flask import render_template
 from cachetools import cached
+from flask import render_template
+import markdown
+
+from utils.analytics import log_access
 from utils.cache import blog_list_cache
 from utils.mongo_client import get_mongo_client
 
@@ -179,6 +182,7 @@ def blog_detail_route(url_title):
     博客详情路由处理函数。
     现在只从MongoDB获取数据。
     """
+    log_access('blog')
     logging.info(f"请求博客详情页面: {url_title}")
 
     blog = get_blog_by_url_title(url_title)

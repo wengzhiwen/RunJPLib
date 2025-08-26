@@ -1,7 +1,9 @@
+import logging
 import os
+
 from pymongo import MongoClient
 from pymongo.server_api import ServerApi
-import logging
+
 
 def get_mongo_client():
     """
@@ -26,3 +28,11 @@ def get_mongo_client():
 # You can also initialize a global client instance if you prefer
 # client = get_mongo_client()
 # db = client.get_database("RunJPLib") if client else None
+
+
+def get_db():
+    """
+    Returns a database object from the MongoDB client.
+    """
+    client = get_mongo_client()
+    return client.get_database("RunJPLib") if client else None
