@@ -3,25 +3,25 @@ Flask应用主文件
 """
 import logging
 import os
-import io
 import time
 from logging.handlers import RotatingFileHandler
 
 from dotenv import load_dotenv
 
-from flask import Flask, send_from_directory, abort, send_file, make_response
+from flask import Flask, send_from_directory, abort, make_response
 from werkzeug.routing import BaseConverter
 from flask_jwt_extended import JWTManager
 
 from bson.objectid import ObjectId
+from gridfs import GridFS
 from utils.mongo_client import get_mongo_client
 
 from routes.index import index_route, university_route, sitemap_route, serve_pdf
 from routes.blog import blog_list_route, blog_detail_route
 from routes.admin import admin_bp
 
-
 load_dotenv()
+
 
 # 配置日志
 def setup_logging():
@@ -51,20 +51,19 @@ def setup_logging():
         maxBytes=1024 * 1024,  # 1MB
         backupCount=10,
         encoding='utf-8')
-    file_handler.setLevel(log_level) # 文件日志级别也由env决定
+    file_handler.setLevel(log_level)  # 文件日志级别也由env决定
     file_handler.setFormatter(formatter)
     root_logger.addHandler(file_handler)
 
     # 6. 创建控制台处理器 (根据环境变量设置级别)
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(log_level) # 控制台日志级别由env决定
+    console_handler.setLevel(log_level)  # 控制台日志级别由env决定
     console_handler.setFormatter(formatter)
     root_logger.addHandler(console_handler)
 
     # 7. 将其他库的日志级别设置为INFO，以减少噪音
     logging.getLogger('werkzeug').setLevel(logging.INFO)
     logging.getLogger('flask').setLevel(logging.INFO)
-
 
 
 app = Flask(__name__)
@@ -177,7 +176,7 @@ def get_pdf_by_name_and_deadline(name, deadline):
 
 @app.route('/pdf/resource/<resource_id>')
 def serve_pdf_from_resource(resource_id):
-    """Serve PDF from MongoDB with performance logging."""
+    """Serve PDF from GridFS with performance logging."""
     start_time = time.time()
     logging.debug(f"PDF请求已收到: {resource_id}")
 
@@ -192,22 +191,51 @@ def serve_pdf_from_resource(resource_id):
         abort(404)
 
     query_start_time = time.time()
-    doc = db.universities.find_one({'_id': obj_id}, {'content.original_pdf': 1})
+    # 查找大学文档，获取PDF文件ID
+    doc = db.universities.find_one({'_id': obj_id}, {'content.pdf_file_id': 1, 'university_name': 1, 'deadline': 1})
     query_end_time = time.time()
     logging.debug(f"MongoDB查询耗时: {query_end_time - query_start_time:.4f} 秒")
 
-    if doc and 'content' in doc and 'original_pdf' in doc['content']:
-        pdf_data = doc['content']['original_pdf']
-        
-        response = make_response(pdf_data)
-        response.headers['Content-Type'] = 'application/pdf'
-        response.headers['Content-Disposition'] = f'inline; filename={resource_id}.pdf'
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        
-        send_start_time = time.time()
-        logging.debug(f"准备发送PDF数据，大小: {len(pdf_data) / 1024:.2f} KB。从收到请求到开始发送共耗时: {send_start_time - start_time:.4f} 秒。")
-        return response
-    
+    if doc and 'content' in doc and 'pdf_file_id' in doc['content']:
+        pdf_file_id = doc['content']['pdf_file_id']
+        deadline = doc.get('deadline', 'unknown')
+
+        # 从GridFS获取PDF文件
+        fs = GridFS(db)
+        try:
+            grid_out = fs.get(pdf_file_id)
+
+            # 读取PDF数据
+            pdf_data = grid_out.read()
+
+            response = make_response(pdf_data)
+            response.headers['Content-Type'] = 'application/pdf'
+
+            # 从GridFS元数据获取原始文件名，组装有意义的文件名
+            try:
+                original_filename = grid_out.metadata.get('original_filename', '')
+                if original_filename and original_filename.endswith('.pdf'):
+                    # 使用原始文件名，这是用户友好的名称
+                    safe_filename = original_filename
+                else:
+                    # 如果没有原始文件名，使用大学名和截止日期组装
+                    safe_filename = f"university_{deadline}.pdf"
+            except Exception as e:
+                logging.error(f"获取元数据失败: {e}")
+                # 如果获取元数据失败，使用默认文件名
+                safe_filename = f"university_{deadline}.pdf"
+
+            response.headers['Content-Disposition'] = f'inline; filename="{safe_filename}"'
+            response.headers['Access-Control-Allow-Origin'] = '*'
+
+            send_start_time = time.time()
+            logging.debug(f"准备发送PDF数据，大小: {len(pdf_data) / 1024:.2f} KB。从收到请求到开始发送共耗时: {send_start_time - start_time:.4f} 秒。")
+            return response
+
+        except Exception as e:
+            logging.error(f"从GridFS获取PDF文件失败: {e}")
+            abort(404)
+
     abort(404)
 
 

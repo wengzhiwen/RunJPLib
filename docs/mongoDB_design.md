@@ -17,11 +17,33 @@ This document outlines the design of the MongoDB collections for the RunJPLib pr
   "created_at": "DateTime", // Timestamp of document creation/update
   "source_path": "String", // Original folder path, e.g., "pdf_with_md/東京大学_20241206"
   "content": {
+    "original_md": "String", // Content of the original markdown file
+    "translated_md": "String", // Content of the translated markdown file
     "report_md": "String", // Content of the report markdown file
-    "ocr_full_text": "String", // Content of the full OCR text file
-    "translation_full_text": "String", // Content of the full translation text file
-    "original_pdf": "Binary" // The original PDF file stored as BSON binary data
+    "pdf_file_id": "ObjectId" // Reference to PDF file stored in GridFS
   }
+}
+```
+
+**GridFS Collections:**
+- `fs.files`: Stores PDF file metadata
+- `fs.chunks`: Stores PDF file chunks (automatically managed by GridFS)
+
+**GridFS File Metadata:**
+```json
+{
+  "_id": "<ObjectId>",
+  "filename": "String", // e.g., "550e8400-e29b-41d4-a716-446655440000" (纯UUID)
+  "metadata": {
+    "university_name": "String",
+    "deadline": "String",
+    "upload_time": "DateTime",
+    "original_filename": "String", // 原始文件名，用于显示给用户
+    "migrated_at": "DateTime" // 迁移时间（如果是迁移的数据）
+  },
+  "length": "Number", // File size in bytes
+  "chunkSize": "Number", // Chunk size (default: 255KB)
+  "uploadDate": "DateTime"
 }
 ```
 

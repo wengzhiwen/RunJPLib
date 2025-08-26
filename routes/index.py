@@ -13,8 +13,7 @@ import time
 import markdown
 from flask import render_template, make_response, send_file, abort
 from utils.mongo_client import get_mongo_client
-from bson.objectid import ObjectId
-import io
+
 from .blog import get_all_blogs, get_random_blogs_with_summary
 
 # 缓存更新间隔（秒）
@@ -336,7 +335,7 @@ def get_university_from_mongo(name, deadline=None):
     if not client:
         return None
     db = client.RunJPLib
-    
+
     query = {"university_name": name}
     if deadline:
         # Deadline can be YYYY-MM-DD or YYYYMMDD, mongo stores YYYYMMDD
@@ -345,6 +344,7 @@ def get_university_from_mongo(name, deadline=None):
     # Find one and sort by deadline descending to get the latest if no deadline is specified
     doc = db.universities.find_one(query, sort=[("deadline", -1)])
     return doc
+
 
 def university_route(name, deadline=None, content="REPORT"):
     """大学详情页路由处理函数"""
@@ -361,7 +361,7 @@ def university_route(name, deadline=None, content="REPORT"):
                 extensions=['extra', 'tables', 'fenced_code', 'sane_lists', 'nl2br', 'smarty'],
                 output_format="html5",
             )
-            
+
             current_deadline_formatted = f"{university_doc['deadline'][:4]}-{university_doc['deadline'][4:6]}-{university_doc['deadline'][6:]}"
 
             if content == "REPORT":
@@ -372,7 +372,7 @@ def university_route(name, deadline=None, content="REPORT"):
                                        content=html_content,
                                        current_university=university_doc['university_name'],
                                        current_deadline=current_deadline_formatted,
-                                       debug_file_path=None) # Explicitly None for Mongo data
+                                       debug_file_path=None)  # Explicitly None for Mongo data
 
             elif content == "ORIGINAL":
                 html_content = md.convert(university_doc['content'].get('original_md', ''))
@@ -472,11 +472,9 @@ def serve_pdf(name, deadline):
     """提供PDF文件服务"""
     university = get_university_by_name_and_deadline(name, deadline)
     if not university or not university.pdf_path:
-        from flask import abort
         abort(404)
 
     if not os.path.exists(university.pdf_path):
-        from flask import abort
         abort(404)
 
     return send_file(university.pdf_path, as_attachment=False, mimetype='application/pdf')

@@ -2,12 +2,13 @@ import os
 import glob
 import logging
 import re
+import datetime
+
 from functools import wraps
 from flask import Blueprint, render_template, request, jsonify, redirect, url_for, make_response
 from flask_jwt_extended import create_access_token, get_jwt_identity, unset_jwt_cookies, verify_jwt_in_request
 from utils.mongo_client import get_mongo_client
-from bson.binary import Binary
-import datetime
+from gridfs import GridFS
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin', template_folder='../templates/admin')
 
@@ -16,6 +17,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
 
 def admin_required(fn):
+
     @wraps(fn)
     def wrapper(*args, **kwargs):
         try:
@@ -27,8 +29,9 @@ def admin_required(fn):
         except Exception as e:
             logging.warning(f"JWT 验证失败: {e}")
             return jsonify(msg="Token无效或已过期"), 401
-            
+
         return fn(*args, **kwargs)
+
     return wrapper
 
 
@@ -102,10 +105,10 @@ def upload_university_data():
     for univ_dir in all_subdirs:
         if not os.path.isdir(univ_dir):
             continue
-        
+
         dir_name = os.path.basename(univ_dir)
         logging.info(f"正在处理目录: {dir_name}")
-        
+
         parts = dir_name.split('_')
         if len(parts) != 2:
             logging.warning(f"跳过名称格式错误的目录: {dir_name}")
@@ -132,7 +135,7 @@ def upload_university_data():
             else:
                 logging.warning(f"跳过目录 {dir_name}，因为找不到完全匹配的PDF，且目录中包含 {len(pdf_files)} 个PDF文件。")
                 continue
-        
+
         # Add the found PDF path to the required files dict
         required_files["original_pdf"] = pdf_path
         # --- End of PDF File Handling ---
@@ -145,27 +148,55 @@ def upload_university_data():
 
         doc = {
             "university_name": univ_name,
-            "deadline": deadline, # Use the standardized deadline
+            "deadline": deadline,  # Use the standardized deadline
             "created_at": datetime.datetime.utcnow(),
             "source_path": univ_dir,
             "content": {}
         }
 
         try:
+            # 读取markdown文件内容
             with open(required_files["original_md"], 'r', encoding='utf-8') as f:
                 doc['content']['original_md'] = f.read()
             with open(required_files["translated_md"], 'r', encoding='utf-8') as f:
                 doc['content']['translated_md'] = f.read()
             with open(required_files["report_md"], 'r', encoding='utf-8') as f:
                 doc['content']['report_md'] = f.read()
-            with open(required_files["original_pdf"], 'rb') as f:
-                doc['content']['original_pdf'] = Binary(f.read())
 
-            universities_collection.update_one(
-                {"university_name": univ_name, "deadline": deadline}, # Use standardized deadline
-                {"$set": doc},
-                upsert=True
-            )
+            # 使用GridFS存储PDF文件
+            fs = GridFS(db)
+
+            # 检查是否已存在相同的PDF文件（通过元数据检查）
+            existing_file = fs.find_one({"metadata.university_name": univ_name, "metadata.deadline": deadline})
+
+            if existing_file:
+                # 如果文件已存在，使用现有的file_id
+                doc['content']['pdf_file_id'] = existing_file._id
+                logging.info(f"PDF文件已存在，使用现有文件ID: {existing_file._id}")
+            else:
+                # 上传新的PDF文件到GridFS，使用纯ID作为文件名
+                with open(required_files["original_pdf"], 'rb') as f:
+                    # 先上传文件，然后重命名为纯ID格式
+                    temp_file_id = fs.put(f, filename="temp")
+                    # 删除临时文件，重新上传使用ID作为文件名
+                    fs.delete(temp_file_id)
+
+                    with open(required_files["original_pdf"], 'rb') as f2:
+                        file_id = fs.put(
+                            f2,
+                            filename=str(temp_file_id),
+                            metadata={
+                                "university_name": univ_name,
+                                "deadline": deadline,
+                                "upload_time": datetime.datetime.utcnow(),
+                                "original_filename": f"{dir_name}.pdf"  # 保存原始文件名用于显示
+                            })
+
+                    doc['content']['pdf_file_id'] = file_id
+                    logging.info(f"PDF文件已上传到GridFS，文件ID: {file_id}")
+
+            # 存储文档到universities集合（不包含PDF二进制数据）
+            universities_collection.update_one({"university_name": univ_name, "deadline": deadline}, {"$set": doc}, upsert=True)
             logging.info(f"成功上传/更新大学数据: {dir_name}")
             count += 1
         except Exception as e:
@@ -242,7 +273,8 @@ def upload_blog_data():
 @admin_required
 def get_universities():
     client = get_mongo_client()
-    if not client: return jsonify({"error": "数据库连接失败"}), 500
+    if not client:
+        return jsonify({"error": "数据库连接失败"}), 500
     db = client.RunJPLib
 
     cursor = db.universities.find({}, {"content": 0}).sort("university_name", 1)
@@ -260,7 +292,8 @@ def get_universities():
 def delete_university(item_id):
     from bson.objectid import ObjectId
     client = get_mongo_client()
-    if not client: return jsonify({"error": "数据库连接失败"}), 500
+    if not client:
+        return jsonify({"error": "数据库连接失败"}), 500
     db = client.RunJPLib
 
     db.universities.delete_one({'_id': ObjectId(item_id)})
@@ -271,7 +304,8 @@ def delete_university(item_id):
 @admin_required
 def clear_universities():
     client = get_mongo_client()
-    if not client: return jsonify({"error": "数据库连接失败"}), 500
+    if not client:
+        return jsonify({"error": "数据库连接失败"}), 500
     db = client.RunJPLib
 
     db.universities.delete_many({})
@@ -282,7 +316,8 @@ def clear_universities():
 @admin_required
 def get_blogs():
     client = get_mongo_client()
-    if not client: return jsonify({"error": "数据库连接失败"}), 500
+    if not client:
+        return jsonify({"error": "数据库连接失败"}), 500
     db = client.RunJPLib
 
     cursor = db.blogs.find({}, {"content_md": 0}).sort("publication_date", -1)
@@ -300,7 +335,8 @@ def get_blogs():
 def delete_blog(item_id):
     from bson.objectid import ObjectId
     client = get_mongo_client()
-    if not client: return jsonify({"error": "数据库连接失败"}), 500
+    if not client:
+        return jsonify({"error": "数据库连接失败"}), 500
     db = client.RunJPLib
 
     db.blogs.delete_one({'_id': ObjectId(item_id)})
@@ -311,7 +347,8 @@ def delete_blog(item_id):
 @admin_required
 def clear_blogs():
     client = get_mongo_client()
-    if not client: return jsonify({"error": "数据库连接失败"}), 500
+    if not client:
+        return jsonify({"error": "数据库连接失败"}), 500
     db = client.RunJPLib
 
     db.blogs.delete_many({})
