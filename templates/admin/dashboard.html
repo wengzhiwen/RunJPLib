@@ -5,43 +5,7 @@
 {% block content %}
 <h1>欢迎来到管理后台</h1>
 <p>请从左侧菜单中选择一个选项开始。</p>
-
-<div id="upload" class="mt-5">
-    <h2>数据上传</h2>
-    <p class="text-muted">请注意：此处的上传功能是为方便从旧的文件系统迁移数据而设计的。在所有数据迁移到MongoDB后，这些功能将被移除。</p>
-    
-    <div class="card mt-3">
-        <div class="card-body">
-            <h5 class="card-title">博客数据上传</h5>
-            <p class="card-text">从本地 `blogs` 文件夹上传或更新博客文章到MongoDB。</p>
-            <button class="btn btn-primary" onclick="startBlogUpload()">开始上传博客</button>
-            <p class="mt-2">状态: <span id="blog-upload-status" class="text-muted">空闲</span></p>
-        </div>
-    </div>
-</div>
 {% endblock %}
 
 {% block scripts %}
-<script>
-    async function startBlogUpload() {
-        const status = document.getElementById('blog-upload-status');
-        if (!status) return;
-        status.textContent = '正在上传博客...';
-        status.className = 'text-primary';
-
-        const response = await fetch('/admin/api/upload/blogs', {
-            method: 'POST'
-        });
-        
-        if (response.ok) {
-            const data = await response.json();
-            status.textContent = data.message;
-            status.className = 'text-success';
-        } else {
-            const errorData = await response.json().catch(() => ({ message: '无法解析错误信息' }));
-            status.textContent = `上传失败: ${errorData.message || response.statusText}`;
-            status.className = 'text-danger';
-        }
-    }
-</script>
 {% endblock %}

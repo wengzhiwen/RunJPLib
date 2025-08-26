@@ -1,9 +1,6 @@
-import datetime
 from functools import wraps
-import glob
 import logging
 import os
-import re
 
 from bson.objectid import ObjectId
 from flask import Blueprint
@@ -18,7 +15,6 @@ from flask_jwt_extended import get_jwt_identity
 from flask_jwt_extended import set_access_cookies
 from flask_jwt_extended import unset_jwt_cookies
 from flask_jwt_extended import verify_jwt_in_request
-from gridfs import GridFS
 
 from utils.mongo_client import get_mongo_client
 
@@ -95,63 +91,6 @@ def api_login():
 @admin_required
 def verify_token():
     return jsonify(status="ok")
-
-
-@admin_bp.route('/api/upload/blogs', methods=['POST'])
-@admin_required
-def upload_blog_data():
-    logging.info("开始处理博客数据上传...")
-    client = get_mongo_client()
-    if not client:
-        return jsonify({"message": "无法连接到 MongoDB。"}), 500
-    db = client.RunJPLib
-    blogs_collection = db.blogs
-    count = 0
-    search_path = os.path.join(PROJECT_ROOT, "blogs", "*.md")
-    all_files = glob.glob(search_path)
-    total_files = len(all_files)
-    logging.info(f"在 blogs 目录中找到 {total_files} 个 Markdown 文件。")
-    for md_file in all_files:
-        file_name = os.path.basename(md_file)
-        logging.info(f"正在处理文件: {file_name}")
-        match = re.match(r'(.+)_(\d{14})\.md$', file_name)
-        if not match:
-            logging.warning(f"跳过名称格式错误的博客: {file_name}")
-            continue
-        title_part, date_str = match.groups()
-        try:
-            dt_obj = datetime.datetime.strptime(date_str, '%Y%m%d%H%M%S')
-            pub_date = dt_obj.strftime('%Y-%m-%d')
-        except ValueError:
-            logging.warning(f"跳过日期格式无效的博客: {file_name}")
-            continue
-        title = title_part.replace('_', ' ')
-        url_title = title_part.lower()
-        try:
-            with open(md_file, 'r', encoding='utf-8') as f:
-                content = f.read()
-            update_query = {"url_title": url_title}
-            update_data = {
-                "$set": {
-                    "title": title,
-                    "publication_date": pub_date,
-                    "content_md": content,
-                    "md_last_updated": datetime.datetime.now(datetime.timezone.utc)
-                },
-                "$setOnInsert": {
-                    "created_at": datetime.datetime.now(datetime.timezone.utc)
-                },
-                "$unset": {
-                    "source_file": ""
-                }
-            }
-            blogs_collection.update_one(update_query, update_data, upsert=True)
-            logging.info(f"成功上传/更新博客: {file_name}")
-            count += 1
-        except Exception as e:
-            logging.error(f"处理 {file_name} 时发生错误: {e}")
-    logging.info(f"博客数据上传完成。共处理 {total_files} 个文件，成功上传 {count} 篇博客。")
-    return jsonify({"message": f"成功上传了 {count} 篇博客文章。"})
 
 
 # --- Data Management Pages ---
