@@ -1,0 +1,104 @@
+{% extends "layout.html" %}
+
+{% block title %}大学数据管理{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <h2>大学数据管理</h2>
+    <p>这里是从MongoDB数据库中读取的大学信息列表。</p>
+    
+    <div class="mb-3">
+        <button id="clear-universities-btn" class="btn btn-danger">清空所有大学数据</button>
+    </div>
+
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>大学名称</th>
+                <th>报名截止日期</th>
+                <th>源路径</th>
+                <th>创建时间</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody id="universities-tbody">
+            <!-- Data will be loaded here by JavaScript -->
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const tbody = document.getElementById('universities-tbody');
+    const clearBtn = document.getElementById('clear-universities-btn');
+
+    async function loadUniversities() {
+        const response = await fetch('/admin/api/universities');
+        if (!response.ok) {
+            alert(`加载大学数据失败: ${response.status} ${response.statusText}`);
+            return;
+        }
+
+        const data = await response.json();
+        tbody.innerHTML = ''; // Clear existing data
+        if (data.error) {
+            alert('加载数据时遇到错误: ' + data.error);
+            return;
+        }
+        data.forEach(uni => {
+            const row = `
+                <tr>
+                    <td>${uni.university_name}</td>
+                    <td>${uni.deadline}</td>
+                    <td>${uni.source_path}</td>
+                    <td>${new Date(uni.created_at.$date).toLocaleString()}</td>
+                    <td>
+                        <button class="btn btn-sm btn-danger delete-btn" data-id="${uni._id}">删除</button>
+                    </td>
+                </tr>
+            `;
+            tbody.innerHTML += row;
+        });
+    }
+
+    tbody.addEventListener('click', async function(e) {
+        if (e.target.classList.contains('delete-btn')) {
+            const itemId = e.target.dataset.id;
+            if (confirm('确定要删除这条记录吗？')) {
+                const response = await fetch(`/admin/api/universities/${itemId}`, {
+                    method: 'DELETE'
+                });
+                
+                const data = await response.json();
+                if (!response.ok) {
+                    alert(`删除失败: ${data.message || response.statusText}`);
+                } else {
+                    alert(data.message);
+                }
+                loadUniversities(); // Refresh table
+            }
+        }
+    });
+
+    clearBtn.addEventListener('click', async function() {
+        if (confirm('警告：这将删除所有大学数据，操作不可逆！确定要继续吗？')) {
+            const response = await fetch('/admin/api/universities', {
+                method: 'DELETE'
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+                alert(`清空失败: ${data.message || response.statusText}`);
+            } else {
+                alert(data.message);
+            }
+            loadUniversities(); // Refresh table
+        }
+    });
+
+    loadUniversities();
+});
+</script>
+{% endblock %}

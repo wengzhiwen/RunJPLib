@@ -6,9 +6,10 @@ import datetime
 
 from functools import wraps
 from flask import Blueprint, render_template, request, jsonify, redirect, url_for, make_response
-from flask_jwt_extended import create_access_token, get_jwt_identity, unset_jwt_cookies, verify_jwt_in_request
+from flask_jwt_extended import create_access_token, get_jwt_identity, set_access_cookies, unset_jwt_cookies, verify_jwt_in_request
 from utils.mongo_client import get_mongo_client
 from gridfs import GridFS
+from bson import ObjectId
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin', template_folder='../templates/admin')
 
@@ -17,18 +18,34 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
 
 def admin_required(fn):
+    """
+    A decorator to protect admin routes.
+
+    It differentiates between page loads and API requests.
+    - For page loads, it redirects to the login page on auth failure.
+    - For API requests, it returns a 401 JSON error on auth failure.
+    """
 
     @wraps(fn)
     def wrapper(*args, **kwargs):
+        is_api_request = request.path.startswith('/admin/api/')
         try:
-            verify_jwt_in_request()
+            # Check for token in both headers and cookies
+            verify_jwt_in_request(locations=['headers', 'cookies'])
             identity = get_jwt_identity()
             if identity != 'admin':
-                logging.warning("在Token中发现非管理员身份。")
-                return jsonify(msg="需要管理员权限"), 403
+                logging.warning("A non-admin identity was found in a valid JWT.")
+                if is_api_request:
+                    return jsonify(msg="需要管理员权限"), 403
+                else:
+                    return redirect(url_for('admin.login'))
         except Exception as e:
-            logging.warning(f"JWT 验证失败: {e}")
-            return jsonify(msg="Token无效或已过期"), 401
+            logging.warning(f"JWT validation failed for path '{request.path}': {e}")
+            if is_api_request:
+                return jsonify(msg="Token无效或已过期"), 401
+            else:
+                # For page loads, redirect to login
+                return redirect(url_for('admin.login'))
 
         return fn(*args, **kwargs)
 
@@ -36,6 +53,7 @@ def admin_required(fn):
 
 
 @admin_bp.route('/')
+@admin_required
 def dashboard():
     return render_template('dashboard.html')
 
@@ -55,13 +73,26 @@ def logout():
 @admin_bp.route('/api/login', methods=['POST'])
 def api_login():
     data = request.get_json()
-    access_code = data.get('access_code')
+    if not data:
+        logging.error("登录失败: 请求体不是有效的JSON或Content-Type头缺失。")
+        return jsonify({"msg": "无效的请求格式"}), 400
 
-    if not access_code or access_code != os.getenv('ACCESS_CODE'):
+    access_code = data.get('access_code')
+    env_access_code = os.getenv('ACCESS_CODE')
+
+    if not env_access_code:
+        logging.error("严重安全配置错误: 环境变量 ACCESS_CODE 未设置。")
+        return jsonify({"msg": "服务器配置错误"}), 500
+
+    if not access_code or access_code != env_access_code:
+        logging.warning("收到一个错误的访问码。")
         return jsonify({"msg": "访问码错误"}), 401
 
+    logging.info("管理员登录成功。")
     access_token = create_access_token(identity="admin")
-    return jsonify(access_token=access_token)
+    response = jsonify(msg="登录成功")
+    set_access_cookies(response, access_token)
+    return response
 
 
 @admin_bp.route('/api/verify_token')
@@ -115,17 +146,14 @@ def upload_university_data():
             continue
 
         univ_name, deadline_raw = parts
-        # Standardize the deadline format to YYYYMMDD before saving
         deadline = deadline_raw.replace('-', '').replace('/', '')
 
-        # Define required files for text content first
         required_files = {
             "original_md": os.path.join(univ_dir, f"{dir_name}.md"),
             "translated_md": os.path.join(univ_dir, f"{dir_name}_中文.md"),
             "report_md": os.path.join(univ_dir, f"{dir_name}_report.md"),
         }
 
-        # --- PDF File Handling ---
         pdf_path = os.path.join(univ_dir, f"{dir_name}.pdf")
         if not os.path.exists(pdf_path):
             pdf_files = glob.glob(os.path.join(univ_dir, '*.pdf'))
@@ -136,26 +164,16 @@ def upload_university_data():
                 logging.warning(f"跳过目录 {dir_name}，因为找不到完全匹配的PDF，且目录中包含 {len(pdf_files)} 个PDF文件。")
                 continue
 
-        # Add the found PDF path to the required files dict
         required_files["original_pdf"] = pdf_path
-        # --- End of PDF File Handling ---
 
-        # Now, check for all required files together
         missing_files = [key for key, path in required_files.items() if not os.path.exists(path)]
         if missing_files:
             logging.warning(f"跳过目录 {dir_name}，因为缺少文件: {', '.join(missing_files)}")
             continue
 
-        doc = {
-            "university_name": univ_name,
-            "deadline": deadline,  # Use the standardized deadline
-            "created_at": datetime.datetime.utcnow(),
-            "source_path": univ_dir,
-            "content": {}
-        }
+        doc = {"university_name": univ_name, "deadline": deadline, "source_path": univ_dir, "content": {}}
 
         try:
-            # 读取markdown文件内容
             with open(required_files["original_md"], 'r', encoding='utf-8') as f:
                 doc['content']['original_md'] = f.read()
             with open(required_files["translated_md"], 'r', encoding='utf-8') as f:
@@ -163,40 +181,28 @@ def upload_university_data():
             with open(required_files["report_md"], 'r', encoding='utf-8') as f:
                 doc['content']['report_md'] = f.read()
 
-            # 使用GridFS存储PDF文件
             fs = GridFS(db)
-
-            # 检查是否已存在相同的PDF文件（通过元数据检查）
             existing_file = fs.find_one({"metadata.university_name": univ_name, "metadata.deadline": deadline})
 
             if existing_file:
-                # 如果文件已存在，使用现有的file_id
                 doc['content']['pdf_file_id'] = existing_file._id
                 logging.info(f"PDF文件已存在，使用现有文件ID: {existing_file._id}")
             else:
-                # 上传新的PDF文件到GridFS，使用纯ID作为文件名
                 with open(required_files["original_pdf"], 'rb') as f:
-                    # 先上传文件，然后重命名为纯ID格式
-                    temp_file_id = fs.put(f, filename="temp")
-                    # 删除临时文件，重新上传使用ID作为文件名
-                    fs.delete(temp_file_id)
-
-                    with open(required_files["original_pdf"], 'rb') as f2:
-                        file_id = fs.put(
-                            f2,
-                            filename=str(temp_file_id),
-                            metadata={
-                                "university_name": univ_name,
-                                "deadline": deadline,
-                                "upload_time": datetime.datetime.utcnow(),
-                                "original_filename": f"{dir_name}.pdf"  # 保存原始文件名用于显示
-                            })
-
+                    file_id = fs.put(f,
+                                     filename=str(ObjectId()),
+                                     metadata={
+                                         "university_name": univ_name,
+                                         "deadline": deadline,
+                                         "upload_time": datetime.datetime.now(datetime.timezone.utc),
+                                         "original_filename": os.path.basename(pdf_path)
+                                     })
                     doc['content']['pdf_file_id'] = file_id
                     logging.info(f"PDF文件已上传到GridFS，文件ID: {file_id}")
 
-            # 存储文档到universities集合（不包含PDF二进制数据）
-            universities_collection.update_one({"university_name": univ_name, "deadline": deadline}, {"$set": doc}, upsert=True)
+            update_query = {"university_name": univ_name, "deadline": deadline}
+            update_data = {"$set": doc, "$setOnInsert": {"created_at": datetime.datetime.now(datetime.timezone.utc)}}
+            universities_collection.update_one(update_query, update_data, upsert=True)
             logging.info(f"成功上传/更新大学数据: {dir_name}")
             count += 1
         except Exception as e:
@@ -249,16 +255,23 @@ def upload_blog_data():
             with open(md_file, 'r', encoding='utf-8') as f:
                 content = f.read()
 
-            doc = {
-                "title": title,
-                "url_title": url_title,
-                "publication_date": pub_date,
-                "created_at": datetime.datetime.utcnow(),
-                "source_file": file_name,
-                "content_md": content
+            update_query = {"url_title": url_title}
+            update_data = {
+                "$set": {
+                    "title": title,
+                    "publication_date": pub_date,
+                    "content_md": content,
+                    "md_last_updated": datetime.datetime.now(datetime.timezone.utc)
+                },
+                "$setOnInsert": {
+                    "created_at": datetime.datetime.now(datetime.timezone.utc)
+                },
+                "$unset": {
+                    "source_file": ""
+                }
             }
 
-            blogs_collection.update_one({"source_file": file_name}, {"$set": doc}, upsert=True)
+            blogs_collection.update_one(update_query, update_data, upsert=True)
             logging.info(f"成功上传/更新博客: {file_name}")
             count += 1
         except Exception as e:
@@ -266,6 +279,21 @@ def upload_blog_data():
 
     logging.info(f"博客数据上传完成。共处理 {total_files} 个文件，成功上传 {count} 篇博客。")
     return jsonify({"message": f"成功上传了 {count} 篇博客文章。"})
+
+
+# --- Data Management Pages ---
+@admin_bp.route('/manage/universities')
+@admin_required
+def manage_universities_page():
+    """Renders the university management page."""
+    return render_template('manage_universities.html')
+
+
+@admin_bp.route('/manage/blogs')
+@admin_required
+def manage_blogs_page():
+    """Renders the blog management page."""
+    return render_template('manage_blogs.html')
 
 
 # --- Data Management APIs ---
@@ -290,7 +318,6 @@ def get_universities():
 @admin_bp.route('/api/universities/<item_id>', methods=['DELETE'])
 @admin_required
 def delete_university(item_id):
-    from bson.objectid import ObjectId
     client = get_mongo_client()
     if not client:
         return jsonify({"error": "数据库连接失败"}), 500
@@ -320,11 +347,32 @@ def get_blogs():
         return jsonify({"error": "数据库连接失败"}), 500
     db = client.RunJPLib
 
-    cursor = db.blogs.find({}, {"content_md": 0}).sort("publication_date", -1)
+    cursor = db.blogs.find({}).sort("publication_date", -1)
 
     blogs = []
     for b in cursor:
         b['_id'] = str(b['_id'])
+
+        html_status = "未生成"
+        md_last_updated = b.get('md_last_updated')
+        html_last_updated = b.get('html_last_updated')
+
+        if html_last_updated:
+            if md_last_updated and md_last_updated > html_last_updated:
+                html_status = "待更新"
+            else:
+                html_status = "最新"
+
+        b['html_status'] = html_status
+
+        if md_last_updated:
+            b['md_last_updated'] = md_last_updated.strftime('%Y-%m-%d %H:%M:%S')
+        if html_last_updated:
+            b['html_last_updated'] = html_last_updated.strftime('%Y-%m-%d %H:%M:%S')
+
+        b.pop('content_md', None)
+        b.pop('content_html', None)
+
         blogs.append(b)
 
     return jsonify(blogs)
@@ -333,7 +381,6 @@ def get_blogs():
 @admin_bp.route('/api/blogs/<item_id>', methods=['DELETE'])
 @admin_required
 def delete_blog(item_id):
-    from bson.objectid import ObjectId
     client = get_mongo_client()
     if not client:
         return jsonify({"error": "数据库连接失败"}), 500

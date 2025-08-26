@@ -1,0 +1,121 @@
+{% extends "layout.html" %}
+
+{% block title %}博客数据管理{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <h2>博客数据管理</h2>
+    <p>这里是从MongoDB数据库中读取的博客文章列表。</p>
+
+    <div class="mb-3">
+        <button id="clear-blogs-btn" class="btn btn-danger">清空所有博客数据</button>
+    </div>
+
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>标题</th>
+                <th>发布日期</th>
+                <th>URL Title</th>
+                <th>Markdown 更新时间</th>
+                <th>HTML 更新时间</th>
+                <th>HTML 状态</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody id="blogs-tbody">
+            <!-- Data will be loaded here by JavaScript -->
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const tbody = document.getElementById('blogs-tbody');
+    const clearBtn = document.getElementById('clear-blogs-btn');
+
+    function getStatusBadge(status) {
+        switch(status) {
+            case '最新':
+                return `<span class="badge bg-success">${status}</span>`;
+            case '待更新':
+                return `<span class="badge bg-warning text-dark">${status}</span>`;
+            case '未生成':
+                return `<span class="badge bg-secondary">${status}</span>`;
+            default:
+                return `<span class="badge bg-light text-dark">${status}</span>`;
+        }
+    }
+
+    async function loadBlogs() {
+        const response = await fetch('/admin/api/blogs');
+        if (!response.ok) {
+            alert(`加载博客数据失败: ${response.status} ${response.statusText}`);
+            return;
+        }
+
+        const data = await response.json();
+        tbody.innerHTML = ''; // Clear existing data
+        if (data.error) {
+            alert('加载数据时遇到错误: ' + data.error);
+            return;
+        }
+        data.forEach(blog => {
+            const row = `
+                <tr>
+                    <td>${blog.title}</td>
+                    <td>${blog.publication_date}</td>
+                    <td><a href="/blog/${blog.url_title}" target="_blank" rel="noopener noreferrer">${blog.url_title}</a></td>
+                    <td>${blog.md_last_updated || 'N/A'}</td>
+                    <td>${blog.html_last_updated || 'N/A'}</td>
+                    <td>${getStatusBadge(blog.html_status)}</td>
+                    <td>
+                        <button class="btn btn-sm btn-danger delete-btn" data-id="${blog._id}">删除</button>
+                    </td>
+                </tr>
+            `;
+            tbody.innerHTML += row;
+        });
+    }
+
+    tbody.addEventListener('click', async function(e) {
+        if (e.target.classList.contains('delete-btn')) {
+            const itemId = e.target.dataset.id;
+            if (confirm('确定要删除这篇博客吗？')) {
+                const response = await fetch(`/admin/api/blogs/${itemId}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    alert(`删除失败: ${data.message || response.statusText}`);
+                } else {
+                    alert(data.message);
+                }
+                loadBlogs(); // Refresh table
+            }
+        }
+    });
+
+    clearBtn.addEventListener('click', async function() {
+        if (confirm('警告：这将删除所有博客数据，操作不可逆！确定要继续吗？')) {
+            const response = await fetch('/admin/api/blogs', {
+                method: 'DELETE'
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+                alert(`清空失败: ${data.message || response.statusText}`);
+            } else {
+                alert(data.message);
+            }
+            loadBlogs(); // Refresh table
+        }
+    });
+
+    loadBlogs();
+});
+</script>
+{% endblock %}

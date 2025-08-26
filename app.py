@@ -69,7 +69,11 @@ def setup_logging():
 app = Flask(__name__)
 
 # Setup the Flask-JWT-Extended extension
-app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "super-secret")  # Change this!
+app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "super-secret")
+# Tell Flask-JWT-Extended to expect JWTs in headers and cookies
+app.config["JWT_TOKEN_LOCATION"] = ["headers", "cookies"]
+# Disable CSRF protection for this API-like admin panel for simplicity
+app.config["JWT_COOKIE_CSRF_PROTECT"] = False
 jwt = JWTManager(app)
 
 # Register blueprints
