@@ -1,323 +1,173 @@
 """
-博客路由模块
+博客路由模块 (MongoDB Version)
 """
-import glob
-import os
+import logging
+import random
 import re
 from datetime import datetime
-import random
-from difflib import SequenceMatcher
-from functools import lru_cache
-import hashlib
-import time
-import logging
 
 import markdown
-from flask import render_template
+from flask import render_template, abort
 from utils.mongo_client import get_mongo_client
 
-# 缓存更新间隔（秒）
-CACHE_UPDATE_INTERVAL = 60
-
-
-class BlogCache:
-    """博客缓存管理类"""
-    _instance = None
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-
-    def __init__(self):
-        if not hasattr(self, 'initialized'):
-            self.last_check_time = 0
-            self.files_hash = None
-            self.blogs_list = None
-            self.content_cache = {}
-            self.initialized = True
-
-    @classmethod
-    def get_instance(cls):
-        """获取BlogCache单例"""
-        if cls._instance is None:
-            cls._instance = cls()
-        return cls._instance
-
-    def should_update(self) -> bool:
-        """检查是否需要更新缓存"""
-        current_time = time.time()
-        if current_time - self.last_check_time > CACHE_UPDATE_INTERVAL:
-            new_hash = self._calculate_files_hash()
-            if new_hash != self.files_hash:
-                logging.info("博客缓存需要更新：文件哈希值已改变 (old: %s, new: %s)", self.files_hash, new_hash)
-                self.files_hash = new_hash
-                return True
-            logging.info("博客缓存检查完成：文件未发生变化")
-        return False
-
-    def _calculate_files_hash(self) -> str:
-        """计算所有博客文件的哈希值"""
-        hash_str = ""
-        try:
-            # 首先将目录中所有文件名加入哈希计算
-            all_files = sorted(glob.glob('blogs/*.md'))
-            logging.info("正在计算博客文件哈希值，共发现 %d 个文件", len(all_files))
-            hash_str += ";".join(all_files) + ";"
-
-            # 然后加入每个文件的修改时间
-            for file in all_files:
-                hash_str += f"{file}:{os.path.getmtime(file)};"
-        except OSError as e:
-            logging.error("计算博客文件哈希值时发生错误: %s", str(e))
-        return hashlib.md5(hash_str.encode()).hexdigest()
-
-    def get_content(self, blog_id: str) -> dict:
-        """获取博客内容，优先从缓存获取"""
-        if blog_id in self.content_cache:
-            logging.info("从缓存获取博客内容: %s", blog_id)
-            return self.content_cache[blog_id]
-
-        logging.info("缓存未命中，从文件加载博客内容: %s", blog_id)
-        content = self._load_content(blog_id)
-        if content:
-            self.content_cache[blog_id] = content
-        return content
-
-    def _load_content(self, blog_id: str) -> dict:
-        """从文件加载博客内容"""
-        file_path = f'blogs/{blog_id}.md'
-        if not os.path.exists(file_path) or not os.path.getsize(file_path):
-            return None
-
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                md_content = f.read()
-
-            md = markdown.Markdown(
-                extensions=['extra', 'tables', 'fenced_code', 'sane_lists', 'nl2br', 'smarty'],
-                output_format="html5",
-            )
-            html_content = md.convert(md_content)
-
-            return {'content': html_content, 'text_content': re.sub(r'<[^>]+>', '', html_content)}
-        except Exception:
-            return None
-
-    def clear(self):
-        """清除所有缓存"""
-        logging.info("清除所有博客缓存")
-        self.blogs_list = None
-        self.content_cache.clear()
-        self.last_check_time = 0
-
-
-def get_title_similarity(title1, title2):
-    """计算两个标题的相似度"""
-    return SequenceMatcher(None, title1.lower(), title2.lower()).ratio()
-
+# --- MongoDB based Blog Functions ---
 
 def get_all_blogs():
-    """获取所有博客列表"""
-    cache = BlogCache.get_instance()
-
-    # 检查是否需要更新缓存
-    if cache.blogs_list is None or cache.should_update():
-        blogs = []
-        blog_files = glob.glob('blogs/*.md')
-
-        for file in blog_files:
-            filename = os.path.basename(file)
-            if not os.path.getsize(file):
-                continue
-
-            match = re.match(r'(.+)_(\d{14})\.md$', filename)
-            if not match:
-                continue
-
-            title = match.group(1)
-            date_str = match.group(2)
-            date = datetime.strptime(date_str, '%Y%m%d%H%M%S')
-
-            blogs.append({
-                'id': filename[:-3],
-                'title': title,
-                'url_title': title.replace(' ', '-').lower(),
-                'date': date.strftime('%Y-%m-%d'),
-                'datetime': date,
-                'md_path': file
-            })
-
-        # 按日期降序排序
-        blogs = sorted(blogs, key=lambda x: x['datetime'], reverse=True)
-
-        # 对于相同标题的文章，只保留最新的一篇
-        unique_blogs = {}
-        for blog in blogs:
-            if blog['title'] not in unique_blogs:
-                unique_blogs[blog['title']] = blog
-
-        cache.blogs_list = list(unique_blogs.values())
-        cache.last_check_time = time.time()
-
-    return cache.blogs_list
-
-
-def get_blog_by_id(blog_id):
-    """获取特定博客内容"""
-    file_path = f'blogs/{blog_id}.md'
-    if not os.path.exists(file_path) or not os.path.getsize(file_path):
-        return None
-
-    match = re.match(r'(.+)_(\d{14})$', blog_id)
-    if not match:
-        return None
-
-    title = match.group(1)
-    date_str = match.group(2)
-    date = datetime.strptime(date_str, '%Y%m%d%H%M%S')
-
-    # 从缓存获取内容
-    content_data = BlogCache.get_instance().get_content(blog_id)
-    if not content_data:
-        return None
-
-    return {'id': blog_id, 'title': title, 'url_title': title.replace(' ', '-').lower(), 'date': date.strftime('%Y-%m-%d'), 'content': content_data['content']}
-
-
-@lru_cache(maxsize=20, typed=False)
-def find_blog_by_title(url_title):
-    """根据URL友好的标题查找博客"""
-    # 强制重新检查文件系统状态
-    BlogCache.get_instance().should_update()
-
-    all_blogs = get_all_blogs()
-
-    # 首先尝试精确匹配
-    for blog in all_blogs:
-        if blog['url_title'] == url_title:
-            return get_blog_by_id(blog['id'])
-
-    # 如果没有精确匹配，尝试模糊匹配
-    best_match = None
-    highest_similarity = 0.7  # 设置相似度阈值
-
-    for blog in all_blogs:
-        similarity = get_title_similarity(url_title.replace('-', ' '), blog['title'])
-        if similarity > highest_similarity:
-            highest_similarity = similarity
-            best_match = blog
-
-    if best_match:
-        return get_blog_by_id(best_match['id'])
-
-    return None
-
-
-def get_random_blogs(n=10):
-    """获取n篇随机博客"""
-    all_blogs = get_all_blogs()
-    return random.sample(all_blogs, min(n, len(all_blogs)))
-
-
-def get_random_blogs_with_summary(count=3):
-    """获取指定数量的随机博客，并生成摘要"""
-    all_blogs = get_all_blogs()
-    if not all_blogs:
-        return []
-
-    selected_blogs = random.sample(all_blogs, min(count, len(all_blogs)))
-
-    result = []
-    for blog in selected_blogs:
-        # 从缓存获取内容
-        content_data = BlogCache.get_instance().get_content(blog['id'])
-        if not content_data:
-            continue
-
-        # 生成摘要
-        summary = content_data['text_content'][:100].strip() + '...' if len(content_data['text_content']) > 100 else content_data['text_content']
-
-        result.append({'id': blog['id'], 'title': blog['title'], 'url_title': blog['url_title'], 'summary': summary})
-
-    return result
-
-
-def blog_list_route():
-    """博客列表路由处理函数"""
-    blogs = get_all_blogs()
-
-    # 如果有博客文章，随机选择一篇作为默认显示
-    if blogs:
-        random_blog = random.choice(blogs)
-        return blog_detail_route(random_blog['url_title'])
-
-    # 如果没有博客文章，显示404页面并推荐其他博客
-    recommended_blogs = get_random_blogs(10)
-    return render_template('404.html', mode='blog', blogs=blogs, recommended_blogs=recommended_blogs), 404
-
-
-def get_blog_from_mongo(url_title):
     """
-    Gets blog details from MongoDB by url_title.
+    从MongoDB获取所有博客的列表，用于侧边栏。
+    只获取必要字段以提高效率，并按日期降序排序。
     """
+    logging.info("从MongoDB加载所有博客列表...")
     client = get_mongo_client()
     if not client:
-        return None
+        logging.error("无法连接到MongoDB")
+        return []
     db = client.RunJPLib
     
-    doc = db.blogs.find_one({"url_title": url_title})
-    return doc
+    try:
+        blogs_cursor = db.blogs.find(
+            {},
+            {"title": 1, "url_title": 1, "publication_date": 1, "_id": 0}
+        ).sort("publication_date", -1)
+        
+        blog_list = list(blogs_cursor)
+        logging.info(f"成功从MongoDB加载了 {len(blog_list)} 篇博客。")
+        # 为了模板兼容性，将 publication_date 重命名为 date
+        for blog in blog_list:
+            blog['date'] = blog.get('publication_date')
+        return blog_list
+    except Exception as e:
+        logging.error(f"从MongoDB加载博客列表时出错: {e}")
+        return []
 
-def blog_detail_route(url_title):
-    """博客详情路由处理函数"""
-    debug_file_path = None
-    blog_doc = get_blog_from_mongo(url_title)
-    
-    if blog_doc:
+def get_blog_by_url_title(url_title):
+    """
+    根据URL友好的标题从MongoDB获取单篇博客的完整内容。
+    """
+    logging.info(f"从MongoDB获取博客: {url_title}")
+    client = get_mongo_client()
+    if not client:
+        logging.error(f"无法连接到MongoDB以获取博客: {url_title}")
+        return None
+    db = client.RunJPLib
+
+    try:
+        blog_doc = db.blogs.find_one({"url_title": url_title})
+        if not blog_doc:
+            logging.warning(f"在MongoDB中未找到 url_title 为 '{url_title}' 的博客。")
+            return None
+
+        # 处理Markdown内容
         md = markdown.Markdown(
             extensions=['extra', 'tables', 'fenced_code', 'sane_lists', 'nl2br', 'smarty'],
             output_format="html5",
         )
         html_content = md.convert(blog_doc.get('content_md', ''))
         
+        # 构建要在模板中使用的博客对象
         blog = {
             'id': str(blog_doc['_id']),
             'title': blog_doc['title'],
             'url_title': blog_doc['url_title'],
-            'date': blog_doc['publication_date'],
+            'date': blog_doc.get('publication_date'),
             'content': html_content
         }
+        logging.info(f"成功获取并处理了博客: {url_title}")
+        return blog
+    except Exception as e:
+        logging.error(f"获取博客 '{url_title}' 时出错: {e}")
+        return None
+
+def get_random_blogs_with_summary(count=3):
+    """
+    从MongoDB获取指定数量的随机博客，并生成摘要。
+    """
+    logging.info(f"从MongoDB获取 {count} 篇随机博客（带摘要）...")
+    client = get_mongo_client()
+    if not client:
+        return []
+    db = client.RunJPLib
+
+    try:
+        pipeline = [
+            {"$sample": {"size": count}},
+            {"$project": {
+                "title": 1,
+                "url_title": 1,
+                "content_md": 1,
+                "_id": 0
+            }}
+        ]
+        random_blogs = list(db.blogs.aggregate(pipeline))
         
-        return render_template(
-            'content_blog.html',
-            mode='blog',
-            blogs=get_all_blogs(), # Keep sidebar for now
-            blog=blog,
-            content=html_content,
-            debug_file_path=None # Explicitly None for Mongo data
-        )
+        result = []
+        for blog in random_blogs:
+            text_content = re.sub(r'<[^>]+>', '', blog.get('content_md', ''))
+            summary = text_content[:100].strip() + '...' if len(text_content) > 100 else text_content
+            result.append({
+                'title': blog['title'],
+                'url_title': blog['url_title'],
+                'summary': summary
+            })
+        logging.info(f"成功获取了 {len(result)} 篇随机博客。")
+        return result
+    except Exception as e:
+        logging.error(f"获取随机博客时出错: {e}")
+        return []
 
-    # Fallback to file-based
-    logging.warning(f"在 MongoDB 中未找到博客 '{url_title}'，回退到文件系统。")
-    blog = find_blog_by_title(url_title)
-    if blog is None:
-        # 获取10篇随机推荐的博客
-        recommended_blogs = get_random_blogs(10)
-        return render_template('404.html', mode='blog', blogs=get_all_blogs(), recommended_blogs=recommended_blogs), 404
+# --- Blog Routes ---
 
-    if os.getenv('LOG_LEVEL') == 'DEBUG':
-        # The find_blog_by_title function returns a dict that includes the md_path
-        # We need to get the full blog object again to get the path
-        full_blog_obj = next((b for b in get_all_blogs() if b['id'] == blog['id']), None)
-        if full_blog_obj:
-            debug_file_path = full_blog_obj['md_path']
+def blog_list_route():
+    """
+    博客列表路由处理函数。
+    现在默认显示最新的一篇博客。
+    """
+    logging.info("请求博客列表页面...")
+    all_blogs = get_all_blogs()
+    if not all_blogs:
+        logging.warning("没有找到任何博客，渲染404页面。")
+        # 即使没有博客，也尝试获取一些推荐内容（如果适用）
+        return render_template('404.html', mode='blog', blogs=[], recommended_blogs=[]), 404
+
+    # 获取最新的一篇博客（列表已按降序排列）
+    latest_blog_meta = all_blogs[0]
+    logging.debug(f"最新博客: {latest_blog_meta['title']}")
+    
+    # 获取这篇博客的详细内容
+    blog_content = get_blog_by_url_title(latest_blog_meta['url_title'])
+    if not blog_content:
+        logging.error(f"无法获取最新博客 '{latest_blog_meta['url_title']}' 的内容，渲染404页面。")
+        return render_template('404.html', mode='blog', blogs=all_blogs, recommended_blogs=get_random_blogs_with_summary(10)), 404
 
     return render_template(
         'content_blog.html',
         mode='blog',
-        blogs=get_all_blogs(),
+        blogs=all_blogs,
+        blog=blog_content,
+        content=blog_content['content'],
+        debug_file_path=None  # 文件路径不再适用
+    )
+
+def blog_detail_route(url_title):
+    """
+    博客详情路由处理函数。
+    现在只从MongoDB获取数据。
+    """
+    logging.info(f"请求博客详情页面: {url_title}")
+    
+    blog = get_blog_by_url_title(url_title)
+    all_blogs_for_sidebar = get_all_blogs()
+
+    if blog is None:
+        logging.warning(f"博客 '{url_title}' 未找到，渲染404页面。")
+        recommended_blogs = get_random_blogs_with_summary(10)
+        return render_template('404.html', mode='blog', blogs=all_blogs_for_sidebar, recommended_blogs=recommended_blogs), 404
+
+    return render_template(
+        'content_blog.html',
+        mode='blog',
+        blogs=all_blogs_for_sidebar,
         blog=blog,
         content=blog['content'],
-        debug_file_path=debug_file_path
+        debug_file_path=None  # 文件路径不再适用
     )

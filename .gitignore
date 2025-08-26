@@ -175,6 +175,6 @@ cython_debug/
 
 # Local data
 pdf_with_md*/*
-blogs/*
+blogs*/*
 ref/
 log/*
