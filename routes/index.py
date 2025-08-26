@@ -477,7 +477,15 @@ def serve_pdf(name, deadline):
     if not os.path.exists(university.pdf_path):
         abort(404)
 
-    return send_file(university.pdf_path, as_attachment=False, mimetype='application/pdf')
+    # 使用安全的文件名，避免中文字符编码问题
+    safe_filename = f"university_{name}_{deadline}.pdf"
+    
+    return send_file(
+        university.pdf_path, 
+        as_attachment=False, 
+        mimetype='application/pdf',
+        download_name=safe_filename
+    )
 
 
 def sitemap_route():

@@ -211,19 +211,17 @@ def serve_pdf_from_resource(resource_id):
             response = make_response(pdf_data)
             response.headers['Content-Type'] = 'application/pdf'
 
-            # 从GridFS元数据获取原始文件名，组装有意义的文件名
+            # 使用安全的ASCII文件名，避免HTTP头编码问题，同时确保唯一性
+            # 使用resource_id作为唯一标识，避免缓存冲突
+            safe_filename = f"university_{resource_id}_{deadline}.pdf"
+
+            # 尝试从GridFS元数据获取原始文件名，但仅用于日志记录
             try:
                 original_filename = grid_out.metadata.get('original_filename', '')
-                if original_filename and original_filename.endswith('.pdf'):
-                    # 使用原始文件名，这是用户友好的名称
-                    safe_filename = original_filename
-                else:
-                    # 如果没有原始文件名，使用大学名和截止日期组装
-                    safe_filename = f"university_{deadline}.pdf"
+                if original_filename:
+                    logging.debug(f"原始文件名: {original_filename}")
             except Exception as e:
                 logging.error(f"获取元数据失败: {e}")
-                # 如果获取元数据失败，使用默认文件名
-                safe_filename = f"university_{deadline}.pdf"
 
             response.headers['Content-Disposition'] = f'inline; filename="{safe_filename}"'
             response.headers['Access-Control-Allow-Origin'] = '*'
