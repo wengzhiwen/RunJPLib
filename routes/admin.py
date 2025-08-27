@@ -776,3 +776,44 @@ def restart_task(task_id):
     except Exception as e:
         logging.error(f"[Admin API] 重启任务失败: {e}", exc_info=True)
         return jsonify({"error": "服务器内部错误"}), 500
+
+
+@admin_bp.route("/api/pdf/task/<task_id>/start", methods=["POST"])
+@admin_required
+def start_pending_task(task_id):
+    """手动启动待处理的任务"""
+    try:
+        success = task_manager.start_pending_task(task_id)
+
+        if success:
+            return jsonify({"message": "任务已添加到处理队列"})
+        else:
+            return jsonify({"error": "启动任务失败"}), 500
+
+    except Exception as e:
+        logging.error(f"[Admin API] 启动任务失败: {e}", exc_info=True)
+        return jsonify({"error": "服务器内部错误"}), 500
+
+
+@admin_bp.route("/api/pdf/queue/process", methods=["POST"])
+@admin_required
+def process_queue():
+    """手动触发队列处理"""
+    try:
+        # 恢复待处理任务到队列
+        task_manager.recover_pending_tasks()
+        
+        # 处理队列
+        task_manager.process_queue()
+        
+        # 获取队列状态
+        queue_status = task_manager.get_queue_status()
+        
+        return jsonify({
+            "message": "队列处理已触发",
+            "queue_status": queue_status
+        })
+
+    except Exception as e:
+        logging.error(f"[Admin API] 手动处理队列失败: {e}", exc_info=True)
+        return jsonify({"error": "服务器内部错误"}), 500

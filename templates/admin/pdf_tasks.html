@@ -10,6 +10,9 @@
         <button class="btn btn-outline-secondary" onclick="loadTasks()">
             <i class="bi bi-arrow-clockwise"></i> 刷新
         </button>
+        <button class="btn btn-warning" onclick="processQueue()" title="手动触发队列处理">
+            <i class="bi bi-gear-fill"></i> 处理队列
+        </button>
     </div>
 </div>
 
@@ -230,6 +233,7 @@ function updateTasksTable(tasks) {
                 <td><small>${updatedAt}</small></td>
                 <td>
                     <a href="/admin/pdf/task/${task._id}" class="btn btn-sm btn-outline-primary">详情</a>
+                    ${getTaskActionButtons(task)}
                 </td>
             </tr>
         `;
@@ -257,6 +261,76 @@ function getProgressBarClass(status) {
         'failed': 'bg-danger'
     };
     return classes[status] || 'bg-secondary';
+}
+
+function getTaskActionButtons(task) {
+    let buttons = '';
+    
+    // 对于等待中的任务，显示启动按钮
+    if (task.status === 'pending') {
+        buttons += `
+            <button class="btn btn-sm btn-success ms-1" onclick="startTask('${task._id}')" 
+                    title="启动任务">
+                <i class="bi bi-play-fill"></i> 启动
+            </button>
+        `;
+    }
+    
+    return buttons;
+}
+
+function startTask(taskId) {
+    if (!confirm('确定要启动这个任务吗？')) {
+        return;
+    }
+    
+    fetch(`/admin/api/pdf/task/${taskId}/start`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            alert('启动失败: ' + data.error);
+        } else {
+            alert('任务已添加到处理队列');
+            // 刷新任务列表
+            fetchInitialData();
+        }
+    })
+    .catch(error => {
+        console.error('Error starting task:', error);
+        alert('启动任务时发生错误');
+    });
+}
+
+function processQueue() {
+    if (!confirm('确定要手动触发队列处理吗？这将尝试启动所有等待中的任务。')) {
+        return;
+    }
+    
+    fetch('/admin/api/pdf/queue/process', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            alert('处理队列失败: ' + data.error);
+        } else {
+            alert('队列处理已触发');
+            // 刷新任务列表
+            fetchInitialData();
+        }
+    })
+    .catch(error => {
+        console.error('Error processing queue:', error);
+        alert('处理队列时发生错误');
+    });
 }
 
 function escapeHtml(text) {
