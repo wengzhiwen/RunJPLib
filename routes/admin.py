@@ -163,12 +163,11 @@ def get_universities():
     try:
         logging.debug("[Admin API] Fetching universities from database...")
         projection = {"content": 0, "source_path": 0}
-        cursor = db.universities.find({}, projection).sort("university_name", 1)
+        # 优化排序：按 _id 逆序排列，实现按创建时间倒序
+        cursor = db.universities.find({}, projection).sort("_id", -1)
 
-        # --- 关键修复点：让 jsonify 自动处理 BSON 类型 ---
         universities = list(cursor)
 
-        # ObjectId 仍然需要手动转换为字符串
         for u in universities:
             u['_id'] = str(u['_id'])
 
@@ -180,6 +179,54 @@ def get_universities():
     except Exception as e:
         logging.error(f"[Admin API] An exception occurred while fetching universities: {e}", exc_info=True)
         return jsonify({"error": "服务器内部错误"}), 500
+
+
+@admin_bp.route('/edit_university/<university_id>', methods=['GET', 'POST'])
+@admin_required
+def edit_university(university_id):
+    """
+    编辑大学信息的页面和处理逻辑
+    GET: 显示编辑表单
+    POST: 更新大学信息
+    """
+    client = get_mongo_client()
+    if not client:
+        return render_template('edit_university.html', error="数据库连接失败")
+    db = client.RunJPLib
+
+    try:
+        object_id = ObjectId(university_id)
+    except Exception:
+        return render_template('404.html'), 404
+
+    if request.method == 'POST':
+        university_name = request.form.get('university_name', '').strip()
+        is_premium = request.form.get('is_premium') == 'true'
+        basic_analysis_report = request.form.get('basic_analysis_report', '').strip()
+
+        if not university_name:
+            university = db.universities.find_one({"_id": object_id})
+            return render_template('edit_university.html', university=university, error="大学名称不能为空")
+
+        update_data = {
+            "$set": {
+                "university_name": university_name,
+                "is_premium": is_premium,
+                "content.report_md": basic_analysis_report,
+                "last_modified": datetime.utcnow()
+            }
+        }
+
+        db.universities.update_one({"_id": object_id}, update_data)
+        logging.info(f"University with ID {university_id} was updated.")
+        return redirect(url_for('admin.manage_universities_page'))
+
+    # GET 请求
+    university = db.universities.find_one({"_id": object_id})
+    if not university:
+        return render_template('404.html'), 404
+
+    return render_template('edit_university.html', university=university)
 
 
 @admin_bp.route('/api/universities/<item_id>', methods=['DELETE'])
@@ -470,42 +517,35 @@ def upload_pdf():
         # 检查文件
         if 'pdf_file' not in request.files:
             return jsonify({"error": "没有上传文件"}), 400
-        
+
         file = request.files['pdf_file']
         if file.filename == '':
             return jsonify({"error": "没有选择文件"}), 400
-        
+
         if not file.filename.lower().endswith('.pdf'):
             return jsonify({"error": "只支持PDF文件"}), 400
-        
+
         # 获取大学名称
         university_name = request.form.get('university_name', '').strip()
         if not university_name:
             return jsonify({"error": "请输入大学名称"}), 400
-        
+
         # 保存文件到临时目录
         original_filename = secure_filename(file.filename)
         temp_filename = f"{uuid.uuid4().hex}_{original_filename}"
-        
+
         # 创建临时目录
         temp_dir = os.path.join(tempfile.gettempdir(), 'pdf_uploads')
         os.makedirs(temp_dir, exist_ok=True)
-        
+
         temp_filepath = os.path.join(temp_dir, temp_filename)
         file.save(temp_filepath)
-        
+
         # 创建处理任务
-        task_id = task_manager.create_task(
-            university_name=university_name,
-            pdf_file_path=temp_filepath,
-            original_filename=original_filename
-        )
-        
+        task_id = task_manager.create_task(university_name=university_name, pdf_file_path=temp_filepath, original_filename=original_filename)
+
         if task_id:
-            return jsonify({
-                "message": "任务创建成功",
-                "task_id": task_id
-            })
+            return jsonify({"message": "任务创建成功", "task_id": task_id})
         else:
             # 清理临时文件
             try:
@@ -513,7 +553,7 @@ def upload_pdf():
             except OSError:
                 pass
             return jsonify({"error": "创建任务失败"}), 500
-        
+
     except Exception as e:
         logging.error(f"[Admin API] PDF上传失败: {e}", exc_info=True)
         return jsonify({"error": "服务器内部错误"}), 500
@@ -526,16 +566,16 @@ def get_pdf_tasks():
     try:
         limit = request.args.get('limit', 50, type=int)
         tasks = task_manager.get_all_tasks(limit=limit)
-        
+
         # 格式化时间
         for task in tasks:
             if 'created_at' in task:
                 task['created_at_str'] = task['created_at'].strftime('%Y-%m-%d %H:%M:%S')
             if 'updated_at' in task:
                 task['updated_at_str'] = task['updated_at'].strftime('%Y-%m-%d %H:%M:%S')
-        
+
         return jsonify(tasks)
-        
+
     except Exception as e:
         logging.error(f"[Admin API] 获取PDF任务列表失败: {e}", exc_info=True)
         return jsonify({"error": "服务器内部错误"}), 500
@@ -549,21 +589,21 @@ def get_pdf_task(task_id):
         task = task_manager.get_task_status(task_id)
         if not task:
             return jsonify({"error": "任务不存在"}), 404
-        
+
         # 格式化时间
         if 'created_at' in task:
             task['created_at_str'] = task['created_at'].strftime('%Y-%m-%d %H:%M:%S')
         if 'updated_at' in task:
             task['updated_at_str'] = task['updated_at'].strftime('%Y-%m-%d %H:%M:%S')
-        
+
         # 格式化日志时间
         if 'logs' in task:
             for log in task['logs']:
                 if 'timestamp' in log:
                     log['timestamp_str'] = log['timestamp'].strftime('%H:%M:%S')
-        
+
         return jsonify(task)
-        
+
     except Exception as e:
         logging.error(f"[Admin API] 获取PDF任务详情失败: {e}", exc_info=True)
         return jsonify({"error": "服务器内部错误"}), 500
@@ -587,24 +627,24 @@ def restart_task(task_id):
     """从指定步骤重启任务"""
     try:
         data = request.get_json()
-        
+
         if not data or 'step_name' not in data:
             return jsonify({"error": "缺少步骤名称参数"}), 400
-        
+
         step_name = data['step_name']
-        
+
         # 验证步骤名称
         valid_steps = ["01_pdf2img", "02_ocr", "03_translate", "04_analysis", "05_output"]
         if step_name not in valid_steps:
             return jsonify({"error": f"无效的步骤名称，有效步骤: {valid_steps}"}), 400
-        
+
         success = task_manager.restart_task_from_step(task_id, step_name)
-        
+
         if success:
             return jsonify({"message": f"任务已设置为从步骤 {step_name} 重启"})
         else:
             return jsonify({"error": "重启任务失败"}), 500
-        
+
     except Exception as e:
         logging.error(f"[Admin API] 重启任务失败: {e}", exc_info=True)
         return jsonify({"error": "服务器内部错误"}), 500

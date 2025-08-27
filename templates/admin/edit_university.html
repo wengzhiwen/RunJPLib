@@ -1,0 +1,36 @@
+{% extends "admin/layout.html" %}
+
+{% block title %}编辑招生信息{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>编辑招生信息</h2>
+
+    {% if error %}
+        <div class="alert alert-danger">{{ error }}</div>
+    {% endif %}
+
+    <form method="POST" action="{{ url_for('admin.edit_university', university_id=university._id) }}">
+        <div class="mb-3">
+            <label for="university_name" class="form-label">大学名称</label>
+            <input type="text" class="form-control" id="university_name" name="university_name" value="{{ university.university_name }}" required>
+        </div>
+
+        <div class="mb-3">
+            <label for="is_premium" class="form-label">Premium 用户</label>
+            <select class="form-select" id="is_premium" name="is_premium">
+                <option value="true" {% if university.is_premium %}selected{% endif %}>是</option>
+                <option value="false" {% if not university.is_premium %}selected{% endif %}>否</option>
+            </select>
+        </div>
+
+        <div class="mb-3">
+            <label for="basic_analysis_report" class="form-label">基础分析报告</label>
+            <textarea class="form-control" id="basic_analysis_report" name="basic_analysis_report" rows="15">{{ university.content.report_md or '' }}</textarea>
+        </div>
+        
+        <a href="{{ url_for('admin.manage_universities_page') }}" class="btn btn-secondary">取消</a>
+        <button type="submit" class="btn btn-primary">保存更改</button>
+    </form>
+</div>
+{% endblock %}

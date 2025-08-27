@@ -1,4 +1,4 @@
-{% extends "layout.html" %}
+{% extends "admin/layout.html" %}
 
 {% block title %}招生信息一览{% endblock %}
 
@@ -67,6 +67,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <td>${uni.deadline || 'N/A'}</td>
                         <td>${createdAt}</td>
                         <td>
+                            <a href="/admin/edit_university/${uni._id}" class="btn btn-sm btn-primary">编辑</a>
                             <button class="btn btn-sm btn-danger delete-btn" data-id="${uni._id}">删除</button>
                         </td>
                     </tr>
