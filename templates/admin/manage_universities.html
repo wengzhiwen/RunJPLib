@@ -1,14 +1,14 @@
 {% extends "layout.html" %}
 
-{% block title %}大学数据管理{% endblock %}
+{% block title %}招生信息一览{% endblock %}
 
 {% block content %}
 <div class="container-fluid mt-4">
-    <h2>大学数据管理</h2>
-    <p>这里是从MongoDB数据库中读取的大学信息列表。</p>
+    <h2>招生信息一览</h2>
+    <p>这里是从MongoDB数据库中读取的大学招生信息列表。</p>
     
     <div class="mb-3">
-        <button id="clear-universities-btn" class="btn btn-danger">清空所有大学数据</button>
+        <button id="clear-universities-btn" class="btn btn-danger">清空所有招生信息数据</button>
     </div>
 
     <table class="table table-striped">
@@ -40,7 +40,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (!response.ok) {
                 const errorText = await response.text();
-                alert(`加载大学数据失败: ${response.status} ${response.statusText}\n${errorText}`);
+                alert(`加载招生信息数据失败: ${response.status} ${response.statusText}\n${errorText}`);
                 return;
             }
 
@@ -53,7 +53,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             if (data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="text-center">数据库中没有大学信息。</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center">数据库中没有招生信息。</td></tr>';
                 return;
             }
 
@@ -74,8 +74,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 tbody.innerHTML += row;
             });
         } catch (error) {
-            console.error("加载大学列表时发生严重JS错误:", error);
-            alert(`加载大学列表时发生严重JS错误: ${error.message}`);
+            console.error("加载招生信息列表时发生严重JS错误:", error);
+            alert(`加载招生信息列表时发生严重JS错误: ${error.message}`);
         }
     }
 
@@ -102,7 +102,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     clearBtn.addEventListener('click', async function() {
-        if (confirm('警告：这将删除所有大学数据，操作不可逆！确定要继续吗？')) {
+        if (confirm('警告：这将删除所有招生信息数据，操作不可逆！确定要继续吗？')) {
             try {
                 const response = await fetch('/admin/api/universities', {
                     method: 'DELETE'

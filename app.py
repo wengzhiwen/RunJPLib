@@ -274,6 +274,6 @@ if __name__ == '__main__':
         app_port = 5000
 
     if os.getenv('LOG_LEVEL') == 'DEBUG':
-        app.run(debug=True, host='0.0.0.0', port=app_port)
+        app.run(debug=True, host='0.0.0.0', port=app_port, threaded=True)
     else:
-        app.run(host='0.0.0.0', port=app_port)
+        app.run(host='0.0.0.0', port=app_port, threaded=True)

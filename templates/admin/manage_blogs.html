@@ -1,11 +1,15 @@
 {% extends "layout.html" %}
 
-{% block title %}博客数据管理{% endblock %}
+{% block title %}Blog一览{% endblock %}
 
 {% block content %}
 <div class="container-fluid mt-4">
-    <h2>博客数据管理</h2>
+    <h2>Blog一览</h2>
     <p>这里是从MongoDB数据库中读取的博客文章列表。</p>
+    
+    <div class="mb-3">
+        <a href="{{ url_for('admin.create_blog_page') }}" class="btn btn-primary">新建博客</a>
+    </div>
 
     <div class="mb-3">
         <button id="clear-blogs-btn" class="btn btn-danger">清空所有博客数据</button>

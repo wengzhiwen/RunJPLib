@@ -29,7 +29,7 @@
                     </div>
                     <div class="col-md-6">
                         <p><strong>创建时间:</strong> {{ task.created_at_str if task.created_at_str else task.created_at.strftime('%Y-%m-%d %H:%M:%S') if task.created_at else '-' }}</p>
-                        <p><strong>更新时间:</strong> {{ task.updated_at_str if task.updated_at_str else task.updated_at.strftime('%Y-%m-%d %H:%M:%S') if task.updated_at else '-' }}</p>
+                        <p id="update-time"><strong>更新时间:</strong> {{ task.updated_at_str if task.updated_at_str else task.updated_at.strftime('%Y-%m-%d %H:%M:%S') if task.updated_at else '-' }}</p>
                         {% if task.error_message %}
                         <p><strong>错误信息:</strong> <span class="text-danger">{{ task.error_message }}</span></p>
                         {% endif %}
@@ -77,7 +77,7 @@
                 </div>
                 
                 {% if task.current_step %}
-                <p><strong>当前步骤:</strong> {{ task.current_step }}</p>
+                <p id="current-step"><strong>当前步骤:</strong> {{ task.current_step }}</p>
                 {% endif %}
                 
                 {% if task.status in ['completed', 'failed'] %}
@@ -252,13 +252,22 @@ function updateTaskInfo(task) {
     }
     
     // 更新当前步骤
-    const currentStepElement = document.querySelector('p:has(strong:contains("当前步骤"))');
+    const currentStepElement = document.getElementById('current-step');
     if (currentStepElement && task.current_step) {
         currentStepElement.innerHTML = `<strong>当前步骤:</strong> ${escapeHtml(task.current_step)}`;
+    } else if (task.current_step && !currentStepElement) {
+        // 如果元素不存在但有当前步骤，动态创建
+        const progressCard = document.querySelector('.card-body.text-center');
+        if (progressCard) {
+            const stepElement = document.createElement('p');
+            stepElement.id = 'current-step';
+            stepElement.innerHTML = `<strong>当前步骤:</strong> ${escapeHtml(task.current_step)}`;
+            progressCard.appendChild(stepElement);
+        }
     }
     
     // 更新时间
-    const updateTimeElement = document.querySelector('p:has(strong:contains("更新时间"))');
+    const updateTimeElement = document.getElementById('update-time');
     if (updateTimeElement && task.updated_at_str) {
         updateTimeElement.innerHTML = `<strong>更新时间:</strong> ${escapeHtml(task.updated_at_str)}`;
     }
