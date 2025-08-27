@@ -1,6 +1,7 @@
 """
 Flask应用主文件
 """
+from datetime import timedelta
 import logging
 from logging.handlers import RotatingFileHandler
 import os
@@ -79,6 +80,8 @@ app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "super-secret")
 app.config["JWT_TOKEN_LOCATION"] = ["headers", "cookies"]
 # Disable CSRF protection for this API-like admin panel for simplicity
 app.config["JWT_COOKIE_CSRF_PROTECT"] = False
+# Set access token to expire in 7 days for admin convenience
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(days=7)
 jwt = JWTManager(app)
 
 # Register blueprints

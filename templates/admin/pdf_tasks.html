@@ -1,0 +1,209 @@
+{% extends "layout.html" %}
+
+{% block title %}处理任务{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>PDF处理任务</h1>
+    <div>
+        <a href="{{ url_for('admin.pdf_processor_page') }}" class="btn btn-primary">新建任务</a>
+        <button class="btn btn-outline-secondary" onclick="loadTasks()">
+            <i class="bi bi-arrow-clockwise"></i> 刷新
+        </button>
+    </div>
+</div>
+
+<!-- 队列状态卡片 -->
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="row text-center" id="queue-overview">
+                    <div class="col text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">加载中...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 任务列表 -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="card-title mb-0">任务列表</h5>
+    </div>
+    <div class="card-body">
+        <div id="tasks-container">
+            <div class="text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">加载中...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadTasks();
+    loadQueueStatus();
+    
+    // 每10秒自动刷新
+    setInterval(function() {
+        loadTasks();
+        loadQueueStatus();
+    }, 10000);
+});
+
+function loadQueueStatus() {
+    fetch('/admin/api/pdf/queue_status')
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                document.getElementById('queue-overview').innerHTML = `
+                    <div class="col">
+                        <div class="alert alert-danger" role="alert">
+                            加载失败: ${data.error}
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+            
+            document.getElementById('queue-overview').innerHTML = `
+                <div class="col-3">
+                    <div class="h4 text-primary">${data.running_tasks}</div>
+                    <div class="text-muted">正在处理</div>
+                </div>
+                <div class="col-3">
+                    <div class="h4 text-warning">${data.queued_tasks}</div>
+                    <div class="text-muted">队列等待</div>
+                </div>
+                <div class="col-3">
+                    <div class="h4 text-info">${data.max_concurrent}</div>
+                    <div class="text-muted">最大并发</div>
+                </div>
+                <div class="col-3">
+                    <div class="h4 text-success">${data.running_tasks + data.queued_tasks}</div>
+                    <div class="text-muted">总活跃任务</div>
+                </div>
+            `;
+        })
+        .catch(error => {
+            console.error('Error loading queue status:', error);
+        });
+}
+
+function loadTasks() {
+    fetch('/admin/api/pdf/tasks')
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                document.getElementById('tasks-container').innerHTML = `
+                    <div class="alert alert-danger" role="alert">
+                        加载失败: ${data.error}
+                    </div>
+                `;
+                return;
+            }
+            
+            if (data.length === 0) {
+                document.getElementById('tasks-container').innerHTML = `
+                    <div class="text-center text-muted py-5">
+                        <p>暂无处理任务</p>
+                        <a href="{{ url_for('admin.pdf_processor_page') }}" class="btn btn-primary">创建第一个任务</a>
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = '<div class="table-responsive"><table class="table table-hover">';
+            html += `
+                <thead>
+                    <tr>
+                        <th>大学名称</th>
+                        <th>文件名</th>
+                        <th>状态</th>
+                        <th>当前步骤</th>
+                        <th>进度</th>
+                        <th>创建时间</th>
+                        <th>更新时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+            `;
+            
+            data.forEach(task => {
+                html += `
+                    <tr>
+                        <td><strong>${escapeHtml(task.university_name)}</strong></td>
+                        <td>${escapeHtml(task.original_filename)}</td>
+                        <td>${getStatusBadge(task.status)}</td>
+                        <td>${escapeHtml(task.current_step || '-')}</td>
+                        <td>
+                            <div class="progress" style="width: 100px;">
+                                <div class="progress-bar ${getProgressBarClass(task.status)}" 
+                                     role="progressbar" 
+                                     style="width: ${task.progress || 0}%" 
+                                     aria-valuenow="${task.progress || 0}" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="100">
+                                    ${task.progress || 0}%
+                                </div>
+                            </div>
+                        </td>
+                        <td><small>${task.created_at_str || '-'}</small></td>
+                        <td><small>${task.updated_at_str || '-'}</small></td>
+                        <td>
+                            <a href="/admin/pdf/task/${task._id}" class="btn btn-sm btn-outline-primary">详情</a>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            html += '</tbody></table></div>';
+            document.getElementById('tasks-container').innerHTML = html;
+        })
+        .catch(error => {
+            console.error('Error loading tasks:', error);
+            document.getElementById('tasks-container').innerHTML = `
+                <div class="alert alert-danger" role="alert">
+                    网络错误，无法加载任务列表
+                </div>
+            `;
+        });
+}
+
+function getStatusBadge(status) {
+    const badges = {
+        'pending': '<span class="badge bg-secondary">等待中</span>',
+        'processing': '<span class="badge bg-primary">处理中</span>',
+        'completed': '<span class="badge bg-success">已完成</span>',
+        'failed': '<span class="badge bg-danger">失败</span>'
+    };
+    return badges[status] || '<span class="badge bg-secondary">未知</span>';
+}
+
+function getProgressBarClass(status) {
+    const classes = {
+        'pending': 'bg-secondary',
+        'processing': 'bg-primary',
+        'completed': 'bg-success',
+        'failed': 'bg-danger'
+    };
+    return classes[status] || 'bg-secondary';
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
+}
+</script>
+{% endblock %}

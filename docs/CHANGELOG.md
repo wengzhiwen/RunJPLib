@@ -2,6 +2,50 @@
 
 本文档记录了RunJPLib项目的重要更改，包括新功能、架构更新、安全改进等。
 
+## [2025-01-13] - 新增大学招生信息处理器
+
+### 🚀 新功能
+- **大学招生信息处理器**: 新增完整的PDF处理功能
+  - 支持PDF文件上传和自动处理
+  - 基于Buffalo工作流程管理器的五步处理流程：
+    1. PDF转图片 (pdf2image)
+    2. OCR识别 (OpenAI Vision)
+    3. 翻译 (日文转中文)
+    4. 分析 (生成招生信息报告)
+    5. 发布 (保存到MongoDB)
+  - Admin后台管理界面，包括：
+    - PDF处理器页面 (`/admin/pdf/processor`)
+    - 任务列表页面 (`/admin/pdf/tasks`)
+    - 任务详情页面 (`/admin/pdf/task/<task_id>`)
+  - 异步任务队列系统，支持任务并发管理
+  - 实时任务进度跟踪和日志查看
+  - 自动清理7天前的过期任务
+  - **任务重启功能**: 支持从任意步骤重启已完成或失败的任务
+
+### 🔧 技术改进
+- 新增MongoDB `processing_tasks` 集合及相关索引
+- 添加任务管理器 (`TaskManager`) 支持异步处理
+- 集成OCR、翻译、分析工具到主项目
+- 支持临时文件管理和自动清理
+- 新增相关依赖：`pdf2image`, `pandas`, `natsort`, `tqdm`
+
+### 📋 API变更
+- 新增Admin API端点：
+  - `POST /admin/api/pdf/upload` - 上传PDF并创建任务
+  - `GET /admin/api/pdf/tasks` - 获取任务列表
+  - `GET /admin/api/pdf/task/<task_id>` - 获取任务详情
+  - `GET /admin/api/pdf/queue_status` - 获取队列状态
+  - `POST /admin/api/pdf/task/<task_id>/restart` - 从指定步骤重启任务
+
+### ⚙️ 环境变量要求
+- `PDF_PROCESSOR_TEMP_DIR` - PDF处理临时目录 (可选，默认: temp/pdf_processing)
+- `OCR_DPI` - OCR图片DPI (可选，默认: 150)
+- `OCR_MODEL_NAME` - OCR模型名称 (可选，默认: gpt-4o-mini)
+- `OPENAI_TRANSLATE_MODEL` - 翻译模型名称 (可选，默认: gpt-4o-mini)
+- `OPENAI_ANALYSIS_MODEL` - 分析模型名称 (可选，默认: gpt-4o-mini)
+- `TRANSLATE_TERMS_FILE` - 翻译术语文件路径 (可选)
+- `ANALYSIS_QUESTIONS_FILE` - 分析问题文件路径 (可选)
+
 ## [2025-08-26] - 为Admin后台增加博客编辑功能
 
 ### 🚀 新功能

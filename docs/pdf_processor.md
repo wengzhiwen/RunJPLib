@@ -1,0 +1,220 @@
+# 大学招生信息处理器
+
+## 概述
+
+大学招生信息处理器是RunJPLib的一个核心功能，用于自动处理大学招生PDF文档，生成结构化的招生信息数据。该功能通过Admin后台提供完整的管理界面，支持文件上传、异步处理、进度跟踪等功能。
+
+## 主要功能
+
+### 自动化处理流程
+
+系统采用基于Buffalo工作流程管理器的五步处理流程：
+
+1. **PDF转图片** - 将上传的PDF文档转换为高清图片
+2. **OCR识别** - 使用OpenAI Vision模型识别图片中的文字内容
+3. **翻译** - 将识别的日语内容翻译为中文
+4. **分析** - 分析招生信息内容，生成结构化报告
+5. **发布** - 将处理结果保存到MongoDB数据库并对外发布
+
+### 任务管理系统
+
+- **异步处理**: 支持多任务并发处理（目前限制为1个任务同时运行）
+- **任务队列**: 自动管理任务队列，按提交顺序处理
+- **进度跟踪**: 实时显示任务处理进度和当前步骤
+- **日志记录**: 详细记录每个处理步骤的日志信息
+- **自动清理**: 系统自动清理7天前的过期任务记录
+
+## 使用方法
+
+### 1. 访问PDF处理器
+
+在Admin后台中，点击左侧菜单的"PDF处理器"进入上传页面：
+- 路径：`/admin/pdf/processor`
+
+### 2. 上传PDF文件
+
+1. 输入准确的大学名称（如：東京大学）
+2. 选择要处理的PDF文件（支持最大50MB）
+3. 点击"开始处理"按钮
+
+### 3. 监控处理进度
+
+任务创建成功后，可以通过以下方式查看进度：
+
+#### 任务列表页面
+- 路径：`/admin/pdf/tasks`
+- 显示所有任务的概览信息
+- 支持自动刷新（每10秒）
+
+#### 任务详情页面
+- 路径：`/admin/pdf/task/<task_id>`
+- 显示详细的处理日志
+- 实时更新任务状态
+- 支持自动刷新开关
+
+### 4. 查看处理结果
+
+处理完成后，招生信息数据将自动保存到MongoDB数据库中，包括：
+- 原始日语markdown文档
+- 中文翻译版本
+- 结构化分析报告
+- PDF文件（存储在GridFS中）
+
+### 5. 重启任务功能
+
+对于已完成或失败的任务，系统支持从任意步骤重启：
+
+1. 在任务详情页面，点击"从步骤重启"下拉菜单
+2. 选择要重启的步骤：
+   - 从PDF转图片重启 - 重新开始整个流程
+   - 从OCR识别重启 - 跳过PDF转图片，使用已有图片
+   - 从翻译重启 - 使用已有的OCR结果
+   - 从分析重启 - 使用已有的翻译结果
+   - 从输出重启 - 使用已有的分析结果
+
+这个功能特别有用于：
+- 某个步骤失败后的快速重试
+- 调整分析参数后重新分析
+- 修复输出问题后重新发布
+
+## 环境配置
+
+### 必需的环境变量
+
+```bash
+# OpenAI API配置
+OPENAI_API_KEY=your_openai_api_key
+
+# 数据库配置
+MONGODB_URI=your_mongodb_connection_string
+```
+
+### 可选的环境变量
+
+```bash
+# PDF处理器配置
+PDF_PROCESSOR_TEMP_DIR=temp/pdf_processing    # 临时文件目录
+OCR_DPI=150                                    # OCR图片DPI
+OCR_MODEL_NAME=gpt-4o-mini                     # OCR模型
+OPENAI_TRANSLATE_MODEL=gpt-4o-mini             # 翻译模型
+OPENAI_ANALYSIS_MODEL=gpt-4o-mini              # 分析模型
+
+# 自定义配置文件
+TRANSLATE_TERMS_FILE=path/to/translate_terms.txt      # 翻译术语文件
+ANALYSIS_QUESTIONS_FILE=path/to/analysis_questions.txt # 分析问题文件
+```
+
+## 技术架构
+
+### 核心组件
+
+1. **任务管理器** (`TaskManager`)
+   - 单例模式，管理所有PDF处理任务
+   - 支持任务队列和并发控制
+   - 定期清理过期任务
+
+2. **PDF处理器** (`PDFProcessor`)
+   - 基于Buffalo工作流程管理器
+   - 集成OCR、翻译、分析工具
+   - 支持临时文件管理
+
+3. **处理工具类**
+   - `OCRTool`: OpenAI Vision OCR识别
+   - `TranslateTool`: 日语到中文翻译
+   - `AnalysisTool`: 招生信息分析
+
+### 数据存储
+
+- **MongoDB集合**: `processing_tasks`
+- **GridFS**: 存储PDF文件
+- **索引**: 支持按时间、状态查询
+
+## API接口
+
+### 上传PDF文件
+```http
+POST /admin/api/pdf/upload
+Content-Type: multipart/form-data
+
+university_name: 大学名称
+pdf_file: PDF文件
+```
+
+### 获取任务列表
+```http
+GET /admin/api/pdf/tasks?limit=50
+```
+
+### 获取任务详情
+```http
+GET /admin/api/pdf/task/{task_id}
+```
+
+### 获取队列状态
+```http
+GET /admin/api/pdf/queue_status
+```
+
+### 重启任务
+```http
+POST /admin/api/pdf/task/{task_id}/restart
+Content-Type: application/json
+
+{
+  "step_name": "02_ocr"
+}
+```
+
+支持的步骤名称：
+- `01_pdf2img` - PDF转图片
+- `02_ocr` - OCR识别  
+- `03_translate` - 翻译
+- `04_analysis` - 分析
+- `05_output` - 输出
+
+## 故障排除
+
+### 常见问题
+
+1. **任务处理失败**
+   - 检查OpenAI API密钥是否正确
+   - 确认PDF文件格式和大小符合要求
+   - 查看任务详情页面的错误日志
+
+2. **上传失败**
+   - 检查文件大小（建议不超过50MB）
+   - 确认文件格式为PDF
+   - 检查网络连接
+
+3. **任务卡住不动**
+   - 检查任务队列状态
+   - 查看服务器日志
+   - 可能需要重启应用
+
+### 日志查看
+
+- **系统日志**: `log/PDFProcessor_YYYYMMDD.log`
+- **任务日志**: 在任务详情页面查看
+- **应用日志**: `log/app.log`
+
+## 性能优化建议
+
+1. **文件大小**: 建议PDF文件不超过20MB以获得最佳性能
+2. **并发控制**: 当前限制为1个任务并发，可根据服务器性能调整
+3. **临时文件**: 系统会自动清理临时文件，无需手动操作
+4. **数据库**: 定期清理过期任务记录以保持性能
+
+## 扩展开发
+
+如需扩展功能，主要涉及以下文件：
+- `utils/pdf_processor.py` - 核心处理逻辑
+- `utils/task_manager.py` - 任务管理
+- `routes/admin.py` - API接口
+- `templates/admin/` - 前端界面
+
+## 安全考虑
+
+- 所有API接口都需要管理员权限
+- 上传的文件存储在安全的临时目录
+- 敏感信息通过环境变量配置
+- 自动清理临时文件和过期数据

@@ -33,6 +33,22 @@ def ensure_indexes() -> bool:
         )
         logging.info(f"已确保索引存在: access_logs.{result_name_access}")
 
+        # processing_tasks 索引: created_at 降序（用于按创建时间排序）
+        result_name_tasks = db.processing_tasks.create_index(
+            [("created_at", -1)],
+            name="idx_processing_tasks_created_at_desc",
+            background=True,
+        )
+        logging.info(f"已确保索引存在: processing_tasks.{result_name_tasks}")
+
+        # processing_tasks 索引: status（用于按状态查询）
+        result_name_tasks_status = db.processing_tasks.create_index(
+            [("status", 1)],
+            name="idx_processing_tasks_status",
+            background=True,
+        )
+        logging.info(f"已确保索引存在: processing_tasks.{result_name_tasks_status}")
+
         return True
     except Exception as e:
         logging.error(f"创建索引失败: {e}", exc_info=True)

@@ -1,0 +1,253 @@
+{% extends "layout.html" %}
+
+{% block title %}PDF处理器{% endblock %}
+
+{% block content %}
+<h1>大学招生信息处理器</h1>
+<p>上传PDF文件，系统将自动进行OCR识别、翻译和分析，最终生成招生信息数据并发布。</p>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5>上传PDF文件</h5>
+            </div>
+            <div class="card-body">
+                <form id="uploadForm" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="university_name" class="form-label">大学名称 *</label>
+                        <input type="text" class="form-control" id="university_name" name="university_name" required
+                               placeholder="请输入大学名称，例如：東京大学">
+                        <div class="form-text">请使用官方准确的大学名称</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="pdf_file" class="form-label">PDF文件 *</label>
+                        <input type="file" class="form-control" id="pdf_file" name="pdf_file" accept=".pdf" required>
+                        <div class="form-text">支持PDF格式，建议文件大小不超过50MB</div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary" id="uploadBtn">
+                        <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                        开始处理
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5>处理队列状态</h5>
+            </div>
+            <div class="card-body">
+                <div id="queue-status">
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">加载中...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5>处理流程说明</h5>
+            </div>
+            <div class="card-body">
+                <ol class="list-group list-group-numbered">
+                    <li class="list-group-item d-flex justify-content-between align-items-start">
+                        <div class="ms-2 me-auto">
+                            <div class="fw-bold">PDF转图片</div>
+                            将PDF文档转换为图片格式
+                        </div>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-start">
+                        <div class="ms-2 me-auto">
+                            <div class="fw-bold">OCR识别</div>
+                            使用AI技术识别图片中的文字
+                        </div>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-start">
+                        <div class="ms-2 me-auto">
+                            <div class="fw-bold">翻译</div>
+                            将日语内容翻译为中文
+                        </div>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-start">
+                        <div class="ms-2 me-auto">
+                            <div class="fw-bold">分析</div>
+                            分析招生信息并生成报告
+                        </div>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-start">
+                        <div class="ms-2 me-auto">
+                            <div class="fw-bold">发布</div>
+                            保存到数据库并对外发布
+                        </div>
+                    </li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 成功/错误提示模态框 -->
+<div class="modal fade" id="resultModal" tabindex="-1" aria-labelledby="resultModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="resultModalLabel">处理结果</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="resultModalBody">
+                <!-- 内容将由JavaScript填充 -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                <a href="{{ url_for('admin.pdf_tasks_page') }}" class="btn btn-primary" id="viewTasksBtn" style="display: none;">查看任务列表</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 加载队列状态
+    loadQueueStatus();
+    setInterval(loadQueueStatus, 5000); // 每5秒刷新一次
+    
+    // 处理表单提交
+    document.getElementById('uploadForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        uploadPDF();
+    });
+});
+
+function loadQueueStatus() {
+    fetch('/admin/api/pdf/queue_status')
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                document.getElementById('queue-status').innerHTML = `
+                    <div class="alert alert-danger" role="alert">
+                        加载失败: ${data.error}
+                    </div>
+                `;
+                return;
+            }
+            
+            document.getElementById('queue-status').innerHTML = `
+                <div class="row text-center">
+                    <div class="col-4">
+                        <div class="h4 text-primary">${data.running_tasks}</div>
+                        <div class="small text-muted">处理中</div>
+                    </div>
+                    <div class="col-4">
+                        <div class="h4 text-warning">${data.queued_tasks}</div>
+                        <div class="small text-muted">队列中</div>
+                    </div>
+                    <div class="col-4">
+                        <div class="h4 text-info">${data.max_concurrent}</div>
+                        <div class="small text-muted">最大并发</div>
+                    </div>
+                </div>
+            `;
+        })
+        .catch(error => {
+            console.error('Error loading queue status:', error);
+            document.getElementById('queue-status').innerHTML = `
+                <div class="alert alert-danger" role="alert">
+                    网络错误，无法加载状态
+                </div>
+            `;
+        });
+}
+
+function uploadPDF() {
+    const form = document.getElementById('uploadForm');
+    const uploadBtn = document.getElementById('uploadBtn');
+    
+    // 验证表单
+    const universityName = document.getElementById('university_name').value.trim();
+    const pdfFile = document.getElementById('pdf_file').files[0];
+    
+    if (!universityName) {
+        showResult('错误', '请输入大学名称', 'error');
+        return;
+    }
+    
+    if (!pdfFile) {
+        showResult('错误', '请选择PDF文件', 'error');
+        return;
+    }
+    
+    if (!pdfFile.name.toLowerCase().endsWith('.pdf')) {
+        showResult('错误', '只支持PDF文件格式', 'error');
+        return;
+    }
+    
+    // 禁用按钮并显示加载状态
+    uploadBtn.disabled = true;
+    uploadBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 处理中...';
+    
+    // 创建FormData对象
+    const formData = new FormData(form);
+    
+    // 上传文件
+    fetch('/admin/api/pdf/upload', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            showResult('上传失败', data.error, 'error');
+        } else {
+            showResult('任务创建成功', `任务ID: ${data.task_id}<br>文件已开始处理，请在任务列表中查看进度。`, 'success', data.task_id);
+            // 重置表单
+            form.reset();
+            // 刷新队列状态
+            loadQueueStatus();
+        }
+    })
+    .catch(error => {
+        console.error('Error uploading PDF:', error);
+        showResult('上传失败', '网络错误，请稍后重试', 'error');
+    })
+    .finally(() => {
+        // 恢复按钮状态
+        uploadBtn.disabled = false;
+        uploadBtn.innerHTML = '开始处理';
+    });
+}
+
+function showResult(title, message, type, taskId = null) {
+    const modal = new bootstrap.Modal(document.getElementById('resultModal'));
+    const modalTitle = document.getElementById('resultModalLabel');
+    const modalBody = document.getElementById('resultModalBody');
+    const viewTasksBtn = document.getElementById('viewTasksBtn');
+    
+    modalTitle.textContent = title;
+    
+    const alertClass = type === 'success' ? 'alert-success' : 'alert-danger';
+    modalBody.innerHTML = `
+        <div class="alert ${alertClass}" role="alert">
+            ${message}
+        </div>
+    `;
+    
+    if (type === 'success' && taskId) {
+        viewTasksBtn.style.display = 'inline-block';
+    } else {
+        viewTasksBtn.style.display = 'none';
+    }
+    
+    modal.show();
+}
+</script>
+{% endblock %}

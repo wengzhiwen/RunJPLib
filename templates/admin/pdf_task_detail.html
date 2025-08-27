@@ -1,0 +1,385 @@
+{% extends "layout.html" %}
+
+{% block title %}任务详情{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>任务详情</h1>
+    <div>
+        <a href="{{ url_for('admin.pdf_tasks_page') }}" class="btn btn-outline-secondary">返回列表</a>
+        <button class="btn btn-outline-primary" onclick="loadTaskDetail()">
+            <i class="bi bi-arrow-clockwise"></i> 刷新
+        </button>
+    </div>
+</div>
+
+<!-- 任务基本信息 -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5>基本信息</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>任务ID:</strong> {{ task._id }}</p>
+                        <p><strong>大学名称:</strong> {{ task.university_name }}</p>
+                        <p><strong>文件名:</strong> {{ task.original_filename }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>创建时间:</strong> {{ task.created_at_str if task.created_at_str else task.created_at.strftime('%Y-%m-%d %H:%M:%S') if task.created_at else '-' }}</p>
+                        <p><strong>更新时间:</strong> {{ task.updated_at_str if task.updated_at_str else task.updated_at.strftime('%Y-%m-%d %H:%M:%S') if task.updated_at else '-' }}</p>
+                        {% if task.error_message %}
+                        <p><strong>错误信息:</strong> <span class="text-danger">{{ task.error_message }}</span></p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5>处理状态</h5>
+            </div>
+            <div class="card-body text-center">
+                <div class="mb-3">
+                    {% if task.status == 'pending' %}
+                        <span class="badge bg-secondary fs-6">等待中</span>
+                    {% elif task.status == 'processing' %}
+                        <span class="badge bg-primary fs-6">处理中</span>
+                    {% elif task.status == 'completed' %}
+                        <span class="badge bg-success fs-6">已完成</span>
+                    {% elif task.status == 'failed' %}
+                        <span class="badge bg-danger fs-6">失败</span>
+                    {% else %}
+                        <span class="badge bg-secondary fs-6">未知</span>
+                    {% endif %}
+                </div>
+                
+                <div class="mb-3">
+                    <div class="progress">
+                        <div class="progress-bar 
+                            {% if task.status == 'completed' %}bg-success
+                            {% elif task.status == 'failed' %}bg-danger
+                            {% elif task.status == 'processing' %}bg-primary
+                            {% else %}bg-secondary{% endif %}" 
+                             role="progressbar" 
+                             style="width: {{ task.progress or 0 }}%" 
+                             aria-valuenow="{{ task.progress or 0 }}" 
+                             aria-valuemin="0" 
+                             aria-valuemax="100">
+                            {{ task.progress or 0 }}%
+                        </div>
+                    </div>
+                </div>
+                
+                {% if task.current_step %}
+                <p><strong>当前步骤:</strong> {{ task.current_step }}</p>
+                {% endif %}
+                
+                {% if task.status in ['completed', 'failed'] %}
+                <div class="mt-3">
+                    <div class="dropdown">
+                        <button class="btn btn-warning btn-sm dropdown-toggle" type="button" id="restartDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            从步骤重启
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="restartDropdown">
+                            <li><a class="dropdown-item" href="#" onclick="restartFromStep('01_pdf2img')">从PDF转图片重启</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="restartFromStep('02_ocr')">从OCR识别重启</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="restartFromStep('03_translate')">从翻译重启</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="restartFromStep('04_analysis')">从分析重启</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="restartFromStep('05_output')">从输出重启</a></li>
+                        </ul>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 处理日志 -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5>处理日志</h5>
+                <button class="btn btn-sm btn-outline-secondary" onclick="loadTaskDetail()">刷新</button>
+            </div>
+            <div class="card-body">
+                <div id="logs-container" style="max-height: 500px; overflow-y: auto;">
+                    {% if task.logs and task.logs|length > 0 %}
+                        {% for log in task.logs %}
+                        <div class="log-entry mb-2 p-2 border-start border-3 
+                            {% if log.level == 'ERROR' %}border-danger bg-light-danger
+                            {% elif log.level == 'WARNING' %}border-warning bg-light-warning
+                            {% else %}border-info bg-light{% endif %}">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div class="flex-grow-1">
+                                    <span class="fw-bold text-muted small">
+                                        {% if log.timestamp_str %}
+                                            {{ log.timestamp_str }}
+                                        {% elif log.timestamp %}
+                                            {{ log.timestamp.strftime('%H:%M:%S') }}
+                                        {% else %}
+                                            --:--:--
+                                        {% endif %}
+                                    </span>
+                                    <span class="badge badge-sm 
+                                        {% if log.level == 'ERROR' %}bg-danger
+                                        {% elif log.level == 'WARNING' %}bg-warning
+                                        {% else %}bg-info{% endif %}">
+                                        {{ log.level }}
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="mt-1">{{ log.message }}</div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="text-muted text-center py-3">
+                            暂无日志信息
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 自动刷新开关 -->
+<div class="position-fixed bottom-0 end-0 p-3">
+    <div class="card" style="width: 200px;">
+        <div class="card-body p-2">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="autoRefresh" checked>
+                <label class="form-check-label small" for="autoRefresh">
+                    自动刷新 (10秒)
+                </label>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let autoRefreshInterval;
+
+document.addEventListener('DOMContentLoaded', function() {
+    // 设置自动刷新
+    startAutoRefresh();
+    
+    // 监听自动刷新开关
+    document.getElementById('autoRefresh').addEventListener('change', function(e) {
+        if (e.target.checked) {
+            startAutoRefresh();
+        } else {
+            stopAutoRefresh();
+        }
+    });
+});
+
+function startAutoRefresh() {
+    if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+    }
+    
+    autoRefreshInterval = setInterval(function() {
+        const autoRefreshCheckbox = document.getElementById('autoRefresh');
+        if (autoRefreshCheckbox && autoRefreshCheckbox.checked) {
+            loadTaskDetail();
+        }
+    }, 10000); // 10秒刷新一次
+}
+
+function stopAutoRefresh() {
+    if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+        autoRefreshInterval = null;
+    }
+}
+
+function loadTaskDetail() {
+    const taskId = '{{ task._id }}';
+    
+    fetch(`/admin/api/pdf/task/${taskId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                console.error('Error loading task detail:', data.error);
+                return;
+            }
+            
+            // 更新页面内容
+            updateTaskInfo(data);
+            updateLogs(data.logs || []);
+        })
+        .catch(error => {
+            console.error('Error loading task detail:', error);
+        });
+}
+
+function updateTaskInfo(task) {
+    // 更新状态徽章
+    const statusBadge = document.querySelector('.badge.fs-6');
+    if (statusBadge) {
+        const statusMap = {
+            'pending': { class: 'bg-secondary', text: '等待中' },
+            'processing': { class: 'bg-primary', text: '处理中' },
+            'completed': { class: 'bg-success', text: '已完成' },
+            'failed': { class: 'bg-danger', text: '失败' }
+        };
+        
+        const status = statusMap[task.status] || { class: 'bg-secondary', text: '未知' };
+        statusBadge.className = `badge fs-6 ${status.class}`;
+        statusBadge.textContent = status.text;
+    }
+    
+    // 更新进度条
+    const progressBar = document.querySelector('.progress-bar');
+    if (progressBar) {
+        const progress = task.progress || 0;
+        progressBar.style.width = `${progress}%`;
+        progressBar.setAttribute('aria-valuenow', progress);
+        progressBar.textContent = `${progress}%`;
+        
+        // 更新进度条颜色
+        progressBar.className = `progress-bar ${getProgressBarClass(task.status)}`;
+    }
+    
+    // 更新当前步骤
+    const currentStepElement = document.querySelector('p:has(strong:contains("当前步骤"))');
+    if (currentStepElement && task.current_step) {
+        currentStepElement.innerHTML = `<strong>当前步骤:</strong> ${escapeHtml(task.current_step)}`;
+    }
+    
+    // 更新时间
+    const updateTimeElement = document.querySelector('p:has(strong:contains("更新时间"))');
+    if (updateTimeElement && task.updated_at_str) {
+        updateTimeElement.innerHTML = `<strong>更新时间:</strong> ${escapeHtml(task.updated_at_str)}`;
+    }
+}
+
+function updateLogs(logs) {
+    const logsContainer = document.getElementById('logs-container');
+    if (!logsContainer) return;
+    
+    if (logs.length === 0) {
+        logsContainer.innerHTML = `
+            <div class="text-muted text-center py-3">
+                暂无日志信息
+            </div>
+        `;
+        return;
+    }
+    
+    let html = '';
+    logs.forEach(log => {
+        const borderClass = log.level === 'ERROR' ? 'border-danger bg-light-danger' :
+                           log.level === 'WARNING' ? 'border-warning bg-light-warning' :
+                           'border-info bg-light';
+        
+        const badgeClass = log.level === 'ERROR' ? 'bg-danger' :
+                          log.level === 'WARNING' ? 'bg-warning' :
+                          'bg-info';
+        
+        html += `
+            <div class="log-entry mb-2 p-2 border-start border-3 ${borderClass}">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="flex-grow-1">
+                        <span class="fw-bold text-muted small">
+                            ${log.timestamp_str || '--:--:--'}
+                        </span>
+                        <span class="badge badge-sm ${badgeClass}">
+                            ${log.level}
+                        </span>
+                    </div>
+                </div>
+                <div class="mt-1">${escapeHtml(log.message)}</div>
+            </div>
+        `;
+    });
+    
+    logsContainer.innerHTML = html;
+    
+    // 滚动到底部
+    logsContainer.scrollTop = logsContainer.scrollHeight;
+}
+
+function getProgressBarClass(status) {
+    const classes = {
+        'pending': 'bg-secondary',
+        'processing': 'bg-primary',
+        'completed': 'bg-success',
+        'failed': 'bg-danger'
+    };
+    return classes[status] || 'bg-secondary';
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
+}
+
+function restartFromStep(stepName) {
+    const taskId = '{{ task._id }}';
+    const stepNames = {
+        '01_pdf2img': 'PDF转图片',
+        '02_ocr': 'OCR识别',
+        '03_translate': '翻译',
+        '04_analysis': '分析',
+        '05_output': '输出'
+    };
+    
+    if (!confirm(`确定要从"${stepNames[stepName]}"步骤重启任务吗？`)) {
+        return;
+    }
+    
+    fetch(`/admin/api/pdf/task/${taskId}/restart`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            step_name: stepName
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            alert(`重启失败: ${data.error}`);
+        } else {
+            alert(`${data.message}`);
+            // 刷新页面显示最新状态
+            setTimeout(() => {
+                location.reload();
+            }, 1000);
+        }
+    })
+    .catch(error => {
+        console.error('Error restarting task:', error);
+        alert('重启任务时发生网络错误');
+    });
+}
+</script>
+
+<style>
+.bg-light-danger {
+    background-color: #f8d7da !important;
+}
+
+.bg-light-warning {
+    background-color: #fff3cd !important;
+}
+
+.log-entry {
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.9rem;
+}
+</style>
+{% endblock %}
