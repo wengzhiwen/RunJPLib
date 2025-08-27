@@ -53,8 +53,22 @@ document.addEventListener('DOMContentLoaded', function() {
     // 初始加载，以防SSE连接延迟
     fetchInitialData();
     
-    // 连接到SSE流
-    const eventSource = new EventSource('/admin/api/pdf/task-stream');
+    // 启动带重连机制的SSE连接
+    connectSSE();
+});
+
+let eventSource;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_DELAY = 30000; // 最大重连间隔30秒
+
+function connectSSE() {
+    console.log("Connecting to SSE stream...");
+    eventSource = new EventSource('/admin/api/pdf/task-stream');
+
+    eventSource.onopen = function() {
+        console.log("SSE connection established.");
+        reconnectAttempts = 0; // 连接成功，重置尝试次数
+    };
 
     eventSource.onmessage = function(event) {
         const data = JSON.parse(event.data);
@@ -69,17 +83,28 @@ document.addEventListener('DOMContentLoaded', function() {
 
     eventSource.onerror = function(err) {
         console.error("EventSource failed:", err);
+        eventSource.close();
+        
+        // 计算下一次重连的时间（指数退避 + 随机抖动）
+        reconnectAttempts++;
+        let delay = Math.min(MAX_RECONNECT_DELAY, 1000 * Math.pow(2, reconnectAttempts));
+        delay += Math.random() * 1000; // 增加随机性防止客户端同步重连
+        
+        console.log(`Connection lost. Reconnecting in ${Math.round(delay / 1000)} seconds...`);
+        
+        // 在UI上给出提示
         const container = document.getElementById('tasks-container');
         if (container) {
             container.innerHTML = `
-                <div class="alert alert-danger" role="alert">
-                    与服务器的实时连接已断开。请检查网络或刷新页面。
+                <div class="alert alert-warning" role="alert">
+                    与服务器的实时连接已断开。正在尝试重新连接...
                 </div>
             `;
         }
-        eventSource.close();
+        
+        setTimeout(connectSSE, delay);
     };
-});
+}
 
 function fetchInitialData() {
     // 同时获取任务和队列状态

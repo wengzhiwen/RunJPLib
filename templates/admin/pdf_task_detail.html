@@ -164,14 +164,28 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    connectSSE();
+});
+
+let eventSource;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_DELAY = 30000; // 最大重连间隔30秒
+let reconnectTimer;
+
+function connectSSE() {
     const taskId = '{{ task._id }}';
-    const eventSource = new EventSource(`/admin/api/pdf/task-stream/${taskId}`);
     const statusLight = document.getElementById('sse-status-light');
     const statusText = document.getElementById('sse-status-text');
 
+    eventSource = new EventSource(`/admin/api/pdf/task-stream/${taskId}`);
+    statusText.textContent = '连接中...';
+    statusLight.style.backgroundColor = '#ffc107'; // Yellow for connecting
+
     eventSource.onopen = function() {
         console.log("SSE connection established.");
-        statusLight.style.backgroundColor = '#198754'; // Green
+        reconnectAttempts = 0;
+        if (reconnectTimer) clearTimeout(reconnectTimer);
+        statusLight.style.backgroundColor = '#198754'; // Green for connected
         statusText.textContent = '实时更新已连接';
     };
 
@@ -180,22 +194,39 @@ document.addEventListener('DOMContentLoaded', function() {
         updateTaskInfo(task);
         updateLogs(task.logs || []);
 
-        // 如果任务完成或失败，后端会自动关闭连接
         if (task.status === 'completed' || task.status === 'failed') {
             eventSource.close();
-            console.log("Task finished. SSE connection closed by client.");
-            statusLight.style.backgroundColor = '#6c757d'; // Grey
-            statusText.textContent = '连接已关闭';
+            console.log("Task finished. SSE connection closed.");
+            statusLight.style.backgroundColor = '#6c757d'; // Grey for closed
+            statusText.textContent = '任务结束，连接已关闭';
         }
     };
 
     eventSource.onerror = function(err) {
         console.error("EventSource failed:", err);
-        statusLight.style.backgroundColor = '#dc3545'; // Red
-        statusText.textContent = '连接错误';
         eventSource.close();
+        
+        // 只有在任务不是终态时才重连
+        const statusBadge = document.querySelector('.badge.fs-6');
+        const isTaskFinished = statusBadge && (statusBadge.textContent === '已完成' || statusBadge.textContent === '失败');
+        
+        if (isTaskFinished) {
+            statusLight.style.backgroundColor = '#6c757d';
+            statusText.textContent = '任务结束，连接已关闭';
+            return;
+        }
+
+        reconnectAttempts++;
+        let delay = Math.min(MAX_RECONNECT_DELAY, 1000 * Math.pow(2, reconnectAttempts));
+        delay += Math.random() * 1000;
+        
+        statusLight.style.backgroundColor = '#dc3545'; // Red for error/disconnected
+        statusText.textContent = `连接断开，${Math.round(delay / 1000)}秒后重试...`;
+        
+        console.log(`Reconnecting in ${Math.round(delay / 1000)} seconds...`);
+        reconnectTimer = setTimeout(connectSSE, delay);
     };
-});
+}
 
 // Manual refresh function in case SSE fails
 function loadTaskDetail() {
