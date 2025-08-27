@@ -153,13 +153,9 @@
 <!-- 自动刷新开关 -->
 <div class="position-fixed bottom-0 end-0 p-3">
     <div class="card" style="width: 200px;">
-        <div class="card-body p-2">
-            <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" id="autoRefresh" checked>
-                <label class="form-check-label small" for="autoRefresh">
-                    自动刷新 (10秒)
-                </label>
-            </div>
+        <div class="card-body p-2 d-flex align-items-center">
+            <div id="sse-status-light" class="me-2" style="width: 10px; height: 10px; background-color: #6c757d; border-radius: 50%;" title="连接状态"></div>
+            <span id="sse-status-text" class="small">连接中...</span>
         </div>
     </div>
 </div>
@@ -167,42 +163,41 @@
 
 {% block scripts %}
 <script>
-let autoRefreshInterval;
-
 document.addEventListener('DOMContentLoaded', function() {
-    // 设置自动刷新
-    startAutoRefresh();
-    
-    // 监听自动刷新开关
-    document.getElementById('autoRefresh').addEventListener('change', function(e) {
-        if (e.target.checked) {
-            startAutoRefresh();
-        } else {
-            stopAutoRefresh();
+    const taskId = '{{ task._id }}';
+    const eventSource = new EventSource(`/admin/api/pdf/task-stream/${taskId}`);
+    const statusLight = document.getElementById('sse-status-light');
+    const statusText = document.getElementById('sse-status-text');
+
+    eventSource.onopen = function() {
+        console.log("SSE connection established.");
+        statusLight.style.backgroundColor = '#198754'; // Green
+        statusText.textContent = '实时更新已连接';
+    };
+
+    eventSource.onmessage = function(event) {
+        const task = JSON.parse(event.data);
+        updateTaskInfo(task);
+        updateLogs(task.logs || []);
+
+        // 如果任务完成或失败，后端会自动关闭连接
+        if (task.status === 'completed' || task.status === 'failed') {
+            eventSource.close();
+            console.log("Task finished. SSE connection closed by client.");
+            statusLight.style.backgroundColor = '#6c757d'; // Grey
+            statusText.textContent = '连接已关闭';
         }
-    });
+    };
+
+    eventSource.onerror = function(err) {
+        console.error("EventSource failed:", err);
+        statusLight.style.backgroundColor = '#dc3545'; // Red
+        statusText.textContent = '连接错误';
+        eventSource.close();
+    };
 });
 
-function startAutoRefresh() {
-    if (autoRefreshInterval) {
-        clearInterval(autoRefreshInterval);
-    }
-    
-    autoRefreshInterval = setInterval(function() {
-        const autoRefreshCheckbox = document.getElementById('autoRefresh');
-        if (autoRefreshCheckbox && autoRefreshCheckbox.checked) {
-            loadTaskDetail();
-        }
-    }, 10000); // 10秒刷新一次
-}
-
-function stopAutoRefresh() {
-    if (autoRefreshInterval) {
-        clearInterval(autoRefreshInterval);
-        autoRefreshInterval = null;
-    }
-}
-
+// Manual refresh function in case SSE fails
 function loadTaskDetail() {
     const taskId = '{{ task._id }}';
     
@@ -213,8 +208,6 @@ function loadTaskDetail() {
                 console.error('Error loading task detail:', data.error);
                 return;
             }
-            
-            // 更新页面内容
             updateTaskInfo(data);
             updateLogs(data.logs || []);
         })
@@ -246,24 +239,13 @@ function updateTaskInfo(task) {
         progressBar.style.width = `${progress}%`;
         progressBar.setAttribute('aria-valuenow', progress);
         progressBar.textContent = `${progress}%`;
-        
-        // 更新进度条颜色
         progressBar.className = `progress-bar ${getProgressBarClass(task.status)}`;
     }
     
     // 更新当前步骤
     const currentStepElement = document.getElementById('current-step');
-    if (currentStepElement && task.current_step) {
-        currentStepElement.innerHTML = `<strong>当前步骤:</strong> ${escapeHtml(task.current_step)}`;
-    } else if (task.current_step && !currentStepElement) {
-        // 如果元素不存在但有当前步骤，动态创建
-        const progressCard = document.querySelector('.card-body.text-center');
-        if (progressCard) {
-            const stepElement = document.createElement('p');
-            stepElement.id = 'current-step';
-            stepElement.innerHTML = `<strong>当前步骤:</strong> ${escapeHtml(task.current_step)}`;
-            progressCard.appendChild(stepElement);
-        }
+    if (currentStepElement) {
+        currentStepElement.innerHTML = `<strong>当前步骤:</strong> ${escapeHtml(task.current_step || '-')}`;
     }
     
     // 更新时间
@@ -271,18 +253,35 @@ function updateTaskInfo(task) {
     if (updateTimeElement && task.updated_at_str) {
         updateTimeElement.innerHTML = `<strong>更新时间:</strong> ${escapeHtml(task.updated_at_str)}`;
     }
+
+    // 更新错误信息
+    const errorElement = document.querySelector('.text-danger');
+    if (task.error_message) {
+        if (errorElement) {
+            errorElement.textContent = task.error_message;
+        } else {
+            // 如果错误信息元素不存在，则创建它
+            const timeElement = document.getElementById('update-time');
+            if (timeElement && timeElement.parentElement) {
+                const p = document.createElement('p');
+                p.innerHTML = `<strong>错误信息:</strong> <span class="text-danger">${escapeHtml(task.error_message)}</span>`;
+                timeElement.parentElement.appendChild(p);
+            }
+        }
+    } else if (errorElement) {
+        // 如果没有错误信息但元素存在，则移除
+        if (errorElement.parentElement && errorElement.parentElement.tagName === 'P') {
+            errorElement.parentElement.remove();
+        }
+    }
 }
 
 function updateLogs(logs) {
     const logsContainer = document.getElementById('logs-container');
     if (!logsContainer) return;
     
-    if (logs.length === 0) {
-        logsContainer.innerHTML = `
-            <div class="text-muted text-center py-3">
-                暂无日志信息
-            </div>
-        `;
+    if (!logs || logs.length === 0) {
+        logsContainer.innerHTML = `<div class="text-muted text-center py-3">暂无日志信息</div>`;
         return;
     }
     
@@ -300,12 +299,8 @@ function updateLogs(logs) {
             <div class="log-entry mb-2 p-2 border-start border-3 ${borderClass}">
                 <div class="d-flex justify-content-between align-items-start">
                     <div class="flex-grow-1">
-                        <span class="fw-bold text-muted small">
-                            ${log.timestamp_str || '--:--:--'}
-                        </span>
-                        <span class="badge badge-sm ${badgeClass}">
-                            ${log.level}
-                        </span>
+                        <span class="fw-bold text-muted small">${log.timestamp_str || '--:--:--'}</span>
+                        <span class="badge badge-sm ${badgeClass}">${log.level}</span>
                     </div>
                 </div>
                 <div class="mt-1">${escapeHtml(log.message)}</div>
@@ -314,8 +309,6 @@ function updateLogs(logs) {
     });
     
     logsContainer.innerHTML = html;
-    
-    // 滚动到底部
     logsContainer.scrollTop = logsContainer.scrollHeight;
 }
 
@@ -330,8 +323,11 @@ function getProgressBarClass(status) {
 }
 
 function escapeHtml(text) {
+    if (text === null || typeof text === 'undefined') {
+        return '';
+    }
     const div = document.createElement('div');
-    div.textContent = text || '';
+    div.textContent = text;
     return div.innerHTML;
 }
 
@@ -351,23 +347,16 @@ function restartFromStep(stepName) {
     
     fetch(`/admin/api/pdf/task/${taskId}/restart`, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            step_name: stepName
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ step_name: stepName })
     })
     .then(response => response.json())
     .then(data => {
         if (data.error) {
             alert(`重启失败: ${data.error}`);
         } else {
-            alert(`${data.message}`);
-            // 刷新页面显示最新状态
-            setTimeout(() => {
-                location.reload();
-            }, 1000);
+            alert(data.message);
+            setTimeout(() => { location.reload(); }, 1000);
         }
     })
     .catch(error => {

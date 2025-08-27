@@ -12,7 +12,7 @@ RunJPLib 是一个基于 Flask 的 Web 应用程序，提供有关大学和博�
 
 请扮演一名专攻 Python 和 Flask 的高级软件工程师。在进行更改时，请遵守现有的代码风格和约定。
 
-每次更改完成后都应该参考 pyproject.toml 中的设定，对代码进行格式化。
+每次更改完成后都应该参考 pyproject.toml 中的设定，利用 yapf 和 isort 对代码进行格式化。
 
 ## 重要约定
 
