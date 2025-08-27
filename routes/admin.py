@@ -583,10 +583,9 @@ def get_queue_status():
 
 @admin_bp.route('/api/pdf/task/<task_id>/restart', methods=['POST'])
 @admin_required
-def restart_task():
+def restart_task(task_id):
     """从指定步骤重启任务"""
     try:
-        task_id = request.view_args['task_id']
         data = request.get_json()
         
         if not data or 'step_name' not in data:
