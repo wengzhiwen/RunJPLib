@@ -74,6 +74,9 @@ def setup_logging():
 
 app = Flask(__name__)
 
+# 设置文件上传大小限制 (100MB)
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
+
 # Setup the Flask-JWT-Extended extension
 app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "super-secret")
 # Tell Flask-JWT-Extended to expect JWTs in headers and cookies

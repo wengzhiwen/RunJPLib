@@ -24,7 +24,7 @@
                     <div class="mb-3">
                         <label for="pdf_file" class="form-label">PDF文件 *</label>
                         <input type="file" class="form-control" id="pdf_file" name="pdf_file" accept=".pdf" required>
-                        <div class="form-text">支持PDF格式，建议文件大小不超过50MB</div>
+                        <div class="form-text">支持PDF格式，文件大小限制100MB</div>
                     </div>
                     
                     <button type="submit" class="btn btn-primary" id="uploadBtn">
@@ -191,6 +191,12 @@ function uploadPDF() {
         return;
     }
     
+    // 检查文件大小 (100MB = 104857600 bytes)
+    if (pdfFile.size > 104857600) {
+        showResult('错误', '文件太大，请选择小于100MB的PDF文件', 'error');
+        return;
+    }
+    
     // 禁用按钮并显示加载状态
     uploadBtn.disabled = true;
     uploadBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 处理中...';
@@ -203,7 +209,20 @@ function uploadPDF() {
         method: 'POST',
         body: formData
     })
-    .then(response => response.json())
+    .then(response => {
+        // 首先检查HTTP状态码
+        if (response.status === 413) {
+            throw new Error('文件太大，请选择小于100MB的PDF文件');
+        }
+        if (!response.ok) {
+            throw new Error(`服务器错误 (${response.status}): ${response.statusText}`);
+        }
+        
+        // 尝试解析JSON响应
+        return response.json().catch(() => {
+            throw new Error('服务器响应格式错误');
+        });
+    })
     .then(data => {
         if (data.error) {
             showResult('上传失败', data.error, 'error');
@@ -217,7 +236,7 @@ function uploadPDF() {
     })
     .catch(error => {
         console.error('Error uploading PDF:', error);
-        showResult('上传失败', '网络错误，请稍后重试', 'error');
+        showResult('上传失败', error.message || '网络错误，请稍后重试', 'error');
     })
     .finally(() => {
         // 恢复按钮状态
