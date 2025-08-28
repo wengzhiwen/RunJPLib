@@ -5,7 +5,6 @@ from datetime import datetime
 from datetime import timezone
 import logging
 import re
-import threading
 
 from cachetools import cached
 from flask import render_template
@@ -14,6 +13,7 @@ import markdown
 from utils.analytics import log_access
 from utils.cache import blog_list_cache
 from utils.mongo_client import get_mongo_client
+from utils.thread_pool_manager import thread_pool_manager
 
 # --- MongoDB based Blog Functions ---
 
@@ -84,11 +84,21 @@ def get_blog_by_url_title(url_title):
             )
             html_content = md.convert(blog_doc.get('content_md', ''))
 
-            # 使用后台线程更新数据库，避免阻塞当前请求
+            # 使用线程池更新数据库，避免阻塞当前请求
             update_time = datetime.now(timezone.utc)
-            update_task = threading.Thread(target=update_blog_html_in_db, args=(db, blog_doc['_id'], html_content, update_time))
-            update_task.start()
-            logging.info(f"已为博客 '{url_title}' 启动后台HTML更新任务。")
+
+            # 尝试提交到线程池
+            success = thread_pool_manager.submit_blog_update(update_blog_html_in_db, db, blog_doc['_id'], html_content, update_time)
+
+            if success:
+                logging.info(f"已为博客 '{url_title}' 提交后台HTML更新任务到线程池。")
+            else:
+                # 线程池繁忙，降级为同步执行
+                logging.warning(f"线程池繁忙，为博客 '{url_title}' 同步执行HTML更新。")
+                try:
+                    update_blog_html_in_db(db, blog_doc['_id'], html_content, update_time)
+                except Exception as e:
+                    logging.error(f"同步更新博客HTML失败: {e}")
 
         # 构建要在模板中使用的博客对象
         blog = {

@@ -27,10 +27,57 @@ from werkzeug.utils import secure_filename
 from utils.blog_generator import BlogGenerator
 from utils.mongo_client import get_mongo_client
 from utils.task_manager import task_manager
+from utils.thread_pool_manager import thread_pool_manager
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin", template_folder="../templates/admin")
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+# --- Admin数据库操作的辅助函数 ---
+
+
+def _update_university_in_db(object_id, update_data, university_id):
+    """异步更新大学信息到数据库"""
+    try:
+        client = get_mongo_client()
+        if not client:
+            logging.error("Admin异步更新大学信息失败：无法连接数据库")
+            return
+        db = client.RunJPLib
+        db.universities.update_one({"_id": object_id}, update_data)
+        logging.info(f"University with ID {university_id} was updated (async).")
+    except Exception as e:
+        logging.error(f"异步更新大学信息失败: {e}")
+
+
+def _save_blog_to_db(blog_data):
+    """异步保存博客到数据库"""
+    try:
+        client = get_mongo_client()
+        if not client:
+            logging.error("Admin异步保存博客失败：无法连接数据库")
+            return None
+        db = client.RunJPLib
+        result = db.blogs.insert_one(blog_data)
+        logging.info(f"New blog post created with ID: {result.inserted_id} (async).")
+        return str(result.inserted_id)
+    except Exception as e:
+        logging.error(f"异步保存博客失败: {e}")
+        return None
+
+
+def _update_blog_in_db(object_id, update_data, blog_id):
+    """异步更新博客到数据库"""
+    try:
+        client = get_mongo_client()
+        if not client:
+            logging.error("Admin异步更新博客失败：无法连接数据库")
+            return
+        db = client.RunJPLib
+        db.blogs.update_one({"_id": object_id}, update_data)
+        logging.info(f"Blog post with ID {blog_id} was updated (async).")
+    except Exception as e:
+        logging.error(f"异步更新博客失败: {e}")
 
 
 def admin_required(fn):
@@ -233,8 +280,21 @@ def edit_university(university_id):
             }
         }
 
-        db.universities.update_one({"_id": object_id}, update_data)
-        logging.info(f"University with ID {university_id} was updated.")
+        # 尝试异步更新数据库
+        success = thread_pool_manager.submit_admin_task(_update_university_in_db, object_id, update_data, university_id)
+
+        if not success:
+            # 线程池满，同步执行
+            logging.warning("Admin线程池繁忙，同步更新大学信息")
+            try:
+                db.universities.update_one({"_id": object_id}, update_data)
+                logging.info(f"University with ID {university_id} was updated (sync).")
+            except Exception as e:
+                logging.error(f"同步更新大学信息失败: {e}")
+                return render_template("edit_university.html", university=db.universities.find_one({"_id": object_id}), error="更新失败，请重试")
+        else:
+            logging.info(f"University with ID {university_id} update task submitted to thread pool.")
+
         return redirect(url_for("admin.manage_universities_page"))
 
     # GET 请求
@@ -446,10 +506,23 @@ def save_blog():
             "content_html": None,
         }
 
-        result = db.blogs.insert_one(new_blog)
-        logging.info(f"New blog post created with ID: {result.inserted_id}")
+        # 尝试异步保存博客
+        success = thread_pool_manager.submit_admin_task(_save_blog_to_db, new_blog)
 
-        return jsonify({"message": "文章保存成功", "blog_id": str(result.inserted_id)})
+        if not success:
+            # 线程池满，同步执行
+            logging.warning("Admin线程池繁忙，同步保存博客")
+            try:
+                result = db.blogs.insert_one(new_blog)
+                logging.info(f"New blog post created with ID: {result.inserted_id} (sync).")
+                return jsonify({"message": "文章保存成功", "blog_id": str(result.inserted_id)})
+            except Exception as sync_e:
+                logging.error(f"同步保存博客失败: {sync_e}")
+                return jsonify({"error": "保存失败，请重试"}), 500
+        else:
+            # 异步任务已提交，无法立即获取blog_id，但通常Admin界面可以接受
+            logging.info("Blog save task submitted to thread pool.")
+            return jsonify({"message": "文章保存任务已提交", "blog_id": "pending"})
     except Exception as e:
         logging.error(f"[Admin API] Failed to save blog: {e}", exc_info=True)
         return jsonify({"error": "服务器内部错误"}), 500
@@ -494,8 +567,21 @@ def edit_blog(blog_id):
             }
         }
 
-        db.blogs.update_one({"_id": object_id}, update_data)
-        logging.info(f"Blog post with ID {blog_id} was updated.")
+        # 尝试异步更新博客
+        success = thread_pool_manager.submit_admin_task(_update_blog_in_db, object_id, update_data, blog_id)
+
+        if not success:
+            # 线程池满，同步执行
+            logging.warning("Admin线程池繁忙，同步更新博客")
+            try:
+                db.blogs.update_one({"_id": object_id}, update_data)
+                logging.info(f"Blog post with ID {blog_id} was updated (sync).")
+            except Exception as e:
+                logging.error(f"同步更新博客失败: {e}")
+                return render_template("edit_blog.html", blog=db.blogs.find_one({"_id": object_id}), error="更新失败，请重试")
+        else:
+            logging.info(f"Blog post with ID {blog_id} update task submitted to thread pool.")
+
         return redirect(url_for("admin.manage_blogs_page"))
 
     # For GET request
@@ -651,6 +737,18 @@ def get_queue_status():
         return jsonify({"error": "服务器内部错误"}), 500
 
 
+@admin_bp.route("/api/thread_pool/status", methods=["GET"])
+@admin_required
+def get_thread_pool_status():
+    """获取线程池状态"""
+    try:
+        stats = thread_pool_manager.get_pool_stats()
+        return jsonify(stats)
+    except Exception as e:
+        logging.error(f"[Admin API] 获取线程池状态失败: {e}", exc_info=True)
+        return jsonify({"error": "服务器内部错误"}), 500
+
+
 @admin_bp.route("/api/pdf/task-stream")
 @admin_required
 def task_stream():
@@ -802,17 +900,14 @@ def process_queue():
     try:
         # 恢复待处理任务到队列
         task_manager.recover_pending_tasks()
-        
+
         # 处理队列
         task_manager.process_queue()
-        
+
         # 获取队列状态
         queue_status = task_manager.get_queue_status()
-        
-        return jsonify({
-            "message": "队列处理已触发",
-            "queue_status": queue_status
-        })
+
+        return jsonify({"message": "队列处理已触发", "queue_status": queue_status})
 
     except Exception as e:
         logging.error(f"[Admin API] 手动处理队列失败: {e}", exc_info=True)

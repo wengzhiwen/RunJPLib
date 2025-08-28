@@ -37,6 +37,31 @@
             <p>{{ stats.blog_views_24h | default('N/A') }}</p>
         </div>
     </div>
+    
+    <!-- 线程池状态 -->
+    <h2>系统状态</h2>
+    <div class="stats-grid">
+        <div class="stat-card system-card blog-pool">
+            <h3>博客更新线程池</h3>
+            <p id="blog-active-threads">加载中...</p>
+            <small id="blog-details">最大: <span id="blog-max-workers">-</span> | 队列: <span id="blog-queue">-</span></small>
+        </div>
+        <div class="stat-card system-card admin-pool">
+            <h3>Admin操作线程池</h3>
+            <p id="admin-active-threads">加载中...</p>
+            <small id="admin-details">最大: <span id="admin-max-workers">-</span> | 队列: <span id="admin-queue">-</span></small>
+        </div>
+        <div class="stat-card system-card analytics-pool">
+            <h3>Analytics日志线程池</h3>
+            <p id="analytics-active-threads">加载中...</p>
+            <small id="analytics-details">最大: <span id="analytics-max-workers">-</span> | 队列: <span id="analytics-queue">-</span></small>
+        </div>
+        <div class="stat-card system-card summary">
+            <h3>总计任务</h3>
+            <p id="total-completed">加载中...</p>
+            <small id="summary-stats">失败: <span id="total-failed">-</span> | 降级: <span id="total-fallback">-</span></small>
+        </div>
+    </div>
 {% else %}
     <p>暂无统计数据。</p>
 {% endif %}
@@ -72,8 +97,98 @@
         font-weight: bold;
         color: #0056b3;
     }
+    .system-card {
+        border-left: 4px solid #28a745;
+    }
+    .system-card.blog-pool {
+        border-left-color: #007bff;
+    }
+    .system-card.admin-pool {
+        border-left-color: #6f42c1;
+    }
+    .system-card.analytics-pool {
+        border-left-color: #20c997;
+    }
+    .system-card.summary {
+        border-left-color: #fd7e14;
+    }
+    .system-card small {
+        display: block;
+        margin-top: 5px;
+        color: #6c757d;
+        font-size: 0.9em;
+    }
 </style>
 {% endblock %}
 
 {% block scripts %}
+<script>
+// 获取线程池状态的函数
+async function updateThreadPoolStatus() {
+    try {
+        const response = await fetch('/admin/api/thread_pool/status');
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+        const data = await response.json();
+        
+        // 更新博客线程池状态
+        updatePoolDisplay('blog', data.blog_pool);
+        
+        // 更新Admin线程池状态
+        updatePoolDisplay('admin', data.admin_pool);
+        
+        // 更新Analytics线程池状态
+        updatePoolDisplay('analytics', data.analytics_pool);
+        
+        // 更新总计
+        document.getElementById('total-completed').textContent = data.completed_tasks || '0';
+        document.getElementById('total-failed').textContent = data.failed_tasks || '0';
+        document.getElementById('total-fallback').textContent = data.sync_fallback_count || '0';
+        
+    } catch (error) {
+        console.error('Error fetching thread pool status:', error);
+        ['blog', 'admin', 'analytics'].forEach(pool => {
+            document.getElementById(`${pool}-active-threads`).textContent = '错误';
+            document.getElementById(`${pool}-active-threads`).style.color = '#dc3545';
+        });
+    }
+}
+
+// 更新单个线程池显示
+function updatePoolDisplay(poolName, poolData) {
+    if (!poolData) return;
+    
+    const activeThreads = poolData.active_threads || 0;
+    const maxWorkers = poolData.max_workers || 1;
+    const queueSize = poolData.queue_size || 0;
+    
+    // 更新数值
+    document.getElementById(`${poolName}-active-threads`).textContent = activeThreads;
+    document.getElementById(`${poolName}-max-workers`).textContent = maxWorkers;
+    document.getElementById(`${poolName}-queue`).textContent = queueSize;
+    
+    // 根据负载调整颜色
+    const activeElement = document.getElementById(`${poolName}-active-threads`);
+    const utilization = activeThreads / maxWorkers;
+    
+    if (activeThreads === 0) {
+        activeElement.style.color = '#6c757d'; // 灰色 - 空闲
+    } else if (utilization < 0.7) {
+        activeElement.style.color = '#28a745'; // 绿色 - 正常
+    } else if (utilization < 1.0) {
+        activeElement.style.color = '#ffc107'; // 黄色 - 繁忙
+    } else {
+        activeElement.style.color = '#dc3545'; // 红色 - 满载
+    }
+}
+
+// 页面加载完成后立即获取状态
+document.addEventListener('DOMContentLoaded', function() {
+    updateThreadPoolStatus();
+    
+    // 每5秒更新一次状态
+    setInterval(updateThreadPoolStatus, 5000);
+});
+</script>
 {% endblock %}
