@@ -93,6 +93,7 @@
 - [MongoDB设计文档](docs/mongoDB_design.md)
 - [GridFS迁移指南](docs/GridFS_migration_guide.md)
 - [管理面板文档](docs/admin_panel.md)
+- [线程池架构设计](docs/thread_pool_architecture.md)
 - [变更日志](docs/CHANGELOG.md)
 
 ## 快速开始
@@ -107,7 +108,10 @@ pip install -r requirements.txt
 
 # 配置环境变量
 cp .env.example .env
-# 编辑 .env 文件，设置MongoDB连接和访问码
+# 编辑 .env 文件，设置以下重要配置：
+# - MongoDB连接和访问码
+# - 线程池大小（可选，有默认值）
+# - 详见docs/thread_pool_architecture.md
 
 # 运行迁移脚本（如果需要）
 python tools/migrate_to_gridfs.py
