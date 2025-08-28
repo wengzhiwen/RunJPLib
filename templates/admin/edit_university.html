@@ -25,6 +25,11 @@
         </div>
 
         <div class="mb-3">
+            <label for="deadline" class="form-label">报名截止日期</label>
+            <input type="date" class="form-control" id="deadline" name="deadline" value="{{ university.deadline.strftime('%Y-%m-%d') if university.deadline else '' }}">
+        </div>
+
+        <div class="mb-3">
             <label for="basic_analysis_report" class="form-label">基础分析报告</label>
             <textarea class="form-control" id="basic_analysis_report" name="basic_analysis_report" rows="15">{{ university.content.report_md or '' }}</textarea>
         </div>

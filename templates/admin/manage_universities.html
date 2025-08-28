@@ -60,11 +60,12 @@ document.addEventListener('DOMContentLoaded', function() {
             data.forEach(uni => {
                 const createdAt = uni.created_at ? new Date(uni.created_at).toLocaleString() : 'N/A';
                 const isPremium = uni.is_premium ? '<span class="badge bg-success">是</span>' : '<span class="badge bg-secondary">否</span>';
+                const deadline = uni.deadline ? new Date(uni.deadline).toLocaleDateString() : 'N/A';
                 const row = `
                     <tr>
                         <td>${uni.university_name || 'N/A'}</td>
                         <td>${isPremium}</td>
-                        <td>${uni.deadline || 'N/A'}</td>
+                        <td>${deadline}</td>
                         <td>${createdAt}</td>
                         <td>
                             <a href="/admin/edit_university/${uni._id}" class="btn btn-sm btn-primary">编辑</a>

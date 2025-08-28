@@ -3,6 +3,7 @@
 """
 from collections import defaultdict
 import csv
+from datetime import datetime
 from functools import lru_cache
 import logging
 import os
@@ -45,9 +46,11 @@ def get_latest_updates():
 
         updates = []
         for doc in cursor:
+            deadline_obj = doc.get('deadline')
+            deadline_str = deadline_obj.strftime('%Y-%m-%d') if isinstance(deadline_obj, datetime) else 'N/A'
             updates.append({
                 'name': doc.get('university_name'),
-                'deadline': doc.get('deadline'),
+                'deadline': deadline_str,
                 'is_premium': doc.get('is_premium', False),
                 'url': f"/university/{doc.get('university_name')}"
             })
@@ -115,7 +118,9 @@ def get_sorted_universities_for_index():
             uni_name = uni.get('university_name')
             if not uni_name:
                 continue
-            universities.append({'name': uni_name, 'deadline': uni.get('deadline'), 'url': f"/university/{uni_name}"})
+            deadline_obj = uni.get('deadline')
+            deadline_str = deadline_obj.strftime('%Y-%m-%d') if isinstance(deadline_obj, datetime) else 'N/A'
+            universities.append({'name': uni_name, 'deadline': deadline_str, 'url': f"/university/{uni_name}"})
 
         logging.info(f"成功为首页加载了 {len(universities)} 所唯一的大学。")
         return universities
@@ -182,18 +187,28 @@ def get_university_details(name, deadline=None):
 
     query = {"university_name": name}
     if deadline:
-        formatted_deadline = deadline.replace('-', '').replace('/', '')
-        if len(formatted_deadline) == 8 and formatted_deadline.isdigit():
-            query["deadline"] = formatted_deadline
-        else:
-            return None
+        try:
+            # 将 YYYY-MM-DD 格式的字符串转换为 datetime 对象
+            # 我们只关心日期，所以将时间设为当天的开始
+            dt = datetime.strptime(deadline, "%Y-%m-%d")
+            query["deadline"] = dt
+        except (ValueError, TypeError):
+            # 如果格式不正确或 deadline 不是字符串，则忽略该条件
+            logging.warning(f"无效的 deadline 格式: '{deadline}'，查询时将忽略。")
+            pass
 
+    # 如果没有指定 deadline，则按 deadline 降序排序获取最新的一个
     sort_order = [("deadline", -1)] if not deadline else None
 
     try:
         doc = db.universities.find_one(query, sort=sort_order)
         if doc:
-            logging.info(f"成功找到大学: {doc['university_name']} ({doc['deadline']})")
+            # 确保返回的 deadline 是 datetime 对象
+            deadline_val = doc.get('deadline')
+            if deadline_val and isinstance(deadline_val, datetime):
+                logging.info(f"成功找到大学: {doc['university_name']} ({deadline_val.strftime('%Y-%m-%d')})")
+            else:
+                logging.info(f"成功找到大学: {doc['university_name']} (deadline: {deadline_val})")
         else:
             logging.warning(f"在MongoDB中未找到大学: {query}")
         return doc
@@ -234,8 +249,8 @@ def university_route(name, deadline=None, content="REPORT"):
             output_format="html5",
         )
 
-        raw_deadline = university_doc.get('deadline', '')
-        current_deadline_formatted = f"{raw_deadline[:4]}-{raw_deadline[4:6]}-{raw_deadline[6:]}" if len(raw_deadline) == 8 else raw_deadline
+        deadline_obj = university_doc.get('deadline')
+        current_deadline_formatted = deadline_obj.strftime('%Y-%m-%d') if isinstance(deadline_obj, datetime) else 'N/A'
 
         universities_for_sidebar = get_sorted_universities_for_index()
 
@@ -289,7 +304,12 @@ def sitemap_route():
             }, {
                 "$project": {
                     "name": "$_id",
-                    "deadline": "$latest_deadline",
+                    "deadline": {
+                        "$dateToString": {
+                            "format": "%Y-%m-%d",
+                            "date": "$latest_deadline"
+                        }
+                    },
                     "_id": 0
                 }
             }]

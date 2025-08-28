@@ -2,6 +2,33 @@
 
 本文档记录了RunJPLib项目的重要更改，包括新功能、架构更新、安全改进等。
 
+## [2025-08-28] - 数据库 `deadline` 字段类型迁移
+
+### 🔧 核心变更
+- **字段类型迁移**: 将 MongoDB 中 `universities` 集合的 `deadline` 字段（报名截止日期）的数据类型从 **字符串 (String)** 迁移为标准的 **BSON 日期类型 (Date)**。
+- **数据一致性**: 此次迁移统一了日期数据的存储格式，为后续进行更精确的日期查询、排序和范围筛选奠定了基础。
+
+### ✨ 功能改进
+- **后台编辑功能增强**: 在 Admin 后台的“编辑招生信息”页面，新增了对“报名截止日期”的可视化编辑功能。管理员现在可以通过一个标准的日期选择器来修改该字段。
+- **全链路日期对象支持**: 重构了应用程序的所有部分（数据创建、后台API、前台页面），以完全支持新的日期类型，移除了所有针对 `YYYYMMDD` 字符串格式的解析和格式化逻辑。
+
+### 🛠️ 新增工具
+- **数据迁移脚本**: 创建了一个新的一次性迁移脚本 `tools/migrate_deadline_to_date.py`。该脚本可以安全地将数据库中所有现存的字符串格式 `deadline` 转换为日期类型，并能处理多种常见的日期字符串格式。
+
+### 📁 文件更改
+- **数据迁移脚本**:
+  - `tools/migrate_deadline_to_date.py`: 新增的迁移脚本。
+- **数据写入层**:
+  - `utils/pdf_processor.py`: 修改了新数据写入的逻辑，直接存入 `datetime` 对象。
+- **后台管理 (Admin)**:
+  - `routes/admin.py`: 更新了 `edit_university` 函数以处理日期输入；更新了 `get_universities` API 以返回 ISO 格式的日期字符串。
+  - `templates/admin/edit_university.html`: 在编辑表单中增加了日期输入框。
+  - `templates/admin/manage_universities.html`: 更新了前端 JavaScript，以正确格式化和显示日期。
+- **前台展示**:
+  - `routes/index.py`: 全面重构了 `get_university_details`, `university_route`, `get_latest_updates`, `get_sorted_universities_for_index`, 和 `sitemap_route` 函数，使用 `datetime` 对象进行查询和格式化。
+- **代码格式化**:
+  - 对所有修改过的 Python 文件 (`.py`) 执行了 `isort` 和 `yapf` 格式化。
+
 ## [2025-08-28] - 优化首页大学快速索引与文档完善
 
 ### ✨ 功能改进

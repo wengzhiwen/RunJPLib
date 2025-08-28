@@ -213,6 +213,9 @@ def get_universities():
 
         for u in universities:
             u["_id"] = str(u["_id"])
+            # 确保 deadline 字段是 ISO 格式的字符串，方便前端解析
+            if u.get("deadline") and isinstance(u["deadline"], datetime):
+                u["deadline"] = u["deadline"].isoformat()
 
         logging.info(f"[Admin API] Successfully fetched {len(universities)} university documents.")
         if universities:
@@ -248,6 +251,7 @@ def edit_university(university_id):
     if request.method == "POST":
         university_name = request.form.get("university_name", "").strip()
         is_premium = request.form.get("is_premium") == "true"
+        deadline_str = request.form.get("deadline", "")
         basic_analysis_report = request.form.get("basic_analysis_report", "").strip()
 
         if not university_name:
@@ -262,6 +266,15 @@ def edit_university(university_id):
                 "last_modified": datetime.utcnow(),
             }
         }
+
+        if deadline_str:
+            try:
+                # 将 YYYY-MM-DD 格式的字符串转换为 datetime 对象
+                update_data["$set"]["deadline"] = datetime.strptime(deadline_str, "%Y-%m-%d")
+            except ValueError:
+                # 如果日期格式不正确，返回错误信息
+                university = db.universities.find_one({"_id": object_id})
+                return render_template("edit_university.html", university=university, error="日期格式不正确，请使用 YYYY-MM-DD 格式。")
 
         # 尝试异步更新数据库
         success = thread_pool_manager.submit_admin_task(_update_university_in_db, object_id, update_data, university_id)

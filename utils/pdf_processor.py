@@ -2,7 +2,7 @@
 PDF处理器 - 大学招生信息处理器的核心类
 基于Buffalo工作流程管理器来处理PDF文件
 """
-from datetime import datetime
+from datetime import datetime, time
 import os
 from pathlib import Path
 import shutil
@@ -475,7 +475,7 @@ class PDFProcessor:
                     filename=str(uuid.uuid4()),
                     metadata={
                         "university_name": self.university_name,
-                        "deadline": datetime.now().strftime("%Y%m%d"),
+                        "deadline": datetime.combine(datetime.now().date(), time.min),
                         "upload_time": datetime.utcnow(),
                         "original_filename": f"{self.university_name}_{datetime.now().strftime('%Y%m%d')}.pdf",
                         "task_id": self.task_id
@@ -485,7 +485,7 @@ class PDFProcessor:
             # 创建大学信息文档
             university_doc = {
                 "university_name": self.university_name,
-                "deadline": datetime.now().strftime("%Y%m%d"),
+                "deadline": datetime.combine(datetime.now().date(), time.min),
                 "created_at": datetime.utcnow(),
                 "is_premium": False,
                 "content": {
