@@ -2,6 +2,39 @@
 
 This document outlines the design of the MongoDB collections for the RunJPLib project.
 
+## Connection Management & Performance Optimization
+
+### Connection Pool Configuration
+The application uses a connection pool to efficiently manage MongoDB connections and prevent resource exhaustion:
+
+```python
+# Connection pool parameters
+maxPoolSize=10          # Maximum number of connections in the pool
+minPoolSize=1           # Minimum number of connections to maintain
+maxIdleTimeMS=300000    # Maximum time a connection can remain idle (5 minutes)
+waitQueueTimeoutMS=10000 # Maximum time to wait for a connection (10 seconds)
+serverSelectionTimeoutMS=5000  # Timeout for server selection (5 seconds)
+connectTimeoutMS=10000  # Connection establishment timeout (10 seconds)
+socketTimeoutMS=30000   # Socket operation timeout (30 seconds)
+```
+
+### Singleton Pattern Implementation
+- **Global Client Instance**: Uses `_mongo_client` singleton to avoid creating multiple connections
+- **Thread Safety**: Implements thread locks to ensure concurrent access safety
+- **Health Check**: Uses `ismaster` command instead of `ping` for efficient connection validation
+- **Automatic Cleanup**: Registers cleanup function with `atexit` to properly close connections
+
+### Performance Optimizations
+- **Connection Reuse**: Eliminates the need to create new connections for each database operation
+- **Reduced Ping Operations**: Only performs ping on initial connection creation
+- **Dynamic Task Scheduling**: Task manager adjusts database check frequency based on workload
+- **Error Handling**: Implements exponential backoff strategy for connection failures
+
+### Monitoring & Maintenance
+- **Connection Status**: Monitor active connections using `db.serverStatus().connections`
+- **Performance Metrics**: Track CPU usage and response times
+- **Log Analysis**: Monitor for excessive database operations or connection errors
+
 ## University Information Collection
 
 - **Collection Name:** `universities`

@@ -1,6 +1,6 @@
 import logging
 
-from utils.mongo_client import get_mongo_client
+from utils.mongo_client import get_db
 
 
 def ensure_indexes() -> bool:
@@ -9,12 +9,10 @@ def ensure_indexes() -> bool:
 
     Returns True if successful, False otherwise.
     """
-    client = get_mongo_client()
-    if not client:
+    db = get_db()
+    if db is None:
         logging.error("ensure_indexes: 无法获取MongoDB客户端")
         return False
-
-    db = client.RunJPLib
 
     try:
         # universities 复合索引: is_premium 降序 + deadline 降序
@@ -53,5 +51,3 @@ def ensure_indexes() -> bool:
     except Exception as e:
         logging.error(f"创建索引失败: {e}", exc_info=True)
         return False
-
-

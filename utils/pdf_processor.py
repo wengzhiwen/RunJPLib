@@ -17,7 +17,7 @@ from pdf2image import convert_from_path
 
 from utils.analysis_tool import AnalysisTool
 from utils.logging_config import setup_logger
-from utils.mongo_client import get_mongo_client
+from utils.mongo_client import get_db, get_mongo_client
 from utils.ocr_tool import OCRTool
 from utils.translate_tool import TranslateTool
 
@@ -131,42 +131,40 @@ class PDFProcessor:
         self.pdf_file_path = pdf_file_path
         self.restart_from_step = restart_from_step
         self.config = Config()
-        
+
         # 创建任务专用的工作目录
         self.task_dir = self.config.temp_dir / f"task_{task_id}"
         self.task_dir.mkdir(exist_ok=True)
-        
+
         # 初始化各种工具
         self.ocr_tool = None
         self.translate_tool = None
         self.analysis_tool = None
-        
+
     def _update_task_status(self, status: str, current_step: str = "", progress: int = 0, error_message: str = "", logs: list = None):
         """更新任务状态到数据库"""
         try:
             client = get_mongo_client()
-            if not client:
+            if client is None:
                 logger.error("无法连接到数据库")
                 return
-                
+
             db = client.RunJPLib
-            update_data = {
-                "status": status,
-                "current_step": current_step,
-                "progress": progress,
-                "updated_at": datetime.utcnow()
-            }
-            
+            update_data = {"status": status, "current_step": current_step, "progress": progress, "updated_at": datetime.utcnow()}
+
             if error_message:
                 update_data["error_message"] = error_message
-                
+
             if logs:
                 update_data["$push"] = {"logs": {"$each": logs}}
-            
-            db.processing_tasks.update_one(
-                {"_id": ObjectId(self.task_id)},
-                {"$set": update_data} if not logs else {"$set": {k: v for k, v in update_data.items() if k != "$push"}, **update_data}
-            )
+
+            db.processing_tasks.update_one({"_id": ObjectId(self.task_id)}, {"$set": update_data} if not logs else {
+                "$set": {
+                    k: v
+                    for k, v in update_data.items() if k != "$push"
+                },
+                **update_data
+            })
             logger.info(f"任务 {self.task_id} 状态已更新: {status}")
         except Exception as e:
             logger.error(f"更新任务状态失败: {e}")
@@ -174,24 +172,17 @@ class PDFProcessor:
     def _log_message(self, message: str, level: str = "INFO"):
         """记录日志消息"""
         timestamp = datetime.utcnow()
-        log_entry = {
-            "timestamp": timestamp,
-            "level": level,
-            "message": message
-        }
-        
+        log_entry = {"timestamp": timestamp, "level": level, "message": message}
+
         # 写入任务日志
         try:
             client = get_mongo_client()
-            if client:
+            if client is not None:
                 db = client.RunJPLib
-                db.processing_tasks.update_one(
-                    {"_id": ObjectId(self.task_id)},
-                    {"$push": {"logs": log_entry}}
-                )
+                db.processing_tasks.update_one({"_id": ObjectId(self.task_id)}, {"$push": {"logs": log_entry}})
         except Exception as e:
             logger.error(f"写入任务日志失败: {e}")
-        
+
         # 同时写入系统日志
         if level == "ERROR":
             logger.error(message)
@@ -203,19 +194,19 @@ class PDFProcessor:
     def _load_previous_results(self):
         """从之前的文件中加载处理结果（用于重启时的数据恢复）"""
         self.previous_results = {}
-        
+
         if (self.task_dir / "original.md").exists():
             with open(self.task_dir / "original.md", 'r', encoding='utf-8') as f:
                 self.previous_results["original_md_content"] = f.read()
-                
+
         if (self.task_dir / "translated.md").exists():
             with open(self.task_dir / "translated.md", 'r', encoding='utf-8') as f:
                 self.previous_results["translated_md_content"] = f.read()
-                
+
         if (self.task_dir / "report.md").exists():
             with open(self.task_dir / "report.md", 'r', encoding='utf-8') as f:
                 self.previous_results["report_md_content"] = f.read()
-                
+
         if self.previous_results:
             self._log_message(f"已加载 {len(self.previous_results)} 个之前的处理结果")
 
@@ -224,7 +215,7 @@ class PDFProcessor:
         try:
             self._log_message("开始PDF转图片...")
             self._update_task_status("processing", "01_pdf2img", 10)
-            
+
             pdf_path = Path(self.pdf_file_path)
             if not pdf_path.exists():
                 raise FileNotFoundError(f"PDF文件不存在: {pdf_path}")
@@ -236,7 +227,7 @@ class PDFProcessor:
             # 转换PDF为图片
             self._log_message(f"正在转换PDF文件: {pdf_path}")
             images = convert_from_path(str(pdf_path), dpi=self.config.ocr_dpi)
-            
+
             image_paths = []
             for i, image in enumerate(images, 1):
                 image_path = images_dir / f"page_{i:03d}.png"
@@ -249,7 +240,7 @@ class PDFProcessor:
                 self.step_data = {}
             self.step_data["image_paths"] = image_paths
             self.step_data["total_pages"] = len(image_paths)
-            
+
             self._log_message(f"PDF转图片完成，共 {len(image_paths)} 页")
             return True
 
@@ -263,7 +254,7 @@ class PDFProcessor:
         try:
             self._log_message("开始OCR识别...")
             self._update_task_status("processing", "02_ocr", 30)
-            
+
             # 初始化OCR工具
             if not self.ocr_tool:
                 self.ocr_tool = OCRTool(self.config.ocr_model_name)
@@ -280,7 +271,7 @@ class PDFProcessor:
                     image_paths = sorted([str(p) for p in images_dir.glob("page_*.png")])
                 else:
                     image_paths = []
-            
+
             if not image_paths:
                 raise ValueError("没有找到图片文件")
 
@@ -291,21 +282,21 @@ class PDFProcessor:
             markdown_contents = []
             for i, image_path in enumerate(image_paths, 1):
                 self._log_message(f"正在OCR识别第 {i}/{len(image_paths)} 页...")
-                
+
                 try:
                     md_content = self.ocr_tool.img2md(image_path)
                     if md_content and md_content.strip() != "EMPTY_PAGE":
                         markdown_contents.append(md_content)
-                        
+
                         # 保存单页OCR结果
                         page_md_file = ocr_dir / f"page_{i:03d}.md"
                         with open(page_md_file, 'w', encoding='utf-8') as f:
                             f.write(md_content)
-                            
+
                         self._log_message(f"第 {i} 页OCR完成")
                     else:
                         self._log_message(f"第 {i} 页为空白页，已跳过")
-                        
+
                 except Exception as e:
                     self._log_message(f"第 {i} 页OCR失败: {str(e)}", "WARNING")
                     continue
@@ -324,7 +315,7 @@ class PDFProcessor:
                 self.step_data = {}
             self.step_data["original_md_path"] = str(combined_md_file)
             self.step_data["original_md_content"] = combined_markdown
-            
+
             self._log_message(f"OCR识别完成，共处理 {len(markdown_contents)} 页有效内容")
             return True
 
@@ -338,13 +329,10 @@ class PDFProcessor:
         try:
             self._log_message("开始翻译...")
             self._update_task_status("processing", "03_translate", 50)
-            
+
             # 初始化翻译工具
             if not self.translate_tool:
-                self.translate_tool = TranslateTool(
-                    self.config.translate_model_name,
-                    self.config.translate_terms
-                )
+                self.translate_tool = TranslateTool(self.config.translate_model_name, self.config.translate_terms)
 
             # 获取OCR结果内容
             if hasattr(self, 'step_data') and "original_md_content" in self.step_data:
@@ -359,7 +347,7 @@ class PDFProcessor:
                         original_md_content = f.read()
                 else:
                     original_md_content = ""
-            
+
             if not original_md_content:
                 raise ValueError("没有找到原始MD内容")
 
@@ -377,7 +365,7 @@ class PDFProcessor:
                 self.step_data = {}
             self.step_data["translated_md_path"] = str(translated_md_file)
             self.step_data["translated_md_content"] = translated_content
-            
+
             self._log_message("翻译完成")
             return True
 
@@ -391,14 +379,10 @@ class PDFProcessor:
         try:
             self._log_message("开始分析...")
             self._update_task_status("processing", "04_analysis", 70)
-            
+
             # 初始化分析工具
             if not self.analysis_tool:
-                self.analysis_tool = AnalysisTool(
-                    self.config.analysis_model_name,
-                    self.config.analysis_questions,
-                    self.config.translate_terms
-                )
+                self.analysis_tool = AnalysisTool(self.config.analysis_model_name, self.config.analysis_questions, self.config.translate_terms)
 
             # 获取翻译结果内容
             if hasattr(self, 'step_data') and "translated_md_content" in self.step_data:
@@ -413,7 +397,7 @@ class PDFProcessor:
                         translated_md_content = f.read()
                 else:
                     translated_md_content = ""
-            
+
             if not translated_md_content:
                 raise ValueError("没有找到翻译后的MD内容")
 
@@ -428,7 +412,7 @@ class PDFProcessor:
 
             self.step_data["report_md_path"] = str(report_md_file)
             self.step_data["report_md_content"] = analysis_report
-            
+
             self._log_message("分析完成")
             return True
 
@@ -443,18 +427,16 @@ class PDFProcessor:
         try:
             self._log_message("开始输出到数据库...")
             self._update_task_status("processing", "05_output", 90)
-            
-            client = get_mongo_client()
-            if not client:
+
+            db = get_db()
+            if db is None:
                 raise ValueError("无法连接到数据库")
-                
-            db = client.RunJPLib
 
             # 获取所有处理结果，支持从之前的结果中获取
             original_md = self.step_data.get("original_md_content", "")
             translated_md = self.step_data.get("translated_md_content", "")
             report_md = self.step_data.get("report_md_content", "")
-            
+
             # 如果self.step_data中没有，尝试从之前的结果获取
             if hasattr(self, 'previous_results'):
                 if not original_md:
@@ -470,17 +452,15 @@ class PDFProcessor:
             # 将PDF文件保存到GridFS
             fs = GridFS(db)
             with open(self.pdf_file_path, 'rb') as pdf_file:
-                pdf_file_id = fs.put(
-                    pdf_file,
-                    filename=str(uuid.uuid4()),
-                    metadata={
-                        "university_name": self.university_name,
-                        "deadline": datetime.combine(datetime.now().date(), time.min),
-                        "upload_time": datetime.utcnow(),
-                        "original_filename": f"{self.university_name}_{datetime.now().strftime('%Y%m%d')}.pdf",
-                        "task_id": self.task_id
-                    }
-                )
+                pdf_file_id = fs.put(pdf_file,
+                                     filename=str(uuid.uuid4()),
+                                     metadata={
+                                         "university_name": self.university_name,
+                                         "deadline": datetime.combine(datetime.now().date(), time.min),
+                                         "upload_time": datetime.utcnow(),
+                                         "original_filename": f"{self.university_name}_{datetime.now().strftime('%Y%m%d')}.pdf",
+                                         "task_id": self.task_id
+                                     })
 
             # 创建大学信息文档
             university_doc = {
@@ -502,7 +482,7 @@ class PDFProcessor:
 
             self.step_data["university_id"] = str(university_id)
             self.step_data["pdf_file_id"] = str(pdf_file_id)
-            
+
             self._log_message(f"成功保存到数据库，大学ID: {university_id}")
             return True
 
@@ -519,20 +499,17 @@ class PDFProcessor:
             self._update_task_status("processing", "initializing", 5)
 
             # 初始化Buffalo工作流程
-            buffalo = Buffalo(
-                base_dir=self.config.temp_dir,
-                template_path=self.config.buffalo_template_file
-            )
-            
+            buffalo = Buffalo(base_dir=self.config.temp_dir, template_path=self.config.buffalo_template_file)
+
             # 创建或加载项目
             project_name = f"pdf_processing_{self.task_id}"
             project = buffalo.create_project(project_name)
-            
+
             if not project:
                 raise ValueError("无法创建Buffalo项目")
-            
+
             self._log_message(f"Buffalo项目已创建: {project_name}")
-            
+
             # 设置处理函数映射
             function_map = {
                 "01_pdf2img": self.process_step_01_pdf2img,
@@ -541,41 +518,41 @@ class PDFProcessor:
                 "04_analysis": self.process_step_04_analysis,
                 "05_output": self.process_step_05_output,
             }
-            
+
             # 如果指定了重启步骤，设置之前的步骤为已完成
             if self.restart_from_step:
                 self._log_message(f"从步骤 {self.restart_from_step} 开始重启任务")
                 # 加载之前的处理结果
                 self._load_previous_results()
                 self._setup_restart_from_step(buffalo, project, self.restart_from_step)
-            
+
             # 使用Buffalo的工作流程执行
             success = True
             while True:
                 # 获取下一个待执行的任务（针对当前项目）
                 work = project.get_next_not_started_work()
-                
+
                 if not work:
                     # 没有更多任务，工作流程完成
                     self._log_message("所有步骤执行完成")
                     break
-                
+
                 step_name = work.name
                 self._log_message(f"Buffalo获取到任务: {step_name}")
-                
+
                 # 更新任务状态
                 progress = self._get_progress_for_step(step_name)
                 self._update_task_status("processing", step_name, progress)
-                
+
                 # 执行对应的处理函数
                 if step_name in function_map:
                     try:
                         # 标记工作开始
                         buffalo.update_work_status(project_name, work, "in_progress")
-                        
+
                         # 执行处理函数
                         step_success = function_map[step_name](work)
-                        
+
                         if step_success:
                             # 标记工作完成
                             buffalo.update_work_status(project_name, work, "done")
@@ -588,7 +565,7 @@ class PDFProcessor:
                             self._log_message(f"步骤 {step_name} 执行失败", "ERROR")
                             success = False
                             break
-                            
+
                     except Exception as e:
                         # 标记工作失败
                         buffalo.update_work_status(project_name, work, "failed")
@@ -608,7 +585,7 @@ class PDFProcessor:
             if success:
                 self._log_message("PDF处理完成！")
                 self._update_task_status("completed", "finished", 100)
-                
+
                 # 清理临时文件
                 self._cleanup_temp_files()
                 return True
@@ -627,7 +604,7 @@ class PDFProcessor:
     def _setup_restart_from_step(self, buffalo: Buffalo, project: Project, restart_step: str):
         """设置从指定步骤重启，将之前的步骤标记为已完成"""
         project_name = project.folder_name
-        
+
         for work in project.works:
             if work.name == restart_step:
                 # 找到重启步骤，将之前的步骤标记为已完成
@@ -639,7 +616,7 @@ class PDFProcessor:
                         buffalo.update_work_status(project_name, prev_work, "not_started")
                         self._log_message(f"步骤 {prev_work.name} 重置为未开始")
                 break
-        
+
         # 保存项目状态
         buffalo.save_project(project, project_name)
         self._log_message("重启设置已保存")

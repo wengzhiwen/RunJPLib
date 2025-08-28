@@ -25,7 +25,7 @@ from flask_jwt_extended import verify_jwt_in_request
 from werkzeug.utils import secure_filename
 
 from utils.blog_generator import BlogGenerator
-from utils.mongo_client import get_mongo_client
+from utils.mongo_client import get_mongo_client, get_db
 from utils.task_manager import task_manager
 from utils.thread_pool_manager import thread_pool_manager
 
@@ -39,11 +39,10 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 def _update_university_in_db(object_id, update_data, university_id):
     """异步更新大学信息到数据库"""
     try:
-        client = get_mongo_client()
-        if not client:
+        db = get_db()
+        if db is None:
             logging.error("Admin异步更新大学信息失败：无法连接数据库")
             return
-        db = client.RunJPLib
         db.universities.update_one({"_id": object_id}, update_data)
         logging.info(f"University with ID {university_id} was updated (async).")
     except Exception as e:
@@ -53,11 +52,11 @@ def _update_university_in_db(object_id, update_data, university_id):
 def _save_blog_to_db(blog_data):
     """异步保存博客到数据库"""
     try:
-        client = get_mongo_client()
-        if not client:
+        db = get_db()
+        if db is None:
             logging.error("Admin异步保存博客失败：无法连接数据库")
             return None
-        db = client.RunJPLib
+    
         result = db.blogs.insert_one(blog_data)
         logging.info(f"New blog post created with ID: {result.inserted_id} (async).")
         return str(result.inserted_id)
@@ -69,11 +68,11 @@ def _save_blog_to_db(blog_data):
 def _update_blog_in_db(object_id, update_data, blog_id):
     """异步更新博客到数据库"""
     try:
-        client = get_mongo_client()
-        if not client:
+        db = get_db()
+        if db is None:
             logging.error("Admin异步更新博客失败：无法连接数据库")
             return
-        db = client.RunJPLib
+    
         db.blogs.update_one({"_id": object_id}, update_data)
         logging.info(f"Blog post with ID {blog_id} was updated (async).")
     except Exception as e:
@@ -107,12 +106,10 @@ def admin_required(fn):
 
 def _get_dashboard_stats():
     """获取仪表盘核心统计数据的辅助函数"""
-    client = get_mongo_client()
-    if not client:
+    db = get_db()
+    if db is None:
         logging.error("仪表盘无法连接到数据库")
         return {"error": "数据库连接失败"}
-
-    db = client.RunJPLib
     stats = {}
     try:
         stats["university_count"] = db.universities.count_documents({})
@@ -141,8 +138,8 @@ def dashboard():
 
     client = get_mongo_client()
     expired_premium_universities = []
-    if client:
-        db = client.RunJPLib
+    if client is not None:
+    
         try:
             today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
             pipeline = [{
@@ -173,7 +170,7 @@ def dashboard():
                     'deadline': '$max_deadline'
                 }
             }]
-            expired_premium_universities = list(db.universities.aggregate(pipeline))
+            expired_premium_universities = list(client.RunJPLib.universities.aggregate(pipeline))
         except Exception as e:
             logging.error(f"查询过期Premium学校时出错: {e}", exc_info=True)
 
@@ -236,11 +233,11 @@ def manage_blogs_page():
 @admin_bp.route("/api/universities", methods=["GET"])
 @admin_required
 def get_universities():
-    client = get_mongo_client()
-    if not client:
+    db = get_db()
+    if db is None:
         logging.error("[Admin API] Get universities failed: DB connection error.")
         return jsonify({"error": "数据库连接失败"}), 500
-    db = client.RunJPLib
+
 
     try:
         logging.debug("[Admin API] Fetching universities from database...")
@@ -277,10 +274,10 @@ def edit_university(university_id):
     GET: 显示编辑表单
     POST: 更新大学信息
     """
-    client = get_mongo_client()
-    if not client:
+    db = get_db()
+    if db is None:
         return render_template("edit_university.html", error="数据库连接失败")
-    db = client.RunJPLib
+
 
     try:
         object_id = ObjectId(university_id)
@@ -343,10 +340,10 @@ def edit_university(university_id):
 @admin_bp.route("/api/universities/<item_id>", methods=["DELETE"])
 @admin_required
 def delete_university(item_id):
-    client = get_mongo_client()
-    if not client:
+    db = get_db()
+    if db is None:
         return jsonify({"error": "数据库连接失败"}), 500
-    db = client.RunJPLib
+
     db.universities.delete_one({"_id": ObjectId(item_id)})
     return jsonify({"message": "删除成功"})
 
@@ -354,10 +351,10 @@ def delete_university(item_id):
 @admin_bp.route("/api/universities", methods=["DELETE"])
 @admin_required
 def clear_universities():
-    client = get_mongo_client()
-    if not client:
+    db = get_db()
+    if db is None:
         return jsonify({"error": "数据库连接失败"}), 500
-    db = client.RunJPLib
+
     db.universities.delete_many({})
     return jsonify({"message": "数据集合已清空"})
 
@@ -365,10 +362,10 @@ def clear_universities():
 @admin_bp.route("/api/blogs", methods=["GET"])
 @admin_required
 def get_blogs():
-    client = get_mongo_client()
-    if not client:
+    db = get_db()
+    if db is None:
         return jsonify({"error": "数据库连接失败"}), 500
-    db = client.RunJPLib
+
     cursor = db.blogs.find({}).sort("publication_date", -1)
     blogs = []
     for b in cursor:
@@ -394,10 +391,10 @@ def get_blogs():
 @admin_bp.route("/api/blogs/<item_id>", methods=["DELETE"])
 @admin_required
 def delete_blog(item_id):
-    client = get_mongo_client()
-    if not client:
+    db = get_db()
+    if db is None:
         return jsonify({"error": "数据库连接失败"}), 500
-    db = client.RunJPLib
+
     db.blogs.delete_one({"_id": ObjectId(item_id)})
     return jsonify({"message": "删除成功"})
 
@@ -405,10 +402,10 @@ def delete_blog(item_id):
 @admin_bp.route("/api/blogs", methods=["DELETE"])
 @admin_required
 def clear_blogs():
-    client = get_mongo_client()
-    if not client:
+    db = get_db()
+    if db is None:
         return jsonify({"error": "数据库连接失败"}), 500
-    db = client.RunJPLib
+
     db.blogs.delete_many({})
     return jsonify({"message": "数据集合已清空"})
 
@@ -434,10 +431,10 @@ def search_universities():
     if not query:
         return jsonify([])
 
-    client = get_mongo_client()
-    if not client:
+    db = get_db()
+    if db is None:
         return jsonify({"error": "数据库连接失败"}), 500
-    db = client.RunJPLib
+
 
     try:
         # Search for universities where the name contains the query string (case-insensitive)
@@ -519,10 +516,10 @@ def save_blog():
     if not title or not content_md:
         return jsonify({"error": "标题和内容不能为空"}), 400
 
-    client = get_mongo_client()
-    if not client:
+    db = get_db()
+    if db is None:
         return jsonify({"error": "数据库连接失败"}), 500
-    db = client.RunJPLib
+
 
     try:
         # Create a URL-friendly title
@@ -571,10 +568,10 @@ def edit_blog(blog_id):
     GET: Displays the edit form.
     POST: Updates the blog post in the database.
     """
-    client = get_mongo_client()
-    if not client:
+    db = get_db()
+    if db is None:
         return render_template("edit_blog.html", error="数据库连接失败")
-    db = client.RunJPLib
+
 
     try:
         object_id = ObjectId(blog_id)

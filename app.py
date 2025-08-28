@@ -24,7 +24,7 @@ from routes.index import index_route
 from routes.index import sitemap_route
 from routes.index import university_route
 from utils.db_indexes import ensure_indexes
-from utils.mongo_client import get_mongo_client
+from utils.mongo_client import get_db
 
 load_dotenv()
 
@@ -189,10 +189,9 @@ def serve_pdf_from_resource(resource_id):
     start_time = time.time()
     logging.debug(f"PDF请求已收到: {resource_id}")
 
-    client = get_mongo_client()
-    if not client:
+    db = get_db()
+    if db is None:
         abort(404)
-    db = client.RunJPLib
 
     try:
         obj_id = ObjectId(resource_id)

@@ -12,7 +12,7 @@ import markdown
 
 from utils.analytics import log_access
 from utils.cache import blog_list_cache
-from utils.mongo_client import get_mongo_client
+from utils.mongo_client import get_db
 from utils.thread_pool_manager import thread_pool_manager
 
 # --- MongoDB based Blog Functions ---
@@ -26,11 +26,10 @@ def get_all_blogs():
     只获取必要字段以提高效率，并按日期降序排序。
     """
     logging.info("缓存未命中或已过期，正在从MongoDB重新加载所有博客列表...")
-    client = get_mongo_client()
-    if not client:
+    db = get_db()
+    if db is None:
         logging.error("无法连接到MongoDB")
         return []
-    db = client.RunJPLib
 
     try:
         blogs_cursor = db.blogs.find({}, {"title": 1, "url_title": 1, "publication_date": 1, "_id": 0}).sort("publication_date", -1)
@@ -52,11 +51,10 @@ def get_blog_by_url_title(url_title):
     实现了 Lazy Rebuild 机制来处理Markdown到HTML的转换。
     """
     logging.info(f"从MongoDB获取博客: {url_title}")
-    client = get_mongo_client()
-    if not client:
+    db = get_db()
+    if db is None:
         logging.error(f"无法连接到MongoDB以获取博客: {url_title}")
         return None
-    db = client.RunJPLib
 
     try:
         blog_doc = db.blogs.find_one({"url_title": url_title})
@@ -131,10 +129,9 @@ def get_random_blogs_with_summary(count=3):
     从MongoDB获取指定数量的随机博客，并生成摘要。
     """
     logging.info(f"从MongoDB获取 {count} 篇随机博客（带摘要）...")
-    client = get_mongo_client()
-    if not client:
+    db = get_db()
+    if db is None:
         return []
-    db = client.RunJPLib
 
     try:
         pipeline = [{"$sample": {"size": count}}, {"$project": {"title": 1, "url_title": 1, "content_md": 1, "_id": 0}}]

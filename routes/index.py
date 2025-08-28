@@ -15,7 +15,7 @@ import markdown
 
 from utils.analytics import log_access
 from utils.cache import TTLCache
-from utils.mongo_client import get_mongo_client
+from utils.mongo_client import get_db
 
 from .blog import get_all_blogs as get_all_blogs_for_sitemap
 from .blog import get_random_blogs_with_summary
@@ -33,10 +33,9 @@ def get_latest_updates():
     从MongoDB获取最新的15条大学更新记录。
     """
     logging.info("缓存未命中或过期，正在从MongoDB加载最新的15条大学更新...")
-    client = get_mongo_client()
-    if not client:
+    db = get_db()
+    if db is None:
         return []
-    db = client.RunJPLib
 
     try:
         # 按文档创建时间（_id）降序排序，获取最新的15条
@@ -66,10 +65,9 @@ def get_sorted_universities_for_index():
     使用聚合管道确保每个大学只返回其最新的记录，然后按 is_premium 和 deadline 降序排序。
     """
     logging.info("缓存未命中或过期，正在从MongoDB加载去重和排序后的大学列表...")
-    client = get_mongo_client()
-    if not client:
+    db = get_db()
+    if db is None:
         return []
-    db = client.RunJPLib
 
     try:
         pipeline = [
@@ -178,10 +176,9 @@ def get_university_details(name, deadline=None):
     从MongoDB获取大学的详细信息。
     """
     logging.info(f"从MongoDB获取大学详情: name='{name}', deadline='{deadline}'")
-    client = get_mongo_client()
-    if not client:
+    db = get_db()
+    if db is None:
         return None
-    db = client.RunJPLib
 
     query = {"university_name": name}
     if deadline:
@@ -283,9 +280,9 @@ def university_route(name, deadline=None, content="REPORT"):
 def sitemap_route():
     """sitemap路由处理函数"""
     base_url = os.getenv('BASE_URL', 'https://www.runjplib.com')
-    client = get_mongo_client()
+    db = get_db()
     all_universities_for_sitemap = []
-    if client:
+    if db:
         try:
             pipeline = [{
                 "$sort": {
@@ -310,7 +307,7 @@ def sitemap_route():
                     "_id": 0
                 }
             }]
-            all_universities_for_sitemap = list(client.RunJPLib.universities.aggregate(pipeline))
+            all_universities_for_sitemap = list(db.universities.aggregate(pipeline))
         except Exception as e:
             logging.error(f"为站点地图生成大学列表时出错: {e}")
 
