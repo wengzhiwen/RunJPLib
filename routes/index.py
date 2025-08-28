@@ -31,30 +31,63 @@ categories_cache = TTLCache(maxsize=1, ttl=3600)
 @cached(university_list_cache)
 def get_sorted_universities_for_index():
     """
-    从MongoDB获取所有大学的列表，为首页和侧边栏展示。
-    按 is_premium 和 deadline 降序排序。
-    !!! 警告: 此查询的性能高度依赖于数据库索引。 !!!
+    从MongoDB获取所有大学的列表，并进行去重，为首页和侧边栏展示。
+    使用聚合管道确保每个大学只返回其最新的记录，然后按 is_premium 和 deadline 降序排序。
     """
-    logging.info("缓存未命中或过期，正在从MongoDB加载完整的大学列表...")
+    logging.info("缓存未命中或过期，正在从MongoDB加载去重和排序后的大学列表...")
     client = get_mongo_client()
     if not client:
         return []
     db = client.RunJPLib
 
     try:
-        # --- 关键修复点：移除 .limit(100) ---
-        cursor = db.universities.find({}, {"university_name": 1, "deadline": 1, "is_premium": 1, "_id": 0}).sort([("is_premium", -1), ("deadline", -1)])
+        pipeline = [
+            # 1. 按 premium 和 deadline 排序，确保每个分组的第一个文档是最新的
+            {
+                "$sort": {
+                    "is_premium": -1,
+                    "deadline": -1
+                }
+            },
+            # 2. 按 university_name 分组，并获取第一个文档的 deadline 和 is_premium
+            {
+                "$group": {
+                    "_id": "$university_name",
+                    "deadline": {
+                        "$first": "$deadline"
+                    },
+                    "is_premium": {
+                        "$first": "$is_premium"
+                    }
+                }
+            },
+            # 3. 对去重后的结果再次排序
+            {
+                "$sort": {
+                    "is_premium": -1,
+                    "deadline": -1
+                }
+            },
+            # 4. 投影，将 _id 重命名为 university_name
+            {
+                "$project": {
+                    "university_name": "$_id",
+                    "deadline": 1,
+                    "is_premium": 1,
+                    "_id": 0
+                }
+            }
+        ]
+        cursor = db.universities.aggregate(pipeline)
 
         universities = []
         for uni in cursor:
-            # 增加健壮性检查，跳过没有名称的脏数据
             uni_name = uni.get('university_name')
             if not uni_name:
                 continue
-
             universities.append({'name': uni_name, 'deadline': uni.get('deadline'), 'url': f"/university/{uni_name}"})
 
-        logging.info(f"成功为首页加载了 {len(universities)} 所大学。")
+        logging.info(f"成功为首页加载了 {len(universities)} 所唯一的大学。")
         return universities
     except Exception as e:
         logging.error(f"为首页加载大学列表时出错: {e}", exc_info=True)
