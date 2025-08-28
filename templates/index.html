@@ -639,24 +639,48 @@
                         {% for category, unis in categories.items() %}
                         <div class="category-section">
                             <h3>{{ category }}</h3>
-                            <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
-                                {% for uni in unis %}
-                                <div class="col">
-                                    <div class="card">
-                                        <div class="card-body">
-                                            <h4 class="card-title">
-                                                <a href="{{ uni.url }}"
-                                                    class="{% if not uni.file_exists %}invalid-link{% endif %}" {% if
-                                                    not uni.file_exists %}title="该链接暂时无法访问" {% endif %}>
-                                                    {{ uni.ja_name }}
-                                                </a>
-                                            </h4>
-                                            <p class="card-text text-muted">{{ uni.short_name }}</p>
+                            {% if unis is mapping %}
+                                {% for area, area_unis in unis.items() %}
+                                    <h4 class="area-heading mt-4">{{ area }}</h4>
+                                    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+                                        {% for uni in area_unis %}
+                                        <div class="col">
+                                            <div class="card">
+                                                <div class="card-body">
+                                                    <h5 class="card-title">
+                                                        <a href="{{ uni.url }}"
+                                                            class="{% if not uni.file_exists %}invalid-link{% endif %}" {% if
+                                                            not uni.file_exists %}title="该链接暂时无法访问" {% endif %}>
+                                                            {{ uni.ja_name }}
+                                                        </a>
+                                                    </h5>
+                                                    <p class="card-text text-muted">{{ uni.short_name }}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                {% endfor %}
+                            {% else %}
+                                <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+                                    {% for uni in unis %}
+                                    <div class="col">
+                                        <div class="card">
+                                            <div class="card-body">
+                                                <h4 class="card-title">
+                                                    <a href="{{ uni.url }}"
+                                                        class="{% if not uni.file_exists %}invalid-link{% endif %}" {% if
+                                                        not uni.file_exists %}title="该链接暂时无法访问" {% endif %}>
+                                                        {{ uni.ja_name }}
+                                                    </a>
+                                                </h4>
+                                                <p class="card-text text-muted">{{ uni.short_name }}</p>
+                                            </div>
                                         </div>
                                     </div>
+                                    {% endfor %}
                                 </div>
-                                {% endfor %}
-                            </div>
+                            {% endif %}
                         </div>
                         {% endfor %}
                     </section>

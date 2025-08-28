@@ -128,15 +128,16 @@ def get_sorted_universities_for_index():
 def load_categories():
     """
     加载大学分类信息。
+    对于“主要国公立”和“主要私立”，按地区进行分组。
     """
     logging.info("缓存未命中或过期，正在从CSV加载分类信息...")
     categories = defaultdict(list)
+    area_order = ['関東', '関西', '中部', '東北', 'その他']  # 定义地区排序
     try:
-        # 为了性能，不再每次都去数据库检查文件是否存在
         with open('data/university_categories.csv', 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                required_fields = ['category', 'name', 'ja_name', 'short_name']
+                required_fields = ['category', 'name', 'ja_name', 'short_name', 'area']
                 if not all(row.get(field) for field in required_fields):
                     continue
 
@@ -145,9 +146,25 @@ def load_categories():
                     'ja_name': row['ja_name'],
                     'short_name': row['short_name'],
                     'url': "/university/" + row['ja_name'],
-                    'file_exists': True
+                    'file_exists': True,
+                    'area': row['area']
                 })
-        return categories
+
+        # 对特定分类进行按地区分组
+        grouped_categories = {}
+        for category, universities in categories.items():
+            if category in ["主要国公立", "主要私立"]:
+                grouped_by_area = defaultdict(list)
+                for uni in universities:
+                    grouped_by_area[uni['area']].append(uni)
+
+                # 按自定义顺序对地区进行排序
+                sorted_grouped = sorted(grouped_by_area.items(), key=lambda item: area_order.index(item[0]) if item[0] in area_order else len(area_order))
+                grouped_categories[category] = dict(sorted_grouped)
+            else:
+                grouped_categories[category] = universities
+
+        return grouped_categories
     except Exception as e:
         logging.error(f"加载分类信息时出错: {e}", exc_info=True)
         return defaultdict(list)
