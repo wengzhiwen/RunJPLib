@@ -138,7 +138,46 @@ def dashboard():
     stats = _get_dashboard_stats()
     if "error" in stats:
         return render_template("dashboard.html", error=stats["error"])
-    return render_template("dashboard.html", stats=stats)
+
+    client = get_mongo_client()
+    expired_premium_universities = []
+    if client:
+        db = client.RunJPLib
+        try:
+            today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+            pipeline = [{
+                '$group': {
+                    '_id': '$university_name',
+                    'max_deadline': {
+                        '$max': '$deadline'
+                    },
+                    'has_premium': {
+                        '$max': '$is_premium'
+                    }
+                }
+            }, {
+                '$match': {
+                    'has_premium': True,
+                    'max_deadline': {
+                        '$lt': today
+                    }
+                }
+            }, {
+                '$sort': {
+                    'max_deadline': 1
+                }
+            }, {
+                '$project': {
+                    '_id': 0,
+                    'university_name': '$_id',
+                    'deadline': '$max_deadline'
+                }
+            }]
+            expired_premium_universities = list(db.universities.aggregate(pipeline))
+        except Exception as e:
+            logging.error(f"查询过期Premium学校时出错: {e}", exc_info=True)
+
+    return render_template("dashboard.html", stats=stats, expired_premium_universities=expired_premium_universities)
 
 
 @admin_bp.route("/login")

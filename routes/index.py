@@ -4,10 +4,8 @@
 from collections import defaultdict
 import csv
 from datetime import datetime
-from functools import lru_cache
 import logging
 import os
-import re
 
 from cachetools import cached
 from flask import abort
@@ -195,7 +193,6 @@ def get_university_details(name, deadline=None):
         except (ValueError, TypeError):
             # 如果格式不正确或 deadline 不是字符串，则忽略该条件
             logging.warning(f"无效的 deadline 格式: '{deadline}'，查询时将忽略。")
-            pass
 
     # 如果没有指定 deadline，则按 deadline 降序排序获取最新的一个
     sort_order = [("deadline", -1)] if not deadline else None

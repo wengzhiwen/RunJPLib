@@ -117,6 +117,13 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // 自动填充大学名称
+    const urlParams = new URLSearchParams(window.location.search);
+    const universityName = urlParams.get('university_name');
+    if (universityName) {
+        document.getElementById('university_name').value = universityName;
+    }
+
     // 加载队列状态
     loadQueueStatus();
     setInterval(loadQueueStatus, 5000); // 每5秒刷新一次

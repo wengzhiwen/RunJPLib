@@ -66,6 +66,32 @@
     <p>暂无统计数据。</p>
 {% endif %}
 
+<hr>
+
+<h2>报名已过期的 Premium 学校</h2>
+<div class="table-container">
+    {% if expired_premium_universities %}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>学校名称</th>
+                    <th>报名截止日期</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for university in expired_premium_universities %}
+                    <tr>
+                        <td><a href="{{ url_for('admin.pdf_processor_page', university_name=university.university_name) }}">{{ university.university_name }}</a></td>
+                        <td>{{ university.deadline.strftime('%Y-%m-%d') if university.deadline else 'N/A' }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>暂无已过期的 Premium 学校。</p>
+    {% endif %}
+</div>
+
 <style>
     .stats-grid {
         display: grid;
@@ -117,6 +143,41 @@
         margin-top: 5px;
         color: #6c757d;
         font-size: 0.9em;
+    }
+    .table-container {
+        margin-top: 20px;
+        background-color: #ffffff;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .data-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .data-table th, .data-table td {
+        padding: 12px 15px;
+        border-bottom: 1px solid #e0e0e0;
+        text-align: left;
+    }
+    .data-table th {
+        background-color: #f8f9fa;
+        font-weight: bold;
+        color: #333;
+    }
+    .data-table tbody tr:last-child td {
+        border-bottom: none;
+    }
+    .data-table tbody tr:hover {
+        background-color: #f1f1f1;
+    }
+    .data-table a {
+        color: #0056b3;
+        text-decoration: none;
+    }
+    .data-table a:hover {
+        text-decoration: underline;
     }
 </style>
 {% endblock %}
