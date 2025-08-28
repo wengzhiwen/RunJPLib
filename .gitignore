@@ -179,3 +179,4 @@ blogs*/*
 ref/
 log/*
 temp/*
+data/db/*
