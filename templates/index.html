@@ -342,6 +342,47 @@
             --bs-gutter-x: 0.75rem;
             --bs-gutter-y: 0.5rem;
         }
+
+        /* 最新更新板块样式 */
+        .latest-updates {
+            margin-bottom: 3em;
+        }
+
+        .latest-updates .card {
+            border: 1px solid #eee;
+            transition: all 0.2s ease-in-out;
+            height: 45px;
+        }
+
+        .latest-updates .card-body {
+            padding: 0.3rem 0.5rem;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .latest-updates .card:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+
+        .latest-updates .update-item-premium {
+            border-left: 4px solid #ffd700;
+            background-color: #fffbe6;
+        }
+
+        .latest-updates .card-title {
+            color: #333;
+            font-size: 0.85rem;
+            line-height: 1.2;
+            margin: 0;
+            text-align: center;
+        }
+
+        .latest-updates .card-title:hover {
+            color: #007bff;
+        }
     </style>
 
     <!-- JSON-LD 结构化数据 -->
@@ -554,6 +595,25 @@
                         </div>
                     </div>
 
+                    {% if latest_updates %}
+                    <section class="latest-updates">
+                        <h2>最新更新</h2>
+                        <div class="row row-cols-2 row-cols-md-3 row-cols-lg-4 row-cols-xl-5 g-2" style="max-height: 165px; overflow: hidden;">
+                            {% for update in latest_updates %}
+                            <div class="col">
+                                <div class="card {% if update.is_premium %}update-item-premium{% endif %}">
+                                    <div class="card-body">
+                                        <a href="{{ update.url }}" class="text-decoration-none">
+                                            <h6 class="card-title">{{ update.name }}</h6>
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </section>
+                    {% endif %}
+
                     <section class="recommended-reading">
                         <h2>推荐阅读</h2>
                         <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4 mb-5">
@@ -601,6 +661,7 @@
                         {% endfor %}
                     </section>
 
+                    <!--
                     <section class="updates">
                         <h2>更新日志</h2>
                         <div class="update-list">
@@ -660,6 +721,7 @@
                             </p>
                         </div>
                     </section>
+                    -->
 
                     <div class="features mt-4">
                         <ul>

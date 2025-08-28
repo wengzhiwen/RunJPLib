@@ -23,9 +23,39 @@ from .blog import get_random_blogs_with_summary
 
 # --- 缓存定义 ---
 university_list_cache = TTLCache(maxsize=1, ttl=600)
+latest_updates_cache = TTLCache(maxsize=1, ttl=600)  # 为最新更新单独设置缓存
 categories_cache = TTLCache(maxsize=1, ttl=3600)
 
 # --- 数据获取函数 (MongoDB) ---
+
+
+def get_latest_updates():
+    """
+    从MongoDB获取最新的15条大学更新记录。
+    """
+    logging.info("缓存未命中或过期，正在从MongoDB加载最新的15条大学更新...")
+    client = get_mongo_client()
+    if not client:
+        return []
+    db = client.RunJPLib
+
+    try:
+        # 按文档创建时间（_id）降序排序，获取最新的15条
+        cursor = db.universities.find({}, {"university_name": 1, "deadline": 1, "is_premium": 1, "_id": 0}).sort("_id", -1).limit(15)
+
+        updates = []
+        for doc in cursor:
+            updates.append({
+                'name': doc.get('university_name'),
+                'deadline': doc.get('deadline'),
+                'is_premium': doc.get('is_premium', False),
+                'url': f"/university/{doc.get('university_name')}"
+            })
+        logging.info(f"成功加载了 {len(updates)} 条最新更新。")
+        return updates
+    except Exception as e:
+        logging.error(f"加载最新大学更新时出错: {e}", exc_info=True)
+        return []
 
 
 @cached(university_list_cache)
@@ -163,7 +193,14 @@ def index_route():
     universities = get_sorted_universities_for_index()
     categories = load_categories()
     recommended_blogs = get_random_blogs_with_summary(3)
-    return render_template("index.html", universities=universities, categories=categories, recommended_blogs=recommended_blogs, mode='index')
+    latest_updates = get_latest_updates()  # 获取最新更新
+    return render_template(
+        "index.html",
+        universities=universities,
+        categories=categories,
+        recommended_blogs=recommended_blogs,
+        latest_updates=latest_updates,  # 传递给模板
+        mode='index')
 
 
 def university_route(name, deadline=None, content="REPORT"):
