@@ -105,56 +105,39 @@ def admin_required(fn):
     return wrapper
 
 
+def _get_dashboard_stats():
+    """获取仪表盘核心统计数据的辅助函数"""
+    client = get_mongo_client()
+    if not client:
+        logging.error("仪表盘无法连接到数据库")
+        return {"error": "数据库连接失败"}
+
+    db = client.RunJPLib
+    stats = {}
+    try:
+        stats["university_count"] = db.universities.count_documents({})
+        stats["blog_count"] = db.blogs.count_documents({})
+        twenty_four_hours_ago = datetime.utcnow() - timedelta(hours=24)
+        query_24h = {"timestamp": {"$gte": twenty_four_hours_ago}}
+        unique_ips = db.access_logs.distinct("ip", query_24h)
+        stats["unique_ip_count_24h"] = len(unique_ips)
+        query_uni_24h = {"timestamp": {"$gte": twenty_four_hours_ago}, "page_type": "university"}
+        stats["university_views_24h"] = db.access_logs.count_documents(query_uni_24h)
+        query_blog_24h = {"timestamp": {"$gte": twenty_four_hours_ago}, "page_type": "blog"}
+        stats["blog_views_24h"] = db.access_logs.count_documents(query_blog_24h)
+    except Exception as e:
+        logging.error(f"查询仪表盘统计数据时出错: {e}", exc_info=True)
+        return {"error": "查询统计数据时出错"}
+    return stats
+
+
 @admin_bp.route("/")
 @admin_required
 def dashboard():
     """仪表盘路由，展示统计数据"""
-    client = get_mongo_client()
-    if not client:
-        logging.error("仪表盘无法连接到数据库")
-        return render_template("dashboard.html", error="数据库连接失败")
-
-    db = client.RunJPLib
-    stats = {}
-
-    try:
-        # 1. 收录的学校入学信息数量
-        stats["university_count"] = db.universities.count_documents({})
-
-        # 2. blog数量
-        stats["blog_count"] = db.blogs.count_documents({})
-
-        # 定义24小时的时间范围
-        twenty_four_hours_ago = datetime.utcnow() - timedelta(hours=24)
-        query_24h = {"timestamp": {"$gte": twenty_four_hours_ago}}
-
-        # 3. 最近24小时访问的唯一ip数量
-        # 使用 distinct 方法获取唯一的IP地址列表，然后计算其长度
-        unique_ips = db.access_logs.distinct("ip", query_24h)
-        stats["unique_ip_count_24h"] = len(unique_ips)
-
-        # 4. 最近24小时入学信息页的被访问次数
-        query_uni_24h = {
-            "timestamp": {
-                "$gte": twenty_four_hours_ago
-            },
-            "page_type": "university",
-        }
-        stats["university_views_24h"] = db.access_logs.count_documents(query_uni_24h)
-
-        # 5. 最近24小时blog页的被访问次数
-        query_blog_24h = {
-            "timestamp": {
-                "$gte": twenty_four_hours_ago
-            },
-            "page_type": "blog",
-        }
-        stats["blog_views_24h"] = db.access_logs.count_documents(query_blog_24h)
-
-    except Exception as e:
-        logging.error(f"查询仪表盘统计数据时出错: {e}", exc_info=True)
-        return render_template("dashboard.html", error="查询统计数据时出错")
-
+    stats = _get_dashboard_stats()
+    if "error" in stats:
+        return render_template("dashboard.html", error=stats["error"])
     return render_template("dashboard.html", stats=stats)
 
 
@@ -747,6 +730,41 @@ def get_thread_pool_status():
     except Exception as e:
         logging.error(f"[Admin API] 获取线程池状态失败: {e}", exc_info=True)
         return jsonify({"error": "服务器内部错误"}), 500
+
+
+@admin_bp.route("/api/dashboard-stream")
+@admin_required
+def dashboard_stream():
+    """使用SSE推送仪表盘的实时数据"""
+
+    def event_stream():
+        last_data = None
+        while True:
+            try:
+                # 获取核心统计数据
+                stats_data = _get_dashboard_stats()
+                # 获取线程池状态
+                pool_data = thread_pool_manager.get_pool_stats()
+
+                # 合并数据
+                combined_data = {"stats": stats_data, "pools": pool_data}
+
+                current_data = json.dumps(combined_data, default=str)
+
+                # 仅在数据有变化时发送
+                if current_data != last_data:
+                    yield f"data: {current_data}\n\n"
+                    last_data = current_data
+
+            except Exception as e:
+                logging.error(f"Error in SSE dashboard stream: {e}", exc_info=True)
+                error_data = json.dumps({"error": "An internal error occurred"})
+                yield f"event: error\ndata: {error_data}\n\n"
+
+            # 每3秒检查一次更新
+            time.sleep(3)
+
+    return Response(event_stream(), mimetype="text/event-stream")
 
 
 @admin_bp.route("/api/pdf/task-stream")

@@ -123,39 +123,103 @@
 
 {% block scripts %}
 <script>
-// 获取线程池状态的函数
-async function updateThreadPoolStatus() {
-    try {
-        const response = await fetch('/admin/api/thread_pool/status');
-        if (!response.ok) {
-            throw new Error('Network response was not ok');
-        }
-        const data = await response.json();
+document.addEventListener('DOMContentLoaded', function() {
+    connectSSE();
+});
+
+let eventSource;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_DELAY = 30000; // 30 seconds
+
+function connectSSE() {
+    console.log("Connecting to dashboard SSE stream...");
+    eventSource = new EventSource('/admin/api/dashboard-stream');
+
+    eventSource.onopen = function() {
+        console.log("Dashboard SSE connection established.");
+        reconnectAttempts = 0;
+    };
+
+    eventSource.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        updateDashboard(data);
+    };
+
+    eventSource.onerror = function(err) {
+        console.error("Dashboard EventSource failed:", err);
+        eventSource.close();
         
-        // 更新博客线程池状态
-        updatePoolDisplay('blog', data.blog_pool);
+        reconnectAttempts++;
+        let delay = Math.min(MAX_RECONNECT_DELAY, 1000 * Math.pow(2, reconnectAttempts));
+        delay += Math.random() * 1000;
         
-        // 更新Admin线程池状态
-        updatePoolDisplay('admin', data.admin_pool);
+        console.log(`Dashboard connection lost. Reconnecting in ${Math.round(delay / 1000)} seconds...`);
         
-        // 更新Analytics线程池状态
-        updatePoolDisplay('analytics', data.analytics_pool);
+        // Update UI to show error state
+        ['blog', 'admin', 'analytics'].forEach(pool => {
+            const el = document.getElementById(`${pool}-active-threads`);
+            if (el) {
+                el.textContent = '断开';
+                el.style.color = '#dc3545';
+            }
+        });
+        
+        setTimeout(connectSSE, delay);
+    };
+}
+
+function updateDashboard(data) {
+    if (!data) return;
+
+    // 更新核心统计数据
+    if (data.stats && !data.stats.error) {
+        updateStatsCard('university_count', data.stats.university_count);
+        updateStatsCard('blog_count', data.stats.blog_count);
+        updateStatsCard('unique_ip_count_24h', data.stats.unique_ip_count_24h);
+        updateStatsCard('university_views_24h', data.stats.university_views_24h);
+        updateStatsCard('blog_views_24h', data.stats.blog_views_24h);
+    }
+
+    // 更新线程池状态
+    if (data.pools) {
+        updatePoolDisplay('blog', data.pools.blog_pool);
+        updatePoolDisplay('admin', data.pools.admin_pool);
+        updatePoolDisplay('analytics', data.pools.analytics_pool);
         
         // 更新总计
-        document.getElementById('total-completed').textContent = data.completed_tasks || '0';
-        document.getElementById('total-failed').textContent = data.failed_tasks || '0';
-        document.getElementById('total-fallback').textContent = data.sync_fallback_count || '0';
+        const totalCompleted = document.getElementById('total-completed');
+        const totalFailed = document.getElementById('total-failed');
+        const totalFallback = document.getElementById('total-fallback');
         
-    } catch (error) {
-        console.error('Error fetching thread pool status:', error);
-        ['blog', 'admin', 'analytics'].forEach(pool => {
-            document.getElementById(`${pool}-active-threads`).textContent = '错误';
-            document.getElementById(`${pool}-active-threads`).style.color = '#dc3545';
-        });
+        if (totalCompleted) totalCompleted.textContent = data.pools.completed_tasks || '0';
+        if (totalFailed) totalFailed.textContent = data.pools.failed_tasks || '0';
+        if (totalFallback) totalFallback.textContent = data.pools.sync_fallback_count || '0';
     }
 }
 
-// 更新单个线程池显示
+function updateStatsCard(id, value) {
+    // This is a bit tricky as the stats are rendered server-side.
+    // We find the card by its h3 content and update the p tag.
+    const h3s = document.querySelectorAll('.stat-card h3');
+    const idToTextMap = {
+        'university_count': '收录学校总数',
+        'blog_count': '博客文章总数',
+        'unique_ip_count_24h': '24小时独立访客 (IP)',
+        'university_views_24h': '24小时学校页面浏览量',
+        'blog_views_24h': '24小时博客页面浏览量'
+    };
+
+    for (let h3 of h3s) {
+        if (h3.textContent === idToTextMap[id]) {
+            const p = h3.nextElementSibling;
+            if (p && p.tagName === 'P') {
+                p.textContent = value !== undefined ? value : 'N/A';
+            }
+            break;
+        }
+    }
+}
+
 function updatePoolDisplay(poolName, poolData) {
     if (!poolData) return;
     
@@ -164,31 +228,28 @@ function updatePoolDisplay(poolName, poolData) {
     const queueSize = poolData.queue_size || 0;
     
     // 更新数值
-    document.getElementById(`${poolName}-active-threads`).textContent = activeThreads;
-    document.getElementById(`${poolName}-max-workers`).textContent = maxWorkers;
-    document.getElementById(`${poolName}-queue`).textContent = queueSize;
+    const activeEl = document.getElementById(`${poolName}-active-threads`);
+    const maxEl = document.getElementById(`${poolName}-max-workers`);
+    const queueEl = document.getElementById(`${poolName}-queue`);
+
+    if (activeEl) activeEl.textContent = activeThreads;
+    if (maxEl) maxEl.textContent = maxWorkers;
+    if (queueEl) queueEl.textContent = queueSize;
     
     // 根据负载调整颜色
-    const activeElement = document.getElementById(`${poolName}-active-threads`);
-    const utilization = activeThreads / maxWorkers;
-    
-    if (activeThreads === 0) {
-        activeElement.style.color = '#6c757d'; // 灰色 - 空闲
-    } else if (utilization < 0.7) {
-        activeElement.style.color = '#28a745'; // 绿色 - 正常
-    } else if (utilization < 1.0) {
-        activeElement.style.color = '#ffc107'; // 黄色 - 繁忙
-    } else {
-        activeElement.style.color = '#dc3545'; // 红色 - 满载
+    if (activeEl) {
+        const utilization = maxWorkers > 0 ? activeThreads / maxWorkers : 0;
+        
+        if (activeThreads === 0) {
+            activeEl.style.color = '#6c757d'; // 灰色 - 空闲
+        } else if (utilization < 0.7) {
+            activeEl.style.color = '#28a745'; // 绿色 - 正常
+        } else if (utilization < 1.0) {
+            activeEl.style.color = '#ffc107'; // 黄色 - 繁忙
+        } else {
+            activeEl.style.color = '#dc3545'; // 红色 - 满载
+        }
     }
 }
-
-// 页面加载完成后立即获取状态
-document.addEventListener('DOMContentLoaded', function() {
-    updateThreadPoolStatus();
-    
-    // 每5秒更新一次状态
-    setInterval(updateThreadPoolStatus, 5000);
-});
 </script>
 {% endblock %}
