@@ -25,7 +25,7 @@
                     <div class="col-md-6">
                         <p><strong>任务ID:</strong> {{ task._id }}</p>
                         <p><strong>大学名称:</strong> {{ task.university_name }}</p>
-                        <p><strong>文件名:</strong> {{ task.original_filename }}</p>
+                        <p><strong>文件名:</strong> <span id="filename-display">{{ task.original_filename }}</span></p>
                     </div>
                     <div class="col-md-6">
                         <p><strong>创建时间:</strong> {{ task.created_at_str if task.created_at_str else task.created_at.strftime('%Y-%m-%d %H:%M:%S') if task.created_at else '-' }}</p>
@@ -164,6 +164,13 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // 安全显示文件名
+    const filenameDisplay = document.getElementById('filename-display');
+    if (filenameDisplay) {
+        const originalText = filenameDisplay.textContent;
+        filenameDisplay.innerHTML = escapeHtml(originalText);
+    }
+    
     connectSSE();
 });
 
@@ -357,9 +364,14 @@ function escapeHtml(text) {
     if (text === null || typeof text === 'undefined') {
         return '';
     }
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    
+    // 使用更安全的HTML转义方法，保留非英数字字符
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#x27;');
 }
 
 function restartFromStep(stepName) {
