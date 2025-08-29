@@ -282,7 +282,7 @@ def sitemap_route():
     base_url = os.getenv('BASE_URL', 'https://www.runjplib.com')
     db = get_db()
     all_universities_for_sitemap = []
-    if db:
+    if db is not None:
         try:
             pipeline = [{
                 "$sort": {
