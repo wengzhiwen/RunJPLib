@@ -797,12 +797,12 @@ def _batch_update_geo_info(db, ips_to_lookup, items):
             if "," in ip or " " in ip:
                 # 取第一个IP地址进行地理信息解析
                 first_ip = ip.split(",")[0].strip()
-                logging.info(
+                logging.debug(
                     f"🔄 多IP地址处理: '{ip}' -> 使用第一个IP '{first_ip}' 进行地理信息解析"
                 )
                 ip = first_ip
             elif not ip:
-                logging.warning(f"跳过空IP地址")
+                logging.warning("跳过空IP地址")
                 skipped_count += 1
                 continue
 
