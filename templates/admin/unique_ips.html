@@ -24,6 +24,7 @@
                             <th scope="col">最后访问</th>
                             <th scope="col">访问次数</th>
                             <th scope="col">页面类型</th>
+                            <th scope="col">地理位置</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -37,6 +38,23 @@
                                 {% for p in it.page_types %}
                                     <span class="badge bg-secondary me-1">{{ p }}</span>
                                 {% endfor %}
+                            </td>
+                            <td>
+                                {% if it.geo_info %}
+                                    <div class="small">
+                                        <div class="fw-bold">{{ it.geo_info.country_name or '未知' }}</div>
+                                        {% if it.geo_info.city %}
+                                            <div class="text-muted">{{ it.geo_info.city }}</div>
+                                        {% endif %}
+                                        {% if it.geo_info.country_code %}
+                                            <div class="text-muted small">{{ it.geo_info.country_code }}</div>
+                                        {% endif %}
+                                    </div>
+                                {% elif mmdb_available %}
+                                    <span class="text-muted small">解析中...</span>
+                                {% else %}
+                                    <span class="text-muted small">GeoIP不可用</span>
+                                {% endif %}
                             </td>
                         </tr>
                         {% endfor %}

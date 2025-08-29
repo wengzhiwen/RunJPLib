@@ -47,6 +47,23 @@ def ensure_indexes() -> bool:
         )
         logging.info(f"已确保索引存在: processing_tasks.{result_name_tasks_status}")
 
+        # ip_geo_cache 索引: ip 唯一索引
+        result_name_ip_geo = db.ip_geo_cache.create_index(
+            [("ip", 1)],
+            name="idx_ip_geo_cache_ip_unique",
+            unique=True,
+            background=True,
+        )
+        logging.info(f"已确保索引存在: ip_geo_cache.{result_name_ip_geo}")
+
+        # ip_geo_cache 索引: country_code（用于统计）
+        result_name_ip_geo_country = db.ip_geo_cache.create_index(
+            [("country_code", 1)],
+            name="idx_ip_geo_cache_country_code",
+            background=True,
+        )
+        logging.info(f"已确保索引存在: ip_geo_cache.{result_name_ip_geo_country}")
+
         return True
     except Exception as e:
         logging.error(f"创建索引失败: {e}", exc_info=True)

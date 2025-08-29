@@ -1,23 +1,30 @@
 # 变更日志 (CHANGELOG)
 
-## [2025-08-29] - Admin新增独立IP（24h）列表
+## [2025-08-29] - Admin新增独立IP（24h）列表与GeoIP地理位置解析
 
 ### 🚀 新功能
-- 在Admin后台新增“独立IP(24h)”页面（`/admin/analytics/unique_ips`），用于查看过去24小时的独立IP列表。
-- 展示字段：IP、首次访问时间、最后访问时间、访问次数、页面类型集合。
+- 在Admin后台新增"独立IP(24h)"页面（`/admin/analytics/unique_ips`），用于查看过去24小时的独立IP列表。
+- 新增地理位置信息显示：国家名称、城市名称、国家代码。
 - 页面为静态快照，不使用SSE，刷新即可更新数据。
 
+### 🔧 架构更改
+- **新增GeoIP管理器**: 创建 `utils/ip_geo.py`，封装 MaxMind GeoLite2 City 数据库的下载、校验、更新记录管理。
+- **新增地理信息缓存集合**: 在 MongoDB 中引入 `ip_geo_cache` 集合，存储IP地理位置解析结果。
+- **自动数据库更新**: mmdb文件自动下载更新（10天周期），更新记录保存在 `temp/mmdb/update_record.json`。
+
 ### 📁 文件更改
-- `routes/admin.py`: 新增 `unique_ips_page` 路由与聚合查询逻辑。
-- `templates/admin/layout.html`: 在侧边栏增加“独立IP(24h)”菜单项。
-- `templates/admin/unique_ips.html`: 新增模板，用于渲染独立IP列表。
-- `docs/admin_panel.md`: 补充该页面的说明与路径。
+- `utils/ip_geo.py`: 新增IP地理位置管理器，包含mmdb文件管理、IP解析、私有IP过滤等功能。
+- `routes/admin.py`: 修改 `unique_ips_page` 路由，接入mmdb检查与批量地理信息补全逻辑。
+- `templates/admin/unique_ips.html`: 更新模板，增加地理位置信息列显示。
+- `utils/db_indexes.py`: 新增 `ip_geo_cache` 集合的索引配置（IP唯一索引、国家代码索引）。
+- `requirements.txt`: 新增 `geoip2>=4.8.0` 依赖。
+- `docs/admin_panel.md`: 更新页面说明，补充地理位置功能与性能优化说明。
 
 ### 🛠️ 技术细节
-- 通过 `access_logs` 集合的聚合管道统计最近24小时的独立IP：
-  - `$match` 过滤 `timestamp >= now-24h`
-  - `$group` 按 `ip` 聚合 `first_seen`、`last_seen`、`visit_count`、`page_types`
-  - `$sort` 按 `last_seen` 倒序
+- **mmdb文件管理**: 自动检查 `temp/mmdb/GeoLite2-City.mmdb` 文件状态，过期时从 `https://git.io/GeoLite2-City.mmdb` 重新下载。
+- **批量地理信息处理**: 每次访问最多处理200个新IP的地理信息解析，避免阻塞页面响应。
+- **性能优化**: 优先使用缓存结果，仅对缺失项进行本地mmdb查询，无外部网络IO。
+- **私有IP过滤**: 自动识别并跳过私有IP、回环地址等，不进行地理信息解析。
 
 ---
 ## [2025-08-29] - Bing 站点验证文件缺失返回 404

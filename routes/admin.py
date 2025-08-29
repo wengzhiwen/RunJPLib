@@ -659,39 +659,169 @@ def unique_ips_page():
     if db is None:
         return render_template("unique_ips.html", error="数据库连接失败", items=[])
 
+        # 确保mmdb文件可用
+    from utils.ip_geo import ip_geo_manager
+    logging.info("🔧 检查mmdb文件可用性...")
+    mmdb_available = ip_geo_manager.ensure_mmdb_available()
+    logging.info(f"📁 mmdb文件状态: {'可用' if mmdb_available else '不可用'}")
+
     twenty_four_hours_ago = datetime.utcnow() - timedelta(hours=24)
+    logging.info(f"⏰ 查询时间范围: {twenty_four_hours_ago} 至今")
+
     try:
         pipeline = [
-            {"$match": {"timestamp": {"$gte": twenty_four_hours_ago}}},
+            {
+                "$match": {
+                    "timestamp": {
+                        "$gte": twenty_four_hours_ago
+                    }
+                }
+            },
             {
                 "$group": {
                     "_id": "$ip",
-                    "first_seen": {"$min": "$timestamp"},
-                    "last_seen": {"$max": "$timestamp"},
-                    "visit_count": {"$sum": 1},
-                    "page_types": {"$addToSet": "$page_type"},
+                    "first_seen": {
+                        "$min": "$timestamp"
+                    },
+                    "last_seen": {
+                        "$max": "$timestamp"
+                    },
+                    "visit_count": {
+                        "$sum": 1
+                    },
+                    "page_types": {
+                        "$addToSet": "$page_type"
+                    },
                 }
             },
-            {"$sort": {"last_seen": -1}},
+            {
+                "$sort": {
+                    "last_seen": -1
+                }
+            },
         ]
 
+        logging.info("🔍 执行MongoDB聚合查询...")
         results = list(db.access_logs.aggregate(pipeline))
-        items = []
-        for r in results:
-            items.append(
-                {
-                    "ip": r.get("_id"),
-                    "first_seen": r.get("first_seen"),
-                    "last_seen": r.get("last_seen"),
-                    "visit_count": r.get("visit_count", 0),
-                    "page_types": r.get("page_types", []),
-                }
-            )
+        logging.info(f"📊 查询到 {len(results)} 个独立IP")
 
-        return render_template("unique_ips.html", items=items)
+        items = []
+        ips_to_lookup = []
+
+        for r in results:
+            ip = r.get("_id")
+
+            # 检查该IP是否已有地理信息（从任意一条访问记录中获取）
+            geo_info = None
+            if mmdb_available:
+                # 查询该IP的任意一条访问记录，看是否已有地理信息
+                sample_log = db.access_logs.find_one({"ip": ip, "geo_info": {"$exists": True}})
+                if sample_log and sample_log.get("geo_info"):
+                    geo_info = sample_log["geo_info"]
+                    logging.debug(f"✅ 从访问记录中找到地理信息: {ip} -> {geo_info.get('city', 'N/A')}")
+                else:
+                    ips_to_lookup.append(ip)
+                    logging.debug(f"❓ IP需要解析地理信息: {ip}")
+
+            item = {
+                "ip": ip,
+                "first_seen": r.get("first_seen"),
+                "last_seen": r.get("last_seen"),
+                "visit_count": r.get("visit_count", 0),
+                "page_types": r.get("page_types", []),
+                "geo_info": geo_info,
+            }
+            items.append(item)
+
+        logging.info(f"🎯 准备处理 {len(ips_to_lookup)} 个IP的地理信息")
+
+        # 批量查询地理信息并更新数据库
+        if mmdb_available and ips_to_lookup:
+            _batch_update_geo_info(db, ips_to_lookup, items)
+        else:
+            logging.info("⏭️ 跳过地理信息处理 (mmdb不可用或无IP需要处理)")
+
+        logging.info(f"✅ 页面渲染完成，共 {len(items)} 个IP")
+        return render_template("unique_ips.html", items=items, mmdb_available=mmdb_available)
     except Exception as e:
         logging.error(f"查询独立IP统计失败: {e}", exc_info=True)
         return render_template("unique_ips.html", error="查询失败", items=[])
+
+
+def _batch_update_geo_info(db, ips_to_lookup, items):
+    """批量更新IP地理信息到数据库（嵌入方案）"""
+    from utils.ip_geo import ip_geo_manager
+
+    try:
+        logging.info(f"🔍 开始批量更新地理信息，总IP数量: {len(ips_to_lookup)}")
+
+        # 批量处理缺失的IP
+        batch_size = 200  # 限制批量处理数量
+        processed_count = 0
+        skipped_count = 0
+
+        logging.info(f"⚙️ 批量处理限制: {batch_size} 个IP")
+
+        for ip in ips_to_lookup:
+            if processed_count >= batch_size:
+                logging.info(f"⏹️ 达到批量处理限制 {batch_size}，跳过剩余 {len(ips_to_lookup) - processed_count} 个IP")
+                break
+
+            # 查询新的地理信息
+            logging.debug(f"🔍 查询新IP: {ip}")
+            geo_data = ip_geo_manager.lookup_ip(ip)
+
+            if geo_data:
+                logging.debug(f"📍 解析成功: {ip} -> {geo_data.get('city', 'N/A')}, {geo_data.get('country_name', 'N/A')}")
+
+                # 准备地理信息数据
+                geo_info = {
+                    "country_code": geo_data.get("country_code"),
+                    "country_name": geo_data.get("country_name"),
+                    "city": geo_data.get("city"),
+                    "latitude": geo_data.get("latitude"),
+                    "longitude": geo_data.get("longitude"),
+                    "mmdb_version": "1.0",
+                    "geo_updated_at": datetime.utcnow(),
+                }
+
+                try:
+                    # 更新所有该IP的访问记录，添加地理信息
+                    update_result = db.access_logs.update_many({"ip": ip}, {"$set": {"geo_info": geo_info}})
+
+                    logging.debug(f"💾 更新访问记录: {ip} -> {update_result.modified_count} 条记录")
+
+                    # 同时保存到ip_geo_cache作为备份
+                    geo_doc = {"ip": ip, **geo_info}
+                    db.ip_geo_cache.replace_one({"ip": ip}, geo_doc, upsert=True)
+                    logging.debug(f"💾 保存到缓存: {ip}")
+
+                    # 更新items中的地理信息
+                    for item in items:
+                        if item["ip"] == ip:
+                            item["geo_info"] = geo_info
+                            break
+
+                    processed_count += 1
+
+                except Exception as e:
+                    logging.warning(f"❌ 更新IP {ip} 地理信息失败: {e}")
+                    skipped_count += 1
+            else:
+                logging.debug(f"❓ 无法解析IP: {ip} (可能是私有IP或无记录)")
+                skipped_count += 1
+
+        # 总结日志
+        logging.info("📊 批量更新完成:")
+        logging.info(f"  - 新解析并嵌入: {processed_count} 个IP")
+        logging.info(f"  - 跳过/失败: {skipped_count} 个IP")
+        logging.info(f"  - 剩余未处理: {len(ips_to_lookup) - processed_count} 个IP")
+
+        if processed_count > 0:
+            logging.info(f"🎉 成功更新了 {processed_count} 个IP的地理信息到访问记录中")
+
+    except Exception as e:
+        logging.error(f"❌ 批量更新地理信息失败: {e}", exc_info=True)
 
 
 # --- PDF Processing APIs ---
@@ -722,7 +852,6 @@ def upload_pdf():
         # 物理存储仍使用安全文件名，避免路径与特殊字符问题
         safe_filename = secure_filename(file.filename)
         temp_filename = f"{uuid.uuid4().hex}_{safe_filename}"
-        
 
         # 创建临时目录
         temp_dir = os.path.join(tempfile.gettempdir(), "pdf_uploads")
