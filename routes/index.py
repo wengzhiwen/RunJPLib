@@ -28,6 +28,7 @@ categories_cache = TTLCache(maxsize=1, ttl=3600)
 # --- 数据获取函数 (MongoDB) ---
 
 
+@cached(latest_updates_cache)
 def get_latest_updates():
     """
     从MongoDB获取最新的15条大学更新记录。

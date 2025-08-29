@@ -2,6 +2,30 @@
 
 本文档记录了RunJPLib项目的重要更改，包括新功能、架构更新、安全改进等。
 
+## [2025-08-29] - 调整 pymongo 日志级别与环境变量支持
+
+### ✨ 功能改进
+- **默认上调**: 将 `pymongo` 日志的默认级别上调为 `INFO`，减少调试信息对业务日志的干扰。
+- **环境变量覆盖**: 新增环境变量 `PYMONGO_LOG_LEVEL`，支持按需将 `pymongo` 日志级别调整为 `DEBUG`（或其它合法等级，如 `WARNING`）。
+
+### 🔧 代码变更
+- `app.py`: 在 `setup_logging()` 中读取 `PYMONGO_LOG_LEVEL`（默认 `INFO`）并应用于 `logging.getLogger('pymongo')`。
+
+### 📚 文档
+- 新增 `docs/logging.md`，说明如何通过环境变量配置日志级别。
+
+---
+
+## [2025-08-29] - 修复首页“最新更新”缓存未生效
+
+### 🐛 问题修复
+- 修复 `routes/index.py` 中 `get_latest_updates()` 未添加 `@cached(latest_updates_cache)` 导致缓存永远不命中的问题。
+- 现在该接口结果会被 `TTLCache` 缓存600秒，命中缓存时将不会重复触发数据库查询。
+
+### 📁 文件更改
+- `routes/index.py`: 为 `get_latest_updates()` 添加缓存装饰器。
+- `docs/CHANGELOG.md`: 记录本次修复。
+
 ## [2025-08-29] - 线程池命名优化
 
 ### ✨ 功能改进

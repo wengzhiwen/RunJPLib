@@ -71,6 +71,11 @@ def setup_logging():
     logging.getLogger('werkzeug').setLevel(logging.INFO)
     logging.getLogger('flask').setLevel(logging.INFO)
 
+    # 8. 控制 pymongo 日志级别：默认 INFO，可由环境变量 PYMONGO_LOG_LEVEL 覆盖
+    pymongo_level_str = os.getenv('PYMONGO_LOG_LEVEL', 'INFO').upper()
+    pymongo_level = getattr(logging, pymongo_level_str, logging.INFO)
+    logging.getLogger('pymongo').setLevel(pymongo_level)
+
 
 app = Flask(__name__)
 
