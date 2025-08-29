@@ -9,6 +9,24 @@
 - `app.py`: 为 `bing_site_auth` 增加文件存在性检查，缺失时调用 `abort(404)`。
 
 
+## [2025-08-29] - 修复PDF任务中文/日文文件名与句点不显示
+
+### 🐛 问题修复
+- 解决上传后在任务列表与详情页中文件名中的中文、日文以及扩展名前的句点“.”不显示的问题。
+- 根因：后端在接收上传时用 `secure_filename` 覆盖了用于展示的 `original_filename`，导致非ASCII字符被剥离、句点可能被替换。
+
+### 🔧 核心修复
+- 保留原始文件名用于展示：`routes/admin.py` 中将 `original_filename = file.filename`（原始值）用于写入数据库；仅用于磁盘保存时使用 `secure_filename` 生成安全文件名。
+- 前端已使用仅转义HTML保留非英数字的 `escapeHtml()`，无需改动。
+
+### 📁 文件更改
+- `routes/admin.py`: 上传端点 `POST /admin/api/pdf/upload` 同时保存 `original_filename`（原样）与 `safe_filename`（用于磁盘）。
+
+### 📊 测试建议
+- 上传包含中文、日文、韩文和包含多个句点的文件名（如：`東京学芸大学.2024.出願要項.v1.pdf`）。
+- 验证 `templates/admin/pdf_tasks.html` 与 `templates/admin/pdf_task_detail.html` 中文件名完整显示，含中文及句点。
+
+
 本文档记录了RunJPLib项目的重要更改，包括新功能、架构更新、安全改进等。
 
 ## [2025-08-29] - 调整 pymongo 日志级别与环境变量支持

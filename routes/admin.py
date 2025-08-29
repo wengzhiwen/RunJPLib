@@ -673,8 +673,12 @@ def upload_pdf():
             return jsonify({"error": "请输入大学名称"}), 400
 
         # 保存文件到临时目录
-        original_filename = secure_filename(file.filename)
-        temp_filename = f"{uuid.uuid4().hex}_{original_filename}"
+        # original_filename 保留用户原始文件名用于显示（含中文、日文、句点等字符）
+        original_filename = file.filename
+        # 物理存储仍使用安全文件名，避免路径与特殊字符问题
+        safe_filename = secure_filename(file.filename)
+        temp_filename = f"{uuid.uuid4().hex}_{safe_filename}"
+        
 
         # 创建临时目录
         temp_dir = os.path.join(tempfile.gettempdir(), "pdf_uploads")
