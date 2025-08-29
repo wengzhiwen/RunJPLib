@@ -17,11 +17,13 @@ from dotenv import load_dotenv
 import nest_asyncio
 
 from utils.mongo_client import get_mongo_client
+from utils.logging_config import setup_logger
 
 # Apply the patch to allow nested asyncio event loops
 nest_asyncio.apply()
 
-logger = logging.getLogger(__name__)
+# 设置独立的日志记录器
+logger = setup_logger(logger_name="BlogGenerator", log_level="INFO")
 
 # --- System Prompts extracted from ref/blog_writer.py ---
 
@@ -184,6 +186,10 @@ class BlogGenerator:
         if not api_key:
             logger.error("OPENAI_API_KEY environment variable not set.")
             raise ValueError("OpenAI API key not set.")
+
+        # 设置环境变量禁用重试，避免429错误时的自动重试
+        os.environ["OPENAI_MAX_RETRIES"] = "0"
+
         logger.info(f'BlogGenerator setup with model: {self.model}')
 
     def _create_agent(self, name: str, system_prompt: str) -> Agent:
@@ -191,16 +197,33 @@ class BlogGenerator:
 
     def _run_agent_and_parse_json(self, agent: Agent, task_prompt: str) -> Dict:
         logger.info(f"Running agent: {agent.name}...")
+        logger.info(f"Task prompt length: {len(task_prompt)} characters")
+
         with trace(f"Agent-{agent.name}"):
             input_items = [{"role": "user", "content": task_prompt}]
-            result = Runner.run_sync(agent, input_items)
-            if not result or not result.final_output:
-                raise Exception(f"Agent {agent.name} failed to generate content.")
+            try:
+                result = Runner.run_sync(agent, input_items)
+                if not result or not result.final_output:
+                    raise Exception(f"Agent {agent.name} failed to generate content.")
+            except Exception as e:
+                logger.error(f"Agent {agent.name} execution failed: {e}", exc_info=True)
+                # 检查是否是429错误，如果是则记录详细信息
+                if "429" in str(e):
+                    logger.warning(f"Detected 429 error in agent {agent.name}, this should not retry automatically")
+                raise e
+
         logger.info(f"Agent {agent.name} finished generation.")
+        logger.info(f"Agent {agent.name} output length: {len(result.final_output)} characters")
+        logger.debug(f"Agent {agent.name} raw output: {result.final_output[:500]}...")
+
         try:
-            return json.loads(result.final_output)
+            parsed_result = json.loads(result.final_output)
+            logger.info(f"Successfully parsed JSON from agent {agent.name}")
+            logger.debug(f"Parsed result keys: {list(parsed_result.keys())}")
+            return parsed_result
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse JSON from agent {agent.name}: {result.final_output}. Error: {e}")
+            logger.error(f"Failed to parse JSON from agent {agent.name}. Error: {e}")
+            logger.error(f"Raw output (first 1000 chars): {result.final_output[:1000]}")
             return {"title": "生成结果（JSON格式错误）", "content": result.final_output, "universities": []}
 
     def _get_university_materials(self, university_ids: List[str]) -> List[Dict]:
@@ -208,17 +231,19 @@ class BlogGenerator:
         if not client:
             raise ConnectionError("Could not connect to MongoDB.")
         db = client.RunJPLib
-        
+
         materials = []
         for uid_str in university_ids:
             try:
                 obj_id = ObjectId(uid_str)
                 university = db.universities.find_one({"_id": obj_id})
-                if university and "content" in university and "original_md" in university["content"]:
-                    materials.append({
-                        "name": university["university_name"],
-                        "original_md": university["content"]["original_md"]
-                    })
+                if university and "content" in university:
+                    # 获取原始markdown和基础分析报告
+                    original_md = university["content"].get("original_md", "")
+                    report_md = university["content"].get("report_md", "")
+
+                    if original_md or report_md:
+                        materials.append({"name": university["university_name"], "original_md": original_md, "report_md": report_md})
             except Exception:
                 logger.warning(f"Invalid ObjectId string or DB error for: {uid_str}")
         return materials
@@ -226,17 +251,17 @@ class BlogGenerator:
     def _format_content(self, content_to_format: str) -> str:
         if not content_to_format or not content_to_format.strip():
             return content_to_format
-        
+
         logger.info("Formatting blog content with Markdown...")
         formatter_agent = self._create_agent("blog_formatter", PROMPT_FORMATTER)
         task_prompt = f"请格式化以下文章：\n\n{content_to_format}"
-        
+
         try:
             formatted_data = self._run_agent_and_parse_json(formatter_agent, task_prompt)
             return formatted_data.get("formatted_content", content_to_format)
         except Exception as e:
             logger.error(f"An error occurred during content formatting: {e}", exc_info=True)
-            return content_to_format # Return original content on failure
+            return content_to_format  # Return original content on failure
 
     def generate_blog_content(self, mode: str, university_ids: List[str], user_prompt: str, system_prompt: str) -> Optional[Dict]:
         try:
@@ -251,9 +276,12 @@ class BlogGenerator:
                 raise ValueError(f"Unknown generation mode: {mode}")
 
             if initial_result and initial_result.get("content"):
+                logger.info(f"Formatting content, original length: {len(initial_result['content'])} characters")
                 formatted_content = self._format_content(initial_result["content"])
                 initial_result["content"] = formatted_content
-            
+                logger.info(f"Content formatted, new length: {len(formatted_content)} characters")
+
+            logger.info(f"Blog generation completed successfully, returning result with keys: {list(initial_result.keys()) if initial_result else 'None'}")
             return initial_result
 
         except Exception as e:
@@ -265,6 +293,7 @@ class BlogGenerator:
         if not materials_data:
             raise ValueError("Expand mode requires at least one university to be selected.")
 
+        # 首先尝试使用原始内容
         materials_text = "\n\n---\n\n".join([f"大学名称: {u['name']}\n\n{u['original_md']}" for u in materials_data])
         task_prompt = f"""
 请根据以下基础材料和扩展写作方向，撰写一篇扩展性的日本留学BLOG文章。
@@ -274,7 +303,36 @@ class BlogGenerator:
 {user_prompt}
 """
         agent = self._create_agent("expand_writer", system_prompt)
-        return self._run_agent_and_parse_json(agent, task_prompt)
+
+        try:
+            return self._run_agent_and_parse_json(agent, task_prompt)
+        except Exception as e:
+            # 检查是否是OpenAI API速率限制错误
+            if "429" in str(e) and "tokens per min" in str(e):
+                logger.warning(f"OpenAI API速率限制错误，尝试使用基础分析报告替代长文本内容: {e}")
+
+                # 使用基础分析报告替代原始内容
+                materials_text_report = "\n\n---\n\n".join([f"大学名称: {u['name']}\n\n{u['report_md']}" for u in materials_data if u.get('report_md')])
+                if not materials_text_report:
+                    logger.error("没有可用的基础分析报告，无法继续处理")
+                    raise e
+
+                task_prompt_report = f"""
+请根据以下基础材料和扩展写作方向，撰写一篇扩展性的日本留学BLOG文章。
+基础材料（基于分析报告）：
+{materials_text_report}
+扩展写作方向：
+{user_prompt}
+"""
+
+                try:
+                    return self._run_agent_and_parse_json(agent, task_prompt_report)
+                except Exception as e2:
+                    logger.error(f"使用基础分析报告后仍然失败: {e2}", exc_info=True)
+                    raise e2
+            else:
+                # 其他类型的错误，直接抛出
+                raise e
 
     def _generate_compare_mode(self, university_ids: List[str], user_prompt: str, system_prompt: str) -> Dict:
         materials_data = self._get_university_materials(university_ids)
@@ -283,29 +341,67 @@ class BlogGenerator:
 
         reducer_agent = self._create_agent("article_reducer", PROMPT_REDUCER)
         summaries = []
-        for material in materials_data:
-            logger.info(f"Reducing content for {material['name']}...")
-            task_prompt = f"请缩减以下文章内容：\n\n{material['original_md']}"
-            input_items = [{"role": "user", "content": task_prompt}]
-            result = Runner.run_sync(reducer_agent, input_items)
-            if result and result.final_output:
-                summaries.append(result.final_output)
 
-        combined_summaries = "\n\n---\n\n".join(summaries)
-        task_prompt = f"""
+        try:
+            # 首先尝试使用原始内容
+            for material in materials_data:
+                logger.info(f"Reducing content for {material['name']}...")
+                task_prompt = f"请缩减以下文章内容：\n\n{material['original_md']}"
+                input_items = [{"role": "user", "content": task_prompt}]
+                result = Runner.run_sync(reducer_agent, input_items)
+                if result and result.final_output:
+                    summaries.append(result.final_output)
+
+            combined_summaries = "\n\n---\n\n".join(summaries)
+            task_prompt = f"""
 请根据以下多所大学的信息，撰写一篇综合性的日本留学的BLOG。
 {combined_summaries}
 
 另外，请参考用户的以下要求来组织文章：
 {user_prompt}
 """
-        compare_agent = self._create_agent("comparative_writer", system_prompt)
-        return self._run_agent_and_parse_json(compare_agent, task_prompt)
+            compare_agent = self._create_agent("comparative_writer", system_prompt)
+            return self._run_agent_and_parse_json(compare_agent, task_prompt)
+
+        except Exception as e:
+            # 检查是否是OpenAI API速率限制错误
+            if "429" in str(e) and "tokens per min" in str(e):
+                logger.warning(f"OpenAI API速率限制错误，尝试使用基础分析报告替代长文本内容: {e}")
+
+                # 使用基础分析报告替代原始内容，而不是追加
+                summaries_report = []
+                for material in materials_data:
+                    if material.get('report_md'):
+                        logger.info(f"Using analysis report for {material['name']}...")
+                        summaries_report.append(material['report_md'])
+                    else:
+                        # 如果没有分析报告，使用原始内容的截断版本
+                        logger.info(f"No analysis report for {material['name']}, using truncated original content")
+                        summaries_report.append(material['original_md'][:2000] + "..." if len(material['original_md']) > 2000 else material['original_md'])
+
+                combined_summaries_report = "\n\n---\n\n".join(summaries_report)
+                task_prompt_report = f"""
+请根据以下多所大学的信息，撰写一篇综合性的日本留学的BLOG。
+{combined_summaries_report}
+
+另外，请参考用户的以下要求来组织文章：
+{user_prompt}
+"""
+
+                try:
+                    compare_agent = self._create_agent("comparative_writer", system_prompt)
+                    return self._run_agent_and_parse_json(compare_agent, task_prompt_report)
+                except Exception as e2:
+                    logger.error(f"使用基础分析报告后仍然失败: {e2}", exc_info=True)
+                    raise e2
+            else:
+                # 其他类型的错误，直接抛出
+                raise e
 
     def _generate_user_prompt_mode(self, user_prompt: str, system_prompt: str) -> Dict:
         if not user_prompt:
             raise ValueError("User prompt cannot be empty for this mode.")
-        
+
         task_prompt = f"""
 请根据以下参考内容，撰写一篇专业的日本留学咨询文章。
 参考内容：

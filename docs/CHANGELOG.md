@@ -1,5 +1,41 @@
 # 变更日志 (CHANGELOG)
 
+## [2025-08-29] - 修复Blog生成器OpenAI API速率限制错误
+
+### 🐛 Bug修复
+- **解决OpenAI API速率限制问题**：当遇到429错误（token数量超限）时，自动使用基础分析报告替代长文本内容
+- **智能内容降级**：优先使用原始markdown内容，失败时自动切换到基础分析报告，确保blog生成功能可用
+- **异常处理优化**：区分API速率限制错误和其他错误，提供更精确的日志记录
+- **禁用自动重试**：设置环境变量禁用OpenAI客户端的自动重试，避免429错误时的无效重试
+
+### 🔧 核心修复
+- **异常捕获机制**：在`_generate_expand_mode`和`_generate_compare_mode`中添加429错误检测
+- **内容替换策略**：当原始内容过长导致token超限时，自动使用`content.report_md`字段的基础分析报告
+- **日志级别优化**：429错误使用warning级别，二次失败才使用error级别
+- **重试控制**：设置`OPENAI_MAX_RETRIES=0`环境变量
+
+### 📁 文件更改
+- `utils/blog_generator.py`：完全重写，包含所有修复和功能增强
+- `utils/blog_generator.py`：修改`_get_university_materials`方法，同时获取原始内容和基础分析报告
+- `utils/blog_generator.py`：在`_generate_expand_mode`中添加异常处理和内容替换逻辑
+- `utils/blog_generator.py`：在`_generate_compare_mode`中添加异常处理和内容替换逻辑
+- `utils/blog_generator.py`：添加独立的日志记录器，便于调试和问题追踪
+
+### 🛠️ 技术细节
+- **错误检测**：通过检查异常信息中是否包含"429"和"tokens per min"来识别API速率限制错误
+- **降级策略**：优先使用原始内容，失败时自动切换到基础分析报告，确保功能可用性
+- **数据完整性**：同时获取`original_md`和`report_md`字段，为降级策略提供数据支持
+- **日志记录**：使用`setup_logger`创建独立的BlogGenerator日志文件，记录详细的执行过程
+- **重试控制**：通过环境变量控制OpenAI客户端的重试行为，避免不必要的重试
+
+### 📊 影响范围
+- **Blog生成功能**：expand模式和compare模式现在能够更好地处理长文本内容
+- **用户体验**：减少因API限制导致的blog生成失败，提高系统稳定性
+- **系统健壮性**：增强了错误处理能力，提供了优雅的降级方案
+- **调试能力**：独立的日志文件便于问题追踪和性能分析
+
+---
+
 ## [2025-08-29] - Blog板块Wiki功能实现完成
 
 ### 🚀 新功能
