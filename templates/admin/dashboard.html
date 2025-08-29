@@ -41,20 +41,20 @@
     <!-- 线程池状态 -->
     <h2>系统状态</h2>
     <div class="stats-grid">
-        <div class="stat-card system-card blog-pool">
-            <h3>博客更新线程池</h3>
-            <p id="blog-active-threads">加载中...</p>
-            <small id="blog-details">最大: <span id="blog-max-workers">-</span> | 队列: <span id="blog-queue">-</span></small>
+        <div class="stat-card system-card blog-html-build-pool">
+            <h3>博客HTML构建线程池</h3>
+            <p id="blog-html-build-active-threads">加载中...</p>
+            <small id="blog-html-build-details">最大: <span id="blog-html-build-max-workers">-</span> | 队列: <span id="blog-html-build-queue">-</span></small>
         </div>
         <div class="stat-card system-card admin-pool">
             <h3>Admin操作线程池</h3>
             <p id="admin-active-threads">加载中...</p>
             <small id="admin-details">最大: <span id="admin-max-workers">-</span> | 队列: <span id="admin-queue">-</span></small>
         </div>
-        <div class="stat-card system-card analytics-pool">
-            <h3>Analytics日志线程池</h3>
-            <p id="analytics-active-threads">加载中...</p>
-            <small id="analytics-details">最大: <span id="analytics-max-workers">-</span> | 队列: <span id="analytics-queue">-</span></small>
+        <div class="stat-card system-card user-access-log-pool">
+            <h3>用户访问日志线程池</h3>
+            <p id="user-access-log-active-threads">加载中...</p>
+            <small id="user-access-log-details">最大: <span id="user-access-log-max-workers">-</span> | 队列: <span id="user-access-log-queue">-</span></small>
         </div>
         <div class="stat-card system-card summary">
             <h3>总计任务</h3>
@@ -126,13 +126,13 @@
     .system-card {
         border-left: 4px solid #28a745;
     }
-    .system-card.blog-pool {
+    .system-card.blog-html-build-pool {
         border-left-color: #007bff;
     }
     .system-card.admin-pool {
         border-left-color: #6f42c1;
     }
-    .system-card.analytics-pool {
+    .system-card.user-access-log-pool {
         border-left-color: #20c997;
     }
     .system-card.summary {
@@ -217,7 +217,7 @@ function connectSSE() {
         console.log(`Dashboard connection lost. Reconnecting in ${Math.round(delay / 1000)} seconds...`);
         
         // Update UI to show error state
-        ['blog', 'admin', 'analytics'].forEach(pool => {
+        ['blog-html-build', 'admin', 'user-access-log'].forEach(pool => {
             const el = document.getElementById(`${pool}-active-threads`);
             if (el) {
                 el.textContent = '断开';
@@ -243,9 +243,9 @@ function updateDashboard(data) {
 
     // 更新线程池状态
     if (data.pools) {
-        updatePoolDisplay('blog', data.pools.blog_pool);
+        updatePoolDisplay('blog-html-build', data.pools.blog_html_build_pool);
         updatePoolDisplay('admin', data.pools.admin_pool);
-        updatePoolDisplay('analytics', data.pools.analytics_pool);
+        updatePoolDisplay('user-access-log', data.pools.user_access_log_pool);
         
         // 更新总计
         const totalCompleted = document.getElementById('total-completed');
@@ -314,3 +314,4 @@ function updatePoolDisplay(poolName, poolData) {
 }
 </script>
 {% endblock %}
+

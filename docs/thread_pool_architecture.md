@@ -37,7 +37,7 @@ RunJPLib 采用了多线程池架构来处理不同类型的后台任务，确�
 ├──────────────────────────────────────────────────────────┤
 │                                                          │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐ │
-│  │ Analytics Pool  │  │ BlogUpdate Pool │  │ Admin Pool  │ │
+│  │ UserAccessLog Pool│  │ BlogHtmlBuild Pool │  │ Admin Pool  │ │
 │  │   (6 threads)   │  │   (8 threads)   │  │ (4 threads) │ │
 │  │                 │  │                 │  │             │ │
 │  │ • 访问日志记录   │  │ • HTML重建      │  │ • 大学编辑   │ │
@@ -52,8 +52,8 @@ RunJPLib 采用了多线程池架构来处理不同类型的后台任务，确�
 
 | 线程池类型 | 默认线程数 | 操作频率 | 执行时间 | 典型场景 |
 |------------|------------|----------|----------|----------|
-| Analytics | 6 | 极高 | 10-50ms | 每次页面访问 |
-| BlogUpdate | 8 | 中等 | 50-200ms | Markdown转HTML |
+| 用户访问日志 | 6 | 极高 | 10-50ms | 每次页面访问 |
+| 博客HTML构建 | 8 | 中等 | 50-200ms | Markdown转HTML |
 | Admin | 4 | 较低 | 100ms-数秒 | 管理员操作 |
 
 ## 技术实现
@@ -68,18 +68,18 @@ class ThreadPoolManager:
     
     def __init__(self):
         # 三个独立的线程池
-        self.blog_update_executor = ThreadPoolExecutor(max_workers=8)
+        self.blog_html_build_executor = ThreadPoolExecutor(max_workers=8)
         self.admin_executor = ThreadPoolExecutor(max_workers=4)
-        self.analytics_executor = ThreadPoolExecutor(max_workers=6)
+        self.user_access_log_executor = ThreadPoolExecutor(max_workers=6)
     
-    def submit_blog_update(self, func, *args, **kwargs) -> bool:
-        """提交博客更新任务"""
+    def submit_blog_html_build(self, func, *args, **kwargs) -> bool:
+        """提交博客HTML构建任务"""
         
     def submit_admin_task(self, func, *args, **kwargs) -> bool:
         """提交Admin操作任务"""
         
-    def submit_analytics_task(self, func, *args, **kwargs) -> bool:
-        """提交Analytics日志任务"""
+    def submit_user_access_log_task(self, func, *args, **kwargs) -> bool:
+        """提交用户访问日志任务"""
 ```
 
 #### 2. 智能降级机制
@@ -101,14 +101,14 @@ def _submit_task(self, pool_type: str, executor: ThreadPoolExecutor, func, *args
 def get_pool_stats(self) -> Dict[str, Any]:
     """获取所有线程池的统计信息"""
     return {
-        "blog_pool": {
+        "blog_html_build_pool": {
             "max_workers": self.blog_max_workers,
-            "active_threads": self._get_active_thread_count(self.blog_update_executor),
-            "queue_size": self._get_queue_size(self.blog_update_executor),
-            "submitted": self.stats['blog']['submitted'],
-            "completed": self.stats['blog']['completed'],
-            "failed": self.stats['blog']['failed'],
-            "sync_fallback": self.stats['blog']['sync_fallback']
+            "active_threads": self._get_active_thread_count(self.blog_html_build_executor),
+            "queue_size": self._get_queue_size(self.blog_html_build_executor),
+            "submitted": self.stats['blog_html_build']['submitted'],
+            "completed": self.stats['blog_html_build']['completed'],
+            "failed": self.stats['blog_html_build']['failed'],
+            "sync_fallback": self.stats['blog_html_build']['sync_fallback']
         },
         # ... 其他线程池类似
     }
@@ -129,7 +129,7 @@ def log_access(page_type: str):
     }
     
     # 尝试异步执行
-    success = thread_pool_manager.submit_analytics_task(_write_access_log_to_db, access_log)
+    success = thread_pool_manager.submit_user_access_log_task(_write_access_log_to_db, access_log)
     
     if not success:
         # 降级为同步执行
@@ -143,7 +143,7 @@ def log_access(page_type: str):
 def get_blog_by_url_title(url_title):
     if needs_rebuild:
         # 异步更新数据库
-        success = thread_pool_manager.submit_blog_update(
+        success = thread_pool_manager.submit_blog_html_build(
             update_blog_html_in_db, 
             db, blog_doc['_id'], html_content, update_time
         )
@@ -177,18 +177,18 @@ def edit_university(university_id):
 
 ```bash
 # 线程池配置
-BLOG_UPDATE_THREAD_POOL_SIZE=8      # 博客更新线程池
+BLOG_UPDATE_THREAD_POOL_SIZE=8      # 博客HTML构建线程池
 ADMIN_THREAD_POOL_SIZE=4            # Admin操作线程池  
-ANALYTICS_THREAD_POOL_SIZE=6        # Analytics日志线程池
+ANALYTICS_THREAD_POOL_SIZE=6        # 用户访问日志线程池
 ```
 
 ### 硬件配置建议
 
 #### 2CPU + 4GB RAM（当前生产环境）
 ```bash
-BLOG_UPDATE_THREAD_POOL_SIZE=8      # 平衡性能和资源
+BLOG_UPDATE_THREAD_POOL_SIZE=8      # 博客HTML构建线程池
 ADMIN_THREAD_POOL_SIZE=4            # 保证Admin操作响应
-ANALYTICS_THREAD_POOL_SIZE=6        # 满足高频访问需求
+ANALYTICS_THREAD_POOL_SIZE=6        # 用户访问日志线程池
 # 总计: 18线程，适合2核心环境
 ```
 
@@ -230,7 +230,7 @@ GET /admin/api/thread_pool/status
 
 # 响应示例
 {
-  "blog_pool": {
+  "blog_html_build_pool": {
     "max_workers": 8,
     "active_threads": 2,
     "queue_size": 0,
@@ -240,7 +240,7 @@ GET /admin/api/thread_pool/status
     "sync_fallback": 2
   },
   "admin_pool": { ... },
-  "analytics_pool": { ... }
+  "user_access_log_pool": { ... }
 }
 ```
 
@@ -249,9 +249,9 @@ GET /admin/api/thread_pool/status
 线程池相关日志示例：
 
 ```
-2025-08-27 10:30:15 - ThreadPoolManager - INFO - 线程池管理器初始化完成 - 博客更新:8, Admin:4, Analytics:6
-2025-08-27 10:30:16 - ThreadPoolManager - DEBUG - blog任务已提交到线程池，当前活跃线程: 1
-2025-08-27 10:30:17 - ThreadPoolManager - WARNING - analytics线程池提交失败，将使用同步执行
+2025-08-27 10:30:15 - ThreadPoolManager - INFO - 线程池管理器初始化完成 - 博客HTML构建:8, Admin:4, 用户访问日志:6
+2025-08-27 10:30:16 - ThreadPoolManager - DEBUG - blog_html_build任务已提交到线程池，当前活跃线程: 1
+2025-08-27 10:30:17 - ThreadPoolManager - WARNING - user_access_log线程池提交失败，将使用同步执行
 ```
 
 ## 性能优化
@@ -271,8 +271,8 @@ GET /admin/api/thread_pool/status
 
 ### 调优建议
 
-1. **Analytics线程池**: 根据访问频率调整，确保降级次数 < 5%
-2. **博客更新线程池**: 根据博客数量和更新频率调整
+1. **用户访问日志线程池**: 根据访问频率调整，确保降级次数 < 5%
+2. **博客HTML构建线程池**: 根据博客数量和更新频率调整
 3. **Admin线程池**: 保持较小值，但确保响应及时
 
 ## 故障排查
@@ -308,7 +308,7 @@ GET /admin/api/thread_pool/status
 ```python
 # 检查线程池状态
 stats = thread_pool_manager.get_pool_stats()
-print(f"Blog pool: {stats['blog_pool']['active_threads']}/{stats['blog_pool']['max_workers']}")
+print(f"Blog pool: {stats['blog_html_build_pool']['active_threads']}/{stats['blog_html_build_pool']['max_workers']}")
 
 # 检查活跃线程
 import threading
@@ -405,3 +405,8 @@ grep -i "ping" logs/app.log
 ---
 
 如有任何问题或建议，请参考项目的贡献指南或提交Issue。
+ssue。
+的贡献指南或提交Issue。
+。
+�交Issue。
+的贡献指南或提交Issue。

@@ -2,6 +2,31 @@
 
 本文档记录了RunJPLib项目的重要更改，包括新功能、架构更新、安全改进等。
 
+## [2025-08-29] - 线程池命名优化
+
+### ✨ 功能改进
+- **线程池重命名**: 为了使命名更清晰、更准确地反映其功能，对项目中的两个核心线程池进行了重命名。
+- **“Analytics日志线程池”**: 更名为 **“用户访问日志线程池”**，以明确其用途是记录用户页面访问日志，避免与数据分析功能混淆。
+- **“博客更新线程池”**: 更名为 **“博客HTML构建线程池”**，以精确描述其功能为将Markdown内容构建为HTML，并与Admin后台的博客保存/更新功能区分开。
+
+### 🔧 技术改进
+- **代码同步更新**: 更新了 `utils/thread_pool_manager.py` 中的所有相关变量、方法和日志信息，以匹配新的线程池名称。
+- **方法调用更新**: 在 `routes/blog.py` 和 `utils/analytics.py` 中，更新了对线程池任务提交方法的调用。
+- **前端模板更新**: 修改了 `templates/admin/dashboard.html`，更新了仪表盘上显示的线程池名称、CSS类名以及用于获取状态的JavaScript ID。
+
+### 📚 文档
+- **文档同步**: 更新了 `docs/admin_panel.md` 和 `docs/thread_pool_architecture.md` 文档，以反映新的线程池命名。
+- **更新变更日志**: 在 `CHANGELOG.md` 中记录了此次重命名。
+
+### 📁 文件更改
+- `utils/thread_pool_manager.py`: 核心线程池实现更新。
+- `utils/analytics.py`: 更新了任务提交方法调用。
+- `routes/blog.py`: 更新了任务提交方法调用。
+- `templates/admin/dashboard.html`: 更新了前端显示和交互逻辑。
+- `docs/admin_panel.md`: 文档更新。
+- `docs/thread_pool_architecture.md`: 文档更新。
+- `docs/CHANGELOG.md`: 本次更新。
+
 ## [2025-08-29] - 新增大学中文名支持
 
 ### 🚀 新功能
@@ -311,9 +336,9 @@
 
 ### ⚙️ 环境配置
 - **新增环境变量支持**:
-  - `BLOG_UPDATE_THREAD_POOL_SIZE`: 博客更新线程池大小（默认8）
+  - `BLOG_UPDATE_THREAD_POOL_SIZE`: 博客HTML构建线程池大小（默认8）
   - `ADMIN_THREAD_POOL_SIZE`: Admin操作线程池大小（默认4）
-  - `ANALYTICS_THREAD_POOL_SIZE`: Analytics日志线程池大小（默认6）
+  - `ANALYTICS_THREAD_POOL_SIZE`: 用户访问日志线程池大小（默认6）
 
 ### 📊 性能优化
 - **访问日志异步化**: 页面访问记录不再阻塞用户响应，显著提升响应速度
@@ -655,4 +680,4 @@
 - 所有架构更改必须在`docs/`目录下记录
 - 新功能需要更新相应的文档
 - 重大更改需要更新此变更日志
-- 遵循现有的代码风格和架构模式
+- 遵循现有的代码风格和架构模式模式

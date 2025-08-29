@@ -86,7 +86,7 @@ def get_blog_by_url_title(url_title):
             update_time = datetime.now(timezone.utc)
 
             # 尝试提交到线程池
-            success = thread_pool_manager.submit_blog_update(update_blog_html_in_db, db, blog_doc['_id'], html_content, update_time)
+            success = thread_pool_manager.submit_blog_html_build(update_blog_html_in_db, db, blog_doc['_id'], html_content, update_time)
 
             if success:
                 logging.info(f"已为博客 '{url_title}' 提交后台HTML更新任务到线程池。")

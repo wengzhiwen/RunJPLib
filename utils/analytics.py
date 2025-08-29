@@ -36,7 +36,7 @@ def log_access(page_type: str):
         access_log = {"ip": ip_address, "timestamp": datetime.utcnow(), "page_type": page_type}
 
         # 尝试提交到Analytics专用线程池进行异步写入
-        success = thread_pool_manager.submit_analytics_task(_write_access_log_to_db, access_log)
+        success = thread_pool_manager.submit_user_access_log_task(_write_access_log_to_db, access_log)
 
         if not success:
             # 线程池繁忙，降级为同步执行（避免丢失日志）
