@@ -30,7 +30,9 @@ from utils.mongo_client import get_mongo_client
 from utils.task_manager import task_manager
 from utils.thread_pool_manager import thread_pool_manager
 
-admin_bp = Blueprint("admin", __name__, url_prefix="/admin", template_folder="../templates/admin")
+admin_bp = Blueprint(
+    "admin", __name__, url_prefix="/admin", template_folder="../templates/admin"
+)
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -119,9 +121,15 @@ def _get_dashboard_stats():
         query_24h = {"timestamp": {"$gte": twenty_four_hours_ago}}
         unique_ips = db.access_logs.distinct("ip", query_24h)
         stats["unique_ip_count_24h"] = len(unique_ips)
-        query_uni_24h = {"timestamp": {"$gte": twenty_four_hours_ago}, "page_type": "university"}
+        query_uni_24h = {
+            "timestamp": {"$gte": twenty_four_hours_ago},
+            "page_type": "university",
+        }
         stats["university_views_24h"] = db.access_logs.count_documents(query_uni_24h)
-        query_blog_24h = {"timestamp": {"$gte": twenty_four_hours_ago}, "page_type": "blog"}
+        query_blog_24h = {
+            "timestamp": {"$gte": twenty_four_hours_ago},
+            "page_type": "blog",
+        }
         stats["blog_views_24h"] = db.access_logs.count_documents(query_blog_24h)
     except Exception as e:
         logging.error(f"查询仪表盘统计数据时出错: {e}", exc_info=True)
@@ -143,39 +151,35 @@ def dashboard():
 
         try:
             today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-            pipeline = [{
-                '$group': {
-                    '_id': '$university_name',
-                    'max_deadline': {
-                        '$max': '$deadline'
-                    },
-                    'has_premium': {
-                        '$max': '$is_premium'
+            pipeline = [
+                {
+                    "$group": {
+                        "_id": "$university_name",
+                        "max_deadline": {"$max": "$deadline"},
+                        "has_premium": {"$max": "$is_premium"},
                     }
-                }
-            }, {
-                '$match': {
-                    'has_premium': True,
-                    'max_deadline': {
-                        '$lt': today
+                },
+                {"$match": {"has_premium": True, "max_deadline": {"$lt": today}}},
+                {"$sort": {"max_deadline": 1}},
+                {
+                    "$project": {
+                        "_id": 0,
+                        "university_name": "$_id",
+                        "deadline": "$max_deadline",
                     }
-                }
-            }, {
-                '$sort': {
-                    'max_deadline': 1
-                }
-            }, {
-                '$project': {
-                    '_id': 0,
-                    'university_name': '$_id',
-                    'deadline': '$max_deadline'
-                }
-            }]
-            expired_premium_universities = list(client.RunJPLib.universities.aggregate(pipeline))
+                },
+            ]
+            expired_premium_universities = list(
+                client.RunJPLib.universities.aggregate(pipeline)
+            )
         except Exception as e:
             logging.error(f"查询过期Premium学校时出错: {e}", exc_info=True)
 
-    return render_template("dashboard.html", stats=stats, expired_premium_universities=expired_premium_universities)
+    return render_template(
+        "dashboard.html",
+        stats=stats,
+        expired_premium_universities=expired_premium_universities,
+    )
 
 
 @admin_bp.route("/login")
@@ -253,9 +257,13 @@ def get_universities():
             if u.get("deadline") and isinstance(u["deadline"], datetime):
                 u["deadline"] = u["deadline"].isoformat()
 
-        logging.info(f"[Admin API] Successfully fetched {len(universities)} university documents.")
+        logging.info(
+            f"[Admin API] Successfully fetched {len(universities)} university documents."
+        )
         if universities:
-            logging.debug(f"[Admin API] First university document sample: {universities[0]}")
+            logging.debug(
+                f"[Admin API] First university document sample: {universities[0]}"
+            )
 
         return jsonify(universities)
     except Exception as e:
@@ -292,7 +300,9 @@ def edit_university(university_id):
 
         if not university_name:
             university = db.universities.find_one({"_id": object_id})
-            return render_template("edit_university.html", university=university, error="大学名称不能为空")
+            return render_template(
+                "edit_university.html", university=university, error="大学名称不能为空"
+            )
 
         update_data = {
             "$set": {
@@ -307,14 +317,22 @@ def edit_university(university_id):
         if deadline_str:
             try:
                 # 将 YYYY-MM-DD 格式的字符串转换为 datetime 对象
-                update_data["$set"]["deadline"] = datetime.strptime(deadline_str, "%Y-%m-%d")
+                update_data["$set"]["deadline"] = datetime.strptime(
+                    deadline_str, "%Y-%m-%d"
+                )
             except ValueError:
                 # 如果日期格式不正确，返回错误信息
                 university = db.universities.find_one({"_id": object_id})
-                return render_template("edit_university.html", university=university, error="日期格式不正确，请使用 YYYY-MM-DD 格式。")
+                return render_template(
+                    "edit_university.html",
+                    university=university,
+                    error="日期格式不正确，请使用 YYYY-MM-DD 格式。",
+                )
 
         # 尝试异步更新数据库
-        success = thread_pool_manager.submit_admin_task(_update_university_in_db, object_id, update_data, university_id)
+        success = thread_pool_manager.submit_admin_task(
+            _update_university_in_db, object_id, update_data, university_id
+        )
 
         if not success:
             # 线程池满，同步执行
@@ -324,9 +342,15 @@ def edit_university(university_id):
                 logging.info(f"University with ID {university_id} was updated (sync).")
             except Exception as e:
                 logging.error(f"同步更新大学信息失败: {e}")
-                return render_template("edit_university.html", university=db.universities.find_one({"_id": object_id}), error="更新失败，请重试")
+                return render_template(
+                    "edit_university.html",
+                    university=db.universities.find_one({"_id": object_id}),
+                    error="更新失败，请重试",
+                )
         else:
-            logging.info(f"University with ID {university_id} update task submitted to thread pool.")
+            logging.info(
+                f"University with ID {university_id} update task submitted to thread pool."
+            )
 
         return redirect(url_for("admin.manage_universities_page"))
 
@@ -438,18 +462,12 @@ def search_universities():
 
     try:
         # Search for universities where the name contains the query string (case-insensitive)
-        universities = list(db.universities.find(
-            {
-                "university_name": {
-                    "$regex": query,
-                    "$options": "i"
-                }
-            },
-            {
-                "_id": 1,
-                "university_name": 1
-            },
-        ).limit(20))  # Limit to 20 results for performance
+        universities = list(
+            db.universities.find(
+                {"university_name": {"$regex": query, "$options": "i"}},
+                {"_id": 1, "university_name": 1},
+            ).limit(20)
+        )  # Limit to 20 results for performance
 
         for u in universities:
             u["_id"] = str(u["_id"])
@@ -489,7 +507,9 @@ def generate_blog():
 
     try:
         generator = BlogGenerator()
-        result = generator.generate_blog_content(mode, university_ids, user_prompt, system_prompt)
+        result = generator.generate_blog_content(
+            mode, university_ids, user_prompt, system_prompt
+        )
         if result:
             return jsonify(result)
         else:
@@ -545,8 +565,12 @@ def save_blog():
             logging.warning("Admin线程池繁忙，同步保存博客")
             try:
                 result = db.blogs.insert_one(new_blog)
-                logging.info(f"New blog post created with ID: {result.inserted_id} (sync).")
-                return jsonify({"message": "文章保存成功", "blog_id": str(result.inserted_id)})
+                logging.info(
+                    f"New blog post created with ID: {result.inserted_id} (sync)."
+                )
+                return jsonify(
+                    {"message": "文章保存成功", "blog_id": str(result.inserted_id)}
+                )
             except Exception as sync_e:
                 logging.error(f"同步保存博客失败: {sync_e}")
                 return jsonify({"error": "保存失败，请重试"}), 500
@@ -582,7 +606,9 @@ def edit_blog(blog_id):
 
         if not title or not content_md:
             blog = db.blogs.find_one({"_id": object_id})
-            return render_template("edit_blog.html", blog=blog, error="标题和内容不能为空")
+            return render_template(
+                "edit_blog.html", blog=blog, error="标题和内容不能为空"
+            )
 
         # Create a URL-friendly title
         url_title = title.lower().replace(" ", "-").replace("/", "-")
@@ -598,7 +624,9 @@ def edit_blog(blog_id):
         }
 
         # 尝试异步更新博客
-        success = thread_pool_manager.submit_admin_task(_update_blog_in_db, object_id, update_data, blog_id)
+        success = thread_pool_manager.submit_admin_task(
+            _update_blog_in_db, object_id, update_data, blog_id
+        )
 
         if not success:
             # 线程池满，同步执行
@@ -608,9 +636,15 @@ def edit_blog(blog_id):
                 logging.info(f"Blog post with ID {blog_id} was updated (sync).")
             except Exception as e:
                 logging.error(f"同步更新博客失败: {e}")
-                return render_template("edit_blog.html", blog=db.blogs.find_one({"_id": object_id}), error="更新失败，请重试")
+                return render_template(
+                    "edit_blog.html",
+                    blog=db.blogs.find_one({"_id": object_id}),
+                    error="更新失败，请重试",
+                )
         else:
-            logging.info(f"Blog post with ID {blog_id} update task submitted to thread pool.")
+            logging.info(
+                f"Blog post with ID {blog_id} update task submitted to thread pool."
+            )
 
         return redirect(url_for("admin.manage_blogs_page"))
 
@@ -661,6 +695,7 @@ def unique_ips_page():
 
         # 确保mmdb文件可用
     from utils.ip_geo import ip_geo_manager
+
     logging.info("🔧 检查mmdb文件可用性...")
     mmdb_available = ip_geo_manager.ensure_mmdb_available()
     logging.info(f"📁 mmdb文件状态: {'可用' if mmdb_available else '不可用'}")
@@ -670,35 +705,17 @@ def unique_ips_page():
 
     try:
         pipeline = [
-            {
-                "$match": {
-                    "timestamp": {
-                        "$gte": twenty_four_hours_ago
-                    }
-                }
-            },
+            {"$match": {"timestamp": {"$gte": twenty_four_hours_ago}}},
             {
                 "$group": {
                     "_id": "$ip",
-                    "first_seen": {
-                        "$min": "$timestamp"
-                    },
-                    "last_seen": {
-                        "$max": "$timestamp"
-                    },
-                    "visit_count": {
-                        "$sum": 1
-                    },
-                    "page_types": {
-                        "$addToSet": "$page_type"
-                    },
+                    "first_seen": {"$min": "$timestamp"},
+                    "last_seen": {"$max": "$timestamp"},
+                    "visit_count": {"$sum": 1},
+                    "page_types": {"$addToSet": "$page_type"},
                 }
             },
-            {
-                "$sort": {
-                    "last_seen": -1
-                }
-            },
+            {"$sort": {"last_seen": -1}},
         ]
 
         logging.info("🔍 执行MongoDB聚合查询...")
@@ -715,10 +732,14 @@ def unique_ips_page():
             geo_info = None
             if mmdb_available:
                 # 查询该IP的任意一条访问记录，看是否已有地理信息
-                sample_log = db.access_logs.find_one({"ip": ip, "geo_info": {"$exists": True}})
+                sample_log = db.access_logs.find_one(
+                    {"ip": ip, "geo_info": {"$exists": True}}
+                )
                 if sample_log and sample_log.get("geo_info"):
                     geo_info = sample_log["geo_info"]
-                    logging.debug(f"✅ 从访问记录中找到地理信息: {ip} -> {geo_info.get('city', 'N/A')}")
+                    logging.debug(
+                        f"✅ 从访问记录中找到地理信息: {ip} -> {geo_info.get('city', 'N/A')}"
+                    )
                 else:
                     ips_to_lookup.append(ip)
                     logging.debug(f"❓ IP需要解析地理信息: {ip}")
@@ -742,7 +763,9 @@ def unique_ips_page():
             logging.info("⏭️ 跳过地理信息处理 (mmdb不可用或无IP需要处理)")
 
         logging.info(f"✅ 页面渲染完成，共 {len(items)} 个IP")
-        return render_template("unique_ips.html", items=items, mmdb_available=mmdb_available)
+        return render_template(
+            "unique_ips.html", items=items, mmdb_available=mmdb_available
+        )
     except Exception as e:
         logging.error(f"查询独立IP统计失败: {e}", exc_info=True)
         return render_template("unique_ips.html", error="查询失败", items=[])
@@ -764,15 +787,33 @@ def _batch_update_geo_info(db, ips_to_lookup, items):
 
         for ip in ips_to_lookup:
             if processed_count >= batch_size:
-                logging.info(f"⏹️ 达到批量处理限制 {batch_size}，跳过剩余 {len(ips_to_lookup) - processed_count} 个IP")
+                logging.info(
+                    f"⏹️ 达到批量处理限制 {batch_size}，跳过剩余 {len(ips_to_lookup) - processed_count} 个IP"
+                )
                 break
 
+            # 处理多IP地址的情况：取第一个IP进行地理信息解析
+            original_ip = ip
+            if "," in ip or " " in ip:
+                # 取第一个IP地址进行地理信息解析
+                first_ip = ip.split(",")[0].strip()
+                logging.info(
+                    f"🔄 多IP地址处理: '{ip}' -> 使用第一个IP '{first_ip}' 进行地理信息解析"
+                )
+                ip = first_ip
+            elif not ip:
+                logging.warning(f"跳过空IP地址")
+                skipped_count += 1
+                continue
+
             # 查询新的地理信息
-            logging.debug(f"🔍 查询新IP: {ip}")
+            logging.debug(f"🔍 查询IP: {ip}")
             geo_data = ip_geo_manager.lookup_ip(ip)
 
             if geo_data:
-                logging.debug(f"📍 解析成功: {ip} -> {geo_data.get('city', 'N/A')}, {geo_data.get('country_name', 'N/A')}")
+                logging.debug(
+                    f"📍 解析成功: {ip} -> {geo_data.get('city', 'N/A')}, {geo_data.get('country_name', 'N/A')}"
+                )
 
                 # 准备地理信息数据
                 geo_info = {
@@ -787,18 +828,24 @@ def _batch_update_geo_info(db, ips_to_lookup, items):
 
                 try:
                     # 更新所有该IP的访问记录，添加地理信息
-                    update_result = db.access_logs.update_many({"ip": ip}, {"$set": {"geo_info": geo_info}})
+                    # 注意：使用original_ip进行数据库查询，因为数据库中存储的是完整的IP字符串
+                    update_result = db.access_logs.update_many(
+                        {"ip": original_ip}, {"$set": {"geo_info": geo_info}}
+                    )
 
-                    logging.debug(f"💾 更新访问记录: {ip} -> {update_result.modified_count} 条记录")
+                    logging.debug(
+                        f"💾 更新访问记录: '{original_ip}' -> {update_result.modified_count} 条记录"
+                    )
 
                     # 同时保存到ip_geo_cache作为备份
+                    # 缓存中使用解析后的单个IP作为key
                     geo_doc = {"ip": ip, **geo_info}
                     db.ip_geo_cache.replace_one({"ip": ip}, geo_doc, upsert=True)
                     logging.debug(f"💾 保存到缓存: {ip}")
 
                     # 更新items中的地理信息
                     for item in items:
-                        if item["ip"] == ip:
+                        if item["ip"] == original_ip:
                             item["geo_info"] = geo_info
                             break
 
@@ -893,9 +940,13 @@ def get_pdf_tasks():
         # 格式化时间
         for task in tasks:
             if "created_at" in task:
-                task["created_at_str"] = task["created_at"].strftime("%Y-%m-%d %H:%M:%S")
+                task["created_at_str"] = task["created_at"].strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
             if "updated_at" in task:
-                task["updated_at_str"] = task["updated_at"].strftime("%Y-%m-%d %H:%M:%S")
+                task["updated_at_str"] = task["updated_at"].strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
 
         return jsonify(tasks)
 
@@ -1010,7 +1061,10 @@ def task_stream():
                 current_queue_data = json.dumps(queue_status)
 
                 # 检查数据是否有变化
-                if (current_tasks_data != last_tasks_data or current_queue_data != last_queue_data):
+                if (
+                    current_tasks_data != last_tasks_data
+                    or current_queue_data != last_queue_data
+                ):
                     # 发送合并的数据
                     combined_data = {"tasks": tasks, "queue_status": queue_status}
                     # 使用 default=str 来处理 ObjectId 和 datetime 对象
@@ -1053,13 +1107,21 @@ def task_detail_stream(task_id):
                 if current_task_data != last_task_data:
                     # 格式化时间戳以便JS可以直接使用
                     if "created_at" in task and hasattr(task["created_at"], "strftime"):
-                        task["created_at_str"] = task["created_at"].strftime("%Y-%m-%d %H:%M:%S")
+                        task["created_at_str"] = task["created_at"].strftime(
+                            "%Y-%m-%d %H:%M:%S"
+                        )
                     if "updated_at" in task and hasattr(task["updated_at"], "strftime"):
-                        task["updated_at_str"] = task["updated_at"].strftime("%Y-%m-%d %H:%M:%S")
+                        task["updated_at_str"] = task["updated_at"].strftime(
+                            "%Y-%m-%d %H:%M:%S"
+                        )
                     if "logs" in task:
                         for log in task["logs"]:
-                            if "timestamp" in log and hasattr(log["timestamp"], "strftime"):
-                                log["timestamp_str"] = log["timestamp"].strftime("%H:%M:%S")
+                            if "timestamp" in log and hasattr(
+                                log["timestamp"], "strftime"
+                            ):
+                                log["timestamp_str"] = log["timestamp"].strftime(
+                                    "%H:%M:%S"
+                                )
 
                     json_data = json.dumps(task, default=str)
                     yield f"data: {json_data}\n\n"

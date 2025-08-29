@@ -34,7 +34,7 @@ class IPGeoManager:
             return {"next_update": None, "last_update": None, "file_hash": None}
 
         try:
-            with open(self.update_record_file, 'r', encoding='utf-8') as f:
+            with open(self.update_record_file, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception as e:
             logging.warning(f"加载更新记录失败: {e}")
@@ -43,7 +43,7 @@ class IPGeoManager:
     def _save_update_record(self, record: Dict):
         """保存更新记录"""
         try:
-            with open(self.update_record_file, 'w', encoding='utf-8') as f:
+            with open(self.update_record_file, "w", encoding="utf-8") as f:
                 json.dump(record, f, ensure_ascii=False, indent=2)
         except Exception as e:
             logging.error(f"保存更新记录失败: {e}")
@@ -57,12 +57,12 @@ class IPGeoManager:
             response.raise_for_status()
 
             # 先下载到临时文件
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.mmdb') as temp_file:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".mmdb") as temp_file:
                 temp_file.write(response.content)
                 temp_file_path = temp_file.name
 
             # 计算文件哈希
-            with open(temp_file_path, 'rb') as f:
+            with open(temp_file_path, "rb") as f:
                 file_hash = hashlib.sha256(f.read()).hexdigest()
 
             # 移动文件到目标位置
@@ -71,7 +71,11 @@ class IPGeoManager:
             # 更新记录
             now = datetime.utcnow()
             next_update = now + timedelta(days=10)
-            record = {"next_update": next_update.isoformat(), "last_update": now.isoformat(), "file_hash": file_hash}
+            record = {
+                "next_update": next_update.isoformat(),
+                "last_update": now.isoformat(),
+                "file_hash": file_hash,
+            }
             self._save_update_record(record)
 
             logging.info(f"GeoIP数据库下载成功，下次更新: {next_update}")
@@ -85,6 +89,7 @@ class IPGeoManager:
         """判断是否为私有IP地址"""
         try:
             import ipaddress
+
             ip_obj = ipaddress.ip_address(ip)
             return ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local
         except Exception:
@@ -141,6 +146,13 @@ class IPGeoManager:
 
     def lookup_ip(self, ip: str) -> Optional[Dict]:
         """查询IP地理位置信息"""
+        # 验证IP地址格式
+        if not ip:
+            logging.debug(f"跳过空IP地址")
+            return None
+
+        # 注意：调用此方法前应该已经处理好多IP地址的情况
+        # 这里只处理单个IP地址的验证
         if self._is_private_ip(ip):
             return None
 
