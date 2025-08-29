@@ -2,6 +2,28 @@
 
 本文档记录了RunJPLib项目的重要更改，包括新功能、架构更新、安全改进等。
 
+## [2025-08-29] - 新增大学中文名支持
+
+### 🚀 新功能
+- **新增中文字段**: 在 `universities` 集合中增加了 `university_name_zh` 字段，用于存储大学的简体中文名称。
+- **AI批量翻译**: 创建并执行了一次性脚本 `tools/translate_university_names.py`，该脚本利用AI服务，将数据库中所有大学的日文名称批量翻译为简体中文，并更新到新增的字段中。
+
+### ✨ 功能改进
+- **后台列表展示**: 在Admin后台的“招生信息一览”页面，新增了“中文名”列，现在可以同时查看大学的日文原名和中文译名。
+- **后台在线编辑**: 在“编辑招生信息”页面，增加了“中文名”输入框，允许管理员手动修改或更正AI翻译的结果。
+
+### 🔧 技术改进
+- **脚本健壮性**: 修复了翻译脚本在执行过程中遇到的 `ImportError` 和 `NotImplementedError`，确保了脚本的顺利执行。
+- **后台逻辑更新**: 更新了 `routes/admin.py` 中的 `edit_university` 路由，使其能够接收并保存对 `university_name_zh` 字段的修改。
+- **前端模板更新**: 修改了 `templates/admin/manage_universities.html` 和 `templates/admin/edit_university.html` 以支持新字段的显示和编辑。
+
+### 📁 文件更改
+- `tools/translate_university_names.py`: 新增的批量翻译脚本。
+- `routes/admin.py`: 更新了编辑大学信息的后端逻辑。
+- `templates/admin/manage_universities.html`: 更新了招生信息列表页面的前端模板。
+- `templates/admin/edit_university.html`: 更新了招生信息编辑页面的前端模板。
+- **代码格式化**: 对所有修改过的 Python 文件 (`.py`) 执行了 `isort` 和 `yapf` 格式化。
+
 ## [2025-01-27] - 修复PDF文件名显示问题：支持非英数字字符
 
 ### 🐛 问题修复

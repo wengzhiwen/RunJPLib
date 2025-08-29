@@ -17,6 +17,11 @@
         </div>
 
         <div class="mb-3">
+            <label for="university_name_zh" class="form-label">中文名</label>
+            <input type="text" class="form-control" id="university_name_zh" name="university_name_zh" value="{{ university.university_name_zh or '' }}">
+        </div>
+
+        <div class="mb-3">
             <label for="is_premium" class="form-label">Premium 用户</label>
             <select class="form-select" id="is_premium" name="is_premium">
                 <option value="true" {% if university.is_premium %}selected{% endif %}>是</option>

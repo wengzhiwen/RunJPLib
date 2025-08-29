@@ -15,6 +15,7 @@
         <thead>
             <tr>
                 <th>大学名称</th>
+                <th>中文名</th>
                 <th>Premium</th>
                 <th>报名截止日期</th>
                 <th>创建时间</th>
@@ -53,7 +54,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             if (data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="text-center">数据库中没有招生信息。</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center">数据库中没有招生信息。</td></tr>';
                 return;
             }
 
@@ -64,6 +65,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const row = `
                     <tr>
                         <td>${uni.university_name || 'N/A'}</td>
+                        <td>${uni.university_name_zh || 'N/A'}</td>
                         <td>${isPremium}</td>
                         <td>${deadline}</td>
                         <td>${createdAt}</td>

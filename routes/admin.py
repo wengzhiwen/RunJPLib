@@ -285,6 +285,7 @@ def edit_university(university_id):
 
     if request.method == "POST":
         university_name = request.form.get("university_name", "").strip()
+        university_name_zh = request.form.get("university_name_zh", "").strip()
         is_premium = request.form.get("is_premium") == "true"
         deadline_str = request.form.get("deadline", "")
         basic_analysis_report = request.form.get("basic_analysis_report", "").strip()
@@ -296,6 +297,7 @@ def edit_university(university_id):
         update_data = {
             "$set": {
                 "university_name": university_name,
+                "university_name_zh": university_name_zh,
                 "is_premium": is_premium,
                 "content.report_md": basic_analysis_report,
                 "last_modified": datetime.utcnow(),

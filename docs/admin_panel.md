@@ -47,7 +47,7 @@
 
 此部分允许直接管理招生信息相关的数据和生成流程：
 
--   **/admin/manage/universities**: 招生信息一览。表格会显示大学名称、Premium状态、报名截止日期等关键信息。
+-   **/admin/manage/universities**: 招生信息一览。表格会显示大学的日文名称、中文名称、Premium状态、报名截止日期等关键信息。管理员还可以在此页面对大学信息进行编辑或删除。
 -   **/admin/pdf/processor**: 招生信息生成。上传PDF文件并自动处理生成招生信息。
 -   **/admin/pdf/tasks**: 招生信息生成任务列表。查看PDF处理任务的进度和状态。
 

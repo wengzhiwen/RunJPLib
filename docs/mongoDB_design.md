@@ -46,6 +46,7 @@ socketTimeoutMS=30000   # Socket operation timeout (30 seconds)
 {
   "_id": "<ObjectID>",
   "university_name": "String", // e.g., "東京大学"
+  "university_name_zh": "String", // Simplified Chinese name, e.g., "东京大学"
   "deadline": "String", // e.g., "20241206"
   "created_at": "DateTime", // Timestamp of document creation
   "is_premium": "Boolean", // Defaults to false. If true, indicates a featured university, used for priority sorting.
