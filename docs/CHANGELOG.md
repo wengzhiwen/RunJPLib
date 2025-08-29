@@ -1,5 +1,16 @@
 # 变更日志 (CHANGELOG)
 
+## [2025-08-29] - 优化PDF文件缓存策略
+
+### ✨ 功能改进
+- **启用浏览器缓存**: 为通过 `/pdf/resource/` 路由提供的PDF文件增加了 `Cache-Control` HTTP响应头。
+- **减少重复下载**: 浏览器现在可以将PDF文件缓存一天 (`max-age=86400`)，避免了用户在短时间内重复访问同一文件时不必要的重新下载，提升了加载速度和用户体验。
+
+### 📁 文件更改
+- `app.py`: 在 `serve_pdf_from_resource` 函数中为响应对象添加了 `Cache-Control` 头。
+
+---
+
 ## [2025-08-29] - 优化PDF阅读体验并修复加载Bug
 
 ### ✨ 功能改进
@@ -823,4 +834,3 @@
 - `routes/index.py`: 支持MongoDB数据源
 - `app.py`: 新增PDF服务路由
 - `utils/mongo_client.py`: MongoDB连接工具
-

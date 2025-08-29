@@ -240,6 +240,8 @@ def serve_pdf_from_resource(resource_id):
 
             response.headers['Content-Disposition'] = f'inline; filename="{safe_filename}"'
             response.headers['Access-Control-Allow-Origin'] = '*'
+            # 设置缓存，缓存一天
+            response.headers['Cache-Control'] = 'public, max-age=86400'
 
             send_start_time = time.time()
             logging.debug(f"准备发送PDF数据，大小: {len(pdf_data) / 1024:.2f} KB。从收到请求到开始发送共耗时: {send_start_time - start_time:.4f} 秒。")
