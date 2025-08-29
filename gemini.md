@@ -21,6 +21,7 @@ RunJPLib 是一个基于 Flask 的 Web 应用程序，提供有关大学和博�
  - 针对较为大范围的修改，总是应该先阅读 docs 目录下的文档
  - 每次修改完成后，应该更新 docs 目录下的文档，包括 docs/CHANGELOG.md
  - 如果需要更多的python依赖，应该先修改 requirements.txt 再执行 pip install -r requirements.txt
+ - 当需要使用当前日期时（比如记录变更历史文档时），务必使用真正的当前日期，而不是LLM训练数据的截止日期
 
 ## 关键文件
 
