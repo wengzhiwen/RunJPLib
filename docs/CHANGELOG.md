@@ -1,5 +1,14 @@
 # 变更日志 (CHANGELOG)
 
+## [2025-08-29] - Bing 站点验证文件缺失返回 404
+
+### 🐛 行为修正
+- 当 `static/BingSiteAuth.xml` 文件不存在时，路由 `/BingSiteAuth.xml` 现在会直接返回 **404**。
+
+### 📁 代码变更
+- `app.py`: 为 `bing_site_auth` 增加文件存在性检查，缺失时调用 `abort(404)`。
+
+
 本文档记录了RunJPLib项目的重要更改，包括新功能、架构更新、安全改进等。
 
 ## [2025-08-29] - 调整 pymongo 日志级别与环境变量支持

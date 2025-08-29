@@ -113,6 +113,15 @@ def favicon():
     """favicon.svg路由"""
     return send_from_directory('static', 'favicon.svg')
 
+@app.route('/BingSiteAuth.xml')
+def bing_site_auth():
+    """Bing站点验证文件路由"""
+    file_dir = 'static'
+    file_name = 'BingSiteAuth.xml'
+    file_path = os.path.join(file_dir, file_name)
+    if not os.path.isfile(file_path):
+        abort(404)
+    return send_from_directory(file_dir, file_name)
 
 # 首页路由
 @app.route('/')
