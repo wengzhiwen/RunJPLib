@@ -650,6 +650,50 @@ def pdf_task_detail_page(task_id):
     return render_template("pdf_task_detail.html", task=task)
 
 
+# --- Analytics: Unique IPs in last 24h ---
+@admin_bp.route("/analytics/unique_ips")
+@admin_required
+def unique_ips_page():
+    """展示最近24小时的独立IP列表及相关信息（无SSE）。"""
+    db = get_db()
+    if db is None:
+        return render_template("unique_ips.html", error="数据库连接失败", items=[])
+
+    twenty_four_hours_ago = datetime.utcnow() - timedelta(hours=24)
+    try:
+        pipeline = [
+            {"$match": {"timestamp": {"$gte": twenty_four_hours_ago}}},
+            {
+                "$group": {
+                    "_id": "$ip",
+                    "first_seen": {"$min": "$timestamp"},
+                    "last_seen": {"$max": "$timestamp"},
+                    "visit_count": {"$sum": 1},
+                    "page_types": {"$addToSet": "$page_type"},
+                }
+            },
+            {"$sort": {"last_seen": -1}},
+        ]
+
+        results = list(db.access_logs.aggregate(pipeline))
+        items = []
+        for r in results:
+            items.append(
+                {
+                    "ip": r.get("_id"),
+                    "first_seen": r.get("first_seen"),
+                    "last_seen": r.get("last_seen"),
+                    "visit_count": r.get("visit_count", 0),
+                    "page_types": r.get("page_types", []),
+                }
+            )
+
+        return render_template("unique_ips.html", items=items)
+    except Exception as e:
+        logging.error(f"查询独立IP统计失败: {e}", exc_info=True)
+        return render_template("unique_ips.html", error="查询失败", items=[])
+
+
 # --- PDF Processing APIs ---
 @admin_bp.route("/api/pdf/upload", methods=["POST"])
 @admin_required

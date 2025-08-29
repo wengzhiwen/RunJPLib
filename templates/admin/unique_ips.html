@@ -1,0 +1,52 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mt-3 mb-4">最近24小时独立IP</h1>
+
+    {% if error %}
+    <div class="alert alert-danger" role="alert">{{ error }}</div>
+    {% endif %}
+
+    <div class="card">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>统计窗口：过去24小时</div>
+                <div>总独立IP：<span class="badge bg-primary">{{ items|length }}</span></div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th scope="col">IP</th>
+                            <th scope="col">首次访问</th>
+                            <th scope="col">最后访问</th>
+                            <th scope="col">访问次数</th>
+                            <th scope="col">页面类型</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for it in items %}
+                        <tr>
+                            <td><code>{{ it.ip }}</code></td>
+                            <td>{{ it.first_seen.strftime('%Y-%m-%d %H:%M:%S') if it.first_seen }}</td>
+                            <td>{{ it.last_seen.strftime('%Y-%m-%d %H:%M:%S') if it.last_seen }}</td>
+                            <td>{{ it.visit_count }}</td>
+                            <td>
+                                {% for p in it.page_types %}
+                                    <span class="badge bg-secondary me-1">{{ p }}</span>
+                                {% endfor %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <p class="text-muted mt-2">该页面为静态快照，刷新即可获取最新数据。</p>
+</div>
+{% endblock %}
+
+
