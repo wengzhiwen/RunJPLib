@@ -25,7 +25,8 @@ from flask_jwt_extended import verify_jwt_in_request
 from werkzeug.utils import secure_filename
 
 from utils.blog_generator import BlogGenerator
-from utils.mongo_client import get_mongo_client, get_db
+from utils.mongo_client import get_db
+from utils.mongo_client import get_mongo_client
 from utils.task_manager import task_manager
 from utils.thread_pool_manager import thread_pool_manager
 
@@ -56,7 +57,7 @@ def _save_blog_to_db(blog_data):
         if db is None:
             logging.error("Admin异步保存博客失败：无法连接数据库")
             return None
-    
+
         result = db.blogs.insert_one(blog_data)
         logging.info(f"New blog post created with ID: {result.inserted_id} (async).")
         return str(result.inserted_id)
@@ -72,7 +73,7 @@ def _update_blog_in_db(object_id, update_data, blog_id):
         if db is None:
             logging.error("Admin异步更新博客失败：无法连接数据库")
             return
-    
+
         db.blogs.update_one({"_id": object_id}, update_data)
         logging.info(f"Blog post with ID {blog_id} was updated (async).")
     except Exception as e:
@@ -139,7 +140,7 @@ def dashboard():
     client = get_mongo_client()
     expired_premium_universities = []
     if client is not None:
-    
+
         try:
             today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
             pipeline = [{
@@ -238,7 +239,6 @@ def get_universities():
         logging.error("[Admin API] Get universities failed: DB connection error.")
         return jsonify({"error": "数据库连接失败"}), 500
 
-
     try:
         logging.debug("[Admin API] Fetching universities from database...")
         projection = {"content": 0, "source_path": 0}
@@ -277,7 +277,6 @@ def edit_university(university_id):
     db = get_db()
     if db is None:
         return render_template("edit_university.html", error="数据库连接失败")
-
 
     try:
         object_id = ObjectId(university_id)
@@ -435,7 +434,6 @@ def search_universities():
     if db is None:
         return jsonify({"error": "数据库连接失败"}), 500
 
-
     try:
         # Search for universities where the name contains the query string (case-insensitive)
         universities = list(db.universities.find(
@@ -520,7 +518,6 @@ def save_blog():
     if db is None:
         return jsonify({"error": "数据库连接失败"}), 500
 
-
     try:
         # Create a URL-friendly title
         url_title = title.lower().replace(" ", "-").replace("/", "-")
@@ -571,7 +568,6 @@ def edit_blog(blog_id):
     db = get_db()
     if db is None:
         return render_template("edit_blog.html", error="数据库连接失败")
-
 
     try:
         object_id = ObjectId(blog_id)
@@ -810,8 +806,8 @@ def dashboard_stream():
                 error_data = json.dumps({"error": "An internal error occurred"})
                 yield f"event: error\ndata: {error_data}\n\n"
 
-            # 每3秒检查一次更新
-            time.sleep(3)
+            # 每30秒检查一次更新
+            time.sleep(30)
 
     return Response(event_stream(), mimetype="text/event-stream")
 
@@ -852,8 +848,8 @@ def task_stream():
                 error_data = json.dumps({"error": "An internal error occurred"})
                 yield f"event: error\ndata: {error_data}\n\n"
 
-            # 等待一段时间再检查
-            time.sleep(2)
+            # 等待30秒再检查
+            time.sleep(30)
 
     return Response(event_stream(), mimetype="text/event-stream")
 
@@ -903,7 +899,7 @@ def task_detail_stream(task_id):
                 yield f"event: error\ndata: {error_data}\n\n"
                 break
 
-            time.sleep(2)
+            time.sleep(30)
 
     return Response(event_stream(), mimetype="text/event-stream")
 
