@@ -53,63 +53,11 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // 初始加载，以防SSE连接延迟
-    fetchInitialData();
-    
-    // 启动带重连机制的SSE连接
-    connectSSE();
+    // 初始加载
+    loadTasks();
 });
 
-let eventSource;
-let reconnectAttempts = 0;
-const MAX_RECONNECT_DELAY = 30000; // 最大重连间隔30秒
-
-function connectSSE() {
-    console.log("Connecting to SSE stream...");
-    eventSource = new EventSource('/admin/api/pdf/task-stream');
-
-    eventSource.onopen = function() {
-        console.log("SSE connection established.");
-        reconnectAttempts = 0; // 连接成功，重置尝试次数
-    };
-
-    eventSource.onmessage = function(event) {
-        const data = JSON.parse(event.data);
-        
-        if (data.queue_status) {
-            updateQueueStatus(data.queue_status);
-        }
-        if (data.tasks) {
-            updateTasksTable(data.tasks);
-        }
-    };
-
-    eventSource.onerror = function(err) {
-        console.error("EventSource failed:", err);
-        eventSource.close();
-        
-        // 计算下一次重连的时间（指数退避 + 随机抖动）
-        reconnectAttempts++;
-        let delay = Math.min(MAX_RECONNECT_DELAY, 1000 * Math.pow(2, reconnectAttempts));
-        delay += Math.random() * 1000; // 增加随机性防止客户端同步重连
-        
-        console.log(`Connection lost. Reconnecting in ${Math.round(delay / 1000)} seconds...`);
-        
-        // 在UI上给出提示
-        const container = document.getElementById('tasks-container');
-        if (container) {
-            container.innerHTML = `
-                <div class="alert alert-warning" role="alert">
-                    与服务器的实时连接已断开。正在尝试重新连接...
-                </div>
-            `;
-        }
-        
-        setTimeout(connectSSE, delay);
-    };
-}
-
-function fetchInitialData() {
+function loadTasks() {
     // 同时获取任务和队列状态
     Promise.all([
         fetch('/admin/api/pdf/tasks').then(res => res.json()),
@@ -122,10 +70,10 @@ function fetchInitialData() {
             updateQueueStatus(queueStatus);
         }
     }).catch(error => {
-        console.error('Error fetching initial data:', error);
+        console.error('Error fetching data:', error);
         document.getElementById('tasks-container').innerHTML = `
             <div class="alert alert-danger" role="alert">
-                初始化数据加载失败，请刷新页面重试。
+                数据加载失败，请刷新页面重试。
             </div>
         `;
     });
@@ -297,7 +245,7 @@ function startTask(taskId) {
         } else {
             alert('任务已添加到处理队列');
             // 刷新任务列表
-            fetchInitialData();
+            loadTasks();
         }
     })
     .catch(error => {
@@ -324,7 +272,7 @@ function processQueue() {
         } else {
             alert('队列处理已触发');
             // 刷新任务列表
-            fetchInitialData();
+            loadTasks();
         }
     })
     .catch(error => {

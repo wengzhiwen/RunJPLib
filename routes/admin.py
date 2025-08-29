@@ -1062,42 +1062,6 @@ def dashboard_stream():
     return Response(event_stream(), mimetype="text/event-stream")
 
 
-@admin_bp.route("/api/pdf/task-stream")
-@admin_required
-def task_stream():
-    """使用SSE推送任务列表和队列状态的更新"""
-
-    def event_stream():
-        last_tasks_data = None
-        last_queue_data = None
-        while True:
-            try:
-                tasks = task_manager.get_all_tasks(limit=50)
-                queue_status = task_manager.get_queue_status()
-
-                current_tasks_data = json.dumps(tasks, default=str)
-                current_queue_data = json.dumps(queue_status)
-
-                # 仅在数据变化时发送
-                if (current_tasks_data != last_tasks_data or current_queue_data != last_queue_data):
-                    combined_data = {"tasks": tasks, "queue_status": queue_status}
-                    json_data = json.dumps(combined_data, default=str)
-                    yield f"data: {json_data}\n\n"
-
-                    last_tasks_data = current_tasks_data
-                    last_queue_data = current_queue_data
-
-            except Exception as e:
-                logging.error(f"Error in SSE task stream: {e}", exc_info=True)
-                error_data = json.dumps({"error": "An internal error occurred"})
-                yield f"event: error\ndata: {error_data}\n\n"
-
-            # 每30秒检查一次
-            time.sleep(30)
-
-    return Response(event_stream(), mimetype="text/event-stream")
-
-
 @admin_bp.route("/api/pdf/task-stream/<task_id>")
 @admin_required
 def task_detail_stream(task_id):

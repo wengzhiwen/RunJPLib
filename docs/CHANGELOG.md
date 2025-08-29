@@ -1,5 +1,19 @@
 # 变更日志 (CHANGELOG)
 
+## [2025-08-29] - 移除任务列表页的SSE功能
+
+### ✨ 功能改进
+- **移除SSE**: 根据请求，仅从“招生信息生成任务列表”页面 (`templates/admin/pdf_tasks.html`) 移除了服务器发送事件 (SSE) 的实时更新功能。
+- **手动刷新**: 将其替换为手动的刷新按钮，以减少不必要的后台请求和客户端复杂性。
+- **代码清理**: 删除了对应前端模板中的 `EventSource` 相关JavaScript代码，并移除了后端 (`routes/admin.py`) 的 `/api/pdf/task-stream` SSE路由。
+- **范围限制**: 本次修改未触及“任务详情”和“仪表盘”页面的SSE功能，它们将保持原有的实时更新能力。
+
+### 📁 文件更改
+- `routes/admin.py`: 移除了 `task_stream` 函数。
+- `templates/admin/pdf_tasks.html`: 移除了SSE相关的JavaScript代码，并简化为手动刷新逻辑。
+
+---
+
 ## [2025-08-29] - 修复Blog生成器OpenAI API速率限制错误
 
 ### 🐛 Bug修复
