@@ -19,25 +19,23 @@ def _write_access_log_to_db(access_log: dict):
             return
 
         db.access_logs.insert_one(access_log)
-        logging.debug(
-            f"Access log written: {access_log['page_type']} from {access_log['ip']}"
-        )
+        logging.debug(f"Access log written: {access_log['page_type']} from {access_log['ip']}")
     except Exception as e:
         logging.error(f"Error writing access log to database: {e}", exc_info=True)
 
 
 def log_access(page_type: str):
     """
-    Logs an access event to the database using thread pool to avoid blocking the request.
-    :param page_type: The type of page being accessed ('university' or 'blog').
+    使用线程池记录访问事件到数据库，以避免阻塞请求。
+    :param page_type: 被访问的页面类型 ('university' 或 'blog').
     """
     try:
-        # Get the real IP address, considering proxies
-        # X-Forwarded-For may contain multiple IPs: "client_ip, proxy1_ip, proxy2_ip"
-        # We only want the first (original client) IP
+        # 获取真实的IP地址，考虑代理情况
+        # X-Forwarded-For 可能包含多个IP: "client_ip, proxy1_ip, proxy2_ip"
+        # 我们只需要第一个 (原始客户端) IP
         forwarded_for = request.headers.get("X-Forwarded-For", "")
         if forwarded_for:
-            # Split by comma and take the first IP, then strip whitespace
+            # 按逗号分割并取第一个IP，然后去除空白
             ip_address = forwarded_for.split(",")[0].strip()
         else:
             ip_address = request.remote_addr
@@ -49,9 +47,7 @@ def log_access(page_type: str):
         }
 
         # 尝试提交到Analytics专用线程池进行异步写入
-        success = thread_pool_manager.submit_user_access_log_task(
-            _write_access_log_to_db, access_log
-        )
+        success = thread_pool_manager.submit_user_access_log_task(_write_access_log_to_db, access_log)
 
         if not success:
             # 线程池繁忙，降级为同步执行（避免丢失日志）

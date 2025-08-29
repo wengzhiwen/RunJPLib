@@ -5,9 +5,9 @@ from utils.mongo_client import get_db
 
 def ensure_indexes() -> bool:
     """
-    Ensure required MongoDB indexes exist.
+    确保所需的MongoDB索引存在。
 
-    Returns True if successful, False otherwise.
+    如果成功则返回True，否则返回False。
     """
     db = get_db()
     if db is None:

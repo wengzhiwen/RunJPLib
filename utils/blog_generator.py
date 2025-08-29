@@ -1,11 +1,10 @@
 """
-Blog generation utility using AI.
-This module adapts the logic from the reference `blog_writer.py` script,
-supporting multiple generation modes and content formatting.
+使用AI生成博客文章的工具。
+该模块改编自参考脚本 `blog_writer.py` 的逻辑，
+支持多种生成模式和内容格式化。
 """
 from datetime import datetime
 import json
-import logging
 import os
 from typing import Dict, List, Optional
 
@@ -16,16 +15,16 @@ from bson.objectid import ObjectId
 from dotenv import load_dotenv
 import nest_asyncio
 
-from utils.mongo_client import get_mongo_client
 from utils.logging_config import setup_logger
+from utils.mongo_client import get_mongo_client
 
-# Apply the patch to allow nested asyncio event loops
+# 应用补丁以允许嵌套的asyncio事件循环
 nest_asyncio.apply()
 
 # 设置独立的日志记录器
 logger = setup_logger(logger_name="BlogGenerator", log_level="INFO")
 
-# --- System Prompts extracted from ref/blog_writer.py ---
+# --- 系统提示词 ---
 
 PROMPT_EXPAND = f"""
 你是一位专业的日本留学相关的文章的简体中文BLOG写作专家。
@@ -207,7 +206,7 @@ class BlogGenerator:
                     raise Exception(f"Agent {agent.name} failed to generate content.")
             except Exception as e:
                 logger.error(f"Agent {agent.name} execution failed: {e}", exc_info=True)
-                # 检查是否是429错误，如果是则记录详细信息
+                # 检查是否是429错误
                 if "429" in str(e):
                     logger.warning(f"Detected 429 error in agent {agent.name}, this should not retry automatically")
                 raise e
@@ -261,7 +260,7 @@ class BlogGenerator:
             return formatted_data.get("formatted_content", content_to_format)
         except Exception as e:
             logger.error(f"An error occurred during content formatting: {e}", exc_info=True)
-            return content_to_format  # Return original content on failure
+            return content_to_format  # 失败时返回原始内容
 
     def generate_blog_content(self, mode: str, university_ids: List[str], user_prompt: str, system_prompt: str) -> Optional[Dict]:
         try:
@@ -368,7 +367,7 @@ class BlogGenerator:
             if "429" in str(e) and "tokens per min" in str(e):
                 logger.warning(f"OpenAI API速率限制错误，尝试使用基础分析报告替代长文本内容: {e}")
 
-                # 使用基础分析报告替代原始内容，而不是追加
+                # 使用基础分析报告替代原始内容
                 summaries_report = []
                 for material in materials_data:
                     if material.get('report_md'):

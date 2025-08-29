@@ -85,8 +85,8 @@ class TaskManager:
                 logger.warning("无法连接到数据库，跳过任务恢复")
                 return
 
-            # 查找所有待处理的任务
-            pending_tasks = db.processing_tasks.find({"status": "pending"}, {"_id": 1}).sort("created_at", 1)  # 按创建时间排序，早创建的先处理
+            # 查找所有待处理的任务，按创建时间排序
+            pending_tasks = db.processing_tasks.find({"status": "pending"}, {"_id": 1}).sort("created_at", 1)
 
             recovered_count = 0
             for task_doc in pending_tasks:
@@ -97,7 +97,6 @@ class TaskManager:
 
             if recovered_count > 0:
                 logger.info(f"已恢复 {recovered_count} 个待处理任务到队列中")
-                # 尝试启动任务处理
                 self.process_queue()
             else:
                 logger.info("没有待恢复的任务")
@@ -112,16 +111,15 @@ class TaskManager:
             consecutive_errors = 0
             while True:
                 try:
-                    # 只有在队列为空时才检查新的待处理任务，避免频繁数据库调用
+                    # 队列为空时检查新的待处理任务
                     if not self.task_queue:
                         self.recover_pending_tasks()
 
-                    # 尝试处理队列
                     self.process_queue()
 
-                    # 如果有正在运行的任务或队列中有任务，检查频率更高
+                    # 根据系统负载动态调整检查频率
                     if self.running_tasks or self.task_queue:
-                        time.sleep(30)  # 有任务时30秒检查一次
+                        time.sleep(30)  # 忙碌时30秒检查一次
                     else:
                         time.sleep(300)  # 空闲时5分钟检查一次
 
@@ -144,13 +142,13 @@ class TaskManager:
         """
         创建新的处理任务
         
-        Args:
+        参数:
             university_name: 大学名称
             pdf_file_path: PDF文件路径
             original_filename: 原始文件名
             
-        Returns:
-            str: 任务ID，失败时返回None
+        返回:
+            任务ID字符串，失败时返回None
         """
         try:
             db = get_db()
@@ -163,7 +161,7 @@ class TaskManager:
                 "university_name": university_name,
                 "original_filename": original_filename,
                 "pdf_file_path": pdf_file_path,
-                "status": "pending",  # pending, processing, completed, failed
+                "status": "pending",  # 任务状态: pending, processing, completed, failed
                 "current_step": "",
                 "progress": 0,
                 "error_message": "",
@@ -196,7 +194,6 @@ class TaskManager:
 
         # 检查是否可以启动新任务
         if (len(self.running_tasks) < self.max_concurrent_tasks and self.task_queue):
-
             task_id = self.task_queue.pop(0)
             self._start_task(task_id)
 
@@ -310,7 +307,7 @@ class TaskManager:
                 logger.error(f"任务不存在: {task_id}")
                 return False
 
-            # 检查任务状态，只有完成或失败的任务才能重启
+            # 只有完成或失败的任务才能重启
             if task["status"] not in ["completed", "failed"]:
                 logger.error(f"任务状态不允许重启: {task['status']}")
                 return False
@@ -364,12 +361,11 @@ class TaskManager:
                 logger.error(f"任务不存在: {task_id}")
                 return False
 
-            # 检查任务状态，只有待处理的任务才能手动启动
+            # 只有待处理的任务才能手动启动
             if task["status"] != "pending":
                 logger.error(f"任务状态不允许启动: {task['status']}")
                 return False
 
-            # 检查任务是否已在队列中
             if task_id in self.task_queue:
                 logger.info(f"任务已在队列中: {task_id}")
                 return True
@@ -400,7 +396,7 @@ class TaskManager:
             return False
 
     def cancel_task(self, task_id: str) -> bool:
-        """取消任务（暂不实现，根据需求文档）"""
+        """取消任务（暂不实现）"""
         # 根据需求文档，暂不提供中断任务的功能
         logger.warning(f"任务取消功能暂未实现: {task_id}")
         return False

@@ -4,14 +4,15 @@ import os
 
 
 def setup_logger(logger_name="app", log_dir="log", log_level="INFO") -> logging.Logger:
-    """设置日志记录器
+    """
+    设置日志记录器
     
-    Args:
+    参数:
         logger_name (str): 日志记录器名称
         log_dir (str): 日志文件保存目录
         log_level (str): 日志级别，默认为INFO
     
-    Returns:
+    返回:
         logging.Logger: 配置好的日志记录器
     """
     # 创建logger实例

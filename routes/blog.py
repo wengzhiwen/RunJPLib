@@ -15,7 +15,7 @@ from utils.cache import blog_list_cache
 from utils.mongo_client import get_db
 from utils.thread_pool_manager import thread_pool_manager
 
-# --- MongoDB based Blog Functions ---
+# --- 基于MongoDB的博客功能函数 ---
 
 
 @cached(blog_list_cache)
@@ -149,7 +149,7 @@ def get_random_blogs_with_summary(count=3):
         return []
 
 
-# --- Blog Routes ---
+# --- 博客路由 ---
 
 
 def blog_list_route():
@@ -161,7 +161,6 @@ def blog_list_route():
     all_blogs = get_all_blogs()
     if not all_blogs:
         logging.warning("没有找到任何博客，渲染404页面。")
-        # 即使没有博客，也尝试获取一些推荐内容（如果适用）
         return render_template('404.html', mode='blog', blogs=[], recommended_blogs=[]), 404
 
     # 获取最新的一篇博客（列表已按降序排列）

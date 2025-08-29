@@ -37,12 +37,10 @@ class ThreadPoolManager:
 
         # 创建三个独立的线程池
         self.blog_html_build_executor = ThreadPoolExecutor(max_workers=self.blog_max_workers, thread_name_prefix="BlogHtmlBuild")
-
         self.admin_executor = ThreadPoolExecutor(max_workers=self.admin_max_workers, thread_name_prefix="AdminOps")
-
         self.user_access_log_executor = ThreadPoolExecutor(max_workers=self.user_access_log_max_workers, thread_name_prefix="UserAccessLog")
 
-        # 统计信息 - 分线程池统计
+        # 分线程池统计信息
         self.stats = {
             'blog_html_build': {
                 'submitted': 0,
@@ -93,17 +91,16 @@ class ThreadPoolManager:
         """
         内部方法：提交任务到指定线程池
         
-        Args:
+        参数:
             pool_type: 线程池类型 ('blog_html_build', 'admin', 'user_access_log')
             executor: 线程池执行器
             func: 要执行的函数
             *args, **kwargs: 函数参数
             
-        Returns:
+        返回:
             bool: True表示成功提交到线程池，False表示线程池满，需要同步执行
         """
         try:
-            # 尝试提交到线程池
             executor.submit(self._task_wrapper, pool_type, func, *args, **kwargs)
             self.stats[pool_type]['submitted'] += 1
             logger.debug(f"{pool_type}任务已提交到线程池，当前活跃线程: {self._get_active_thread_count(executor)}")
@@ -115,9 +112,7 @@ class ThreadPoolManager:
             return False
 
     def _task_wrapper(self, pool_type: str, func, *args, **kwargs):
-        """
-        任务包装器，用于统计和错误处理
-        """
+        """任务包装器，用于统计和错误处理"""
         try:
             start_time = time.time()
             result = func(*args, **kwargs)
@@ -134,8 +129,8 @@ class ThreadPoolManager:
         """
         获取所有线程池的统计信息
         
-        Returns:
-            dict: 包含所有线程池状态的字典
+        返回:
+            一个包含所有线程池状态的字典
         """
         return {
             "blog_html_build_pool": {
@@ -157,31 +152,25 @@ class ThreadPoolManager:
                 **self.stats['user_access_log']
             },
             # 为了向后兼容，保留原有的总计字段
-            "max_workers": self.blog_max_workers,  # 兼容性
-            "active_threads": self._get_active_thread_count(self.blog_html_build_executor),  # 兼容性
+            "max_workers": self.blog_max_workers,
+            "active_threads": self._get_active_thread_count(self.blog_html_build_executor),
             "submitted_tasks": sum(pool['submitted'] for pool in self.stats.values()),
             "completed_tasks": sum(pool['completed'] for pool in self.stats.values()),
             "failed_tasks": sum(pool['failed'] for pool in self.stats.values()),
             "sync_fallback_count": sum(pool['sync_fallback'] for pool in self.stats.values()),
-            "queue_size": self._get_queue_size(self.blog_html_build_executor)  # 兼容性
+            "queue_size": self._get_queue_size(self.blog_html_build_executor)
         }
 
     def _get_active_thread_count(self, executor: ThreadPoolExecutor) -> int:
-        """
-        获取指定线程池当前活跃的线程数
-        """
+        """获取指定线程池当前活跃的线程数"""
         try:
-            # 获取线程池中活跃线程数
             return len(getattr(executor, '_threads', []))
         except Exception:
             return 0
 
     def _get_queue_size(self, executor: ThreadPoolExecutor) -> int:
-        """
-        获取指定线程池当前等待队列大小
-        """
+        """获取指定线程池当前等待队列大小"""
         try:
-            # 获取线程池中等待的任务数
             work_queue = getattr(executor, '_work_queue', None)
             if work_queue:
                 return work_queue.qsize()
@@ -193,7 +182,7 @@ class ThreadPoolManager:
         """
         关闭所有线程池
         
-        Args:
+        参数:
             wait: 是否等待所有任务完成
         """
         logger.info("正在关闭所有线程池...")

@@ -2,7 +2,8 @@
 PDF处理器 - 大学招生信息处理器的核心类
 基于Buffalo工作流程管理器来处理PDF文件
 """
-from datetime import datetime, time
+from datetime import datetime
+from datetime import time
 import os
 from pathlib import Path
 import shutil
@@ -17,7 +18,8 @@ from pdf2image import convert_from_path
 
 from utils.analysis_tool import AnalysisTool
 from utils.logging_config import setup_logger
-from utils.mongo_client import get_db, get_mongo_client
+from utils.mongo_client import get_db
+from utils.mongo_client import get_mongo_client
 from utils.ocr_tool import OCRTool
 from utils.translate_tool import TranslateTool
 
@@ -120,7 +122,7 @@ class PDFProcessor:
         """
         初始化PDF处理器
         
-        Args:
+        参数:
             task_id: 任务ID
             university_name: 大学名称
             pdf_file_path: PDF文件路径
@@ -432,12 +434,12 @@ class PDFProcessor:
             if db is None:
                 raise ValueError("无法连接到数据库")
 
-            # 获取所有处理结果，支持从之前的结果中获取
+            # 获取所有处理结果
             original_md = self.step_data.get("original_md_content", "")
             translated_md = self.step_data.get("translated_md_content", "")
             report_md = self.step_data.get("report_md_content", "")
 
-            # 如果self.step_data中没有，尝试从之前的结果获取
+            # 如果当前步骤数据中没有，尝试从之前的结果获取
             if hasattr(self, 'previous_results'):
                 if not original_md:
                     original_md = self.previous_results.get("original_md_content", "")
@@ -522,18 +524,17 @@ class PDFProcessor:
             # 如果指定了重启步骤，设置之前的步骤为已完成
             if self.restart_from_step:
                 self._log_message(f"从步骤 {self.restart_from_step} 开始重启任务")
-                # 加载之前的处理结果
                 self._load_previous_results()
                 self._setup_restart_from_step(buffalo, project, self.restart_from_step)
 
             # 使用Buffalo的工作流程执行
             success = True
             while True:
-                # 获取下一个待执行的任务（针对当前项目）
+                # 获取下一个待执行的任务
                 work = project.get_next_not_started_work()
 
                 if not work:
-                    # 没有更多任务，工作流程完成
+                    # 工作流程完成
                     self._log_message("所有步骤执行完成")
                     break
 
@@ -547,19 +548,14 @@ class PDFProcessor:
                 # 执行对应的处理函数
                 if step_name in function_map:
                     try:
-                        # 标记工作开始
                         buffalo.update_work_status(project_name, work, "in_progress")
-
-                        # 执行处理函数
                         step_success = function_map[step_name](work)
 
                         if step_success:
-                            # 标记工作完成
                             buffalo.update_work_status(project_name, work, "done")
                             buffalo.save_project(project, project_name)
                             self._log_message(f"步骤 {step_name} 执行成功")
                         else:
-                            # 标记工作失败
                             buffalo.update_work_status(project_name, work, "failed")
                             buffalo.save_project(project, project_name)
                             self._log_message(f"步骤 {step_name} 执行失败", "ERROR")
@@ -567,7 +563,6 @@ class PDFProcessor:
                             break
 
                     except Exception as e:
-                        # 标记工作失败
                         buffalo.update_work_status(project_name, work, "failed")
                         buffalo.save_project(project, project_name)
                         error_msg = f"步骤 {step_name} 执行异常: {str(e)}"
@@ -585,8 +580,6 @@ class PDFProcessor:
             if success:
                 self._log_message("PDF处理完成！")
                 self._update_task_status("completed", "finished", 100)
-
-                # 清理临时文件
                 self._cleanup_temp_files()
                 return True
             else:
@@ -646,13 +639,13 @@ def run_pdf_processor(task_id: str, university_name: str, pdf_file_path: str, re
     """
     运行PDF处理器的入口函数
     
-    Args:
+    参数:
         task_id: 任务ID
         university_name: 大学名称
         pdf_file_path: PDF文件路径
         restart_from_step: 从哪个步骤开始重启（可选）
         
-    Returns:
+    返回:
         bool: 处理是否成功
     """
     processor = PDFProcessor(task_id, university_name, pdf_file_path, restart_from_step)

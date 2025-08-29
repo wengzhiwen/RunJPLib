@@ -13,9 +13,10 @@ class AnalysisTool:
     """分析工具类，用于处理Markdown文档分析"""
 
     def __init__(self, model_name: str = "gpt-4o", analysis_questions: str = "", translate_terms: str = ""):
-        """初始化分析工具类
+        """
+        初始化分析工具类
         
-        分析工具需要在环境变量中设置OPENAI_API_KEY请确认.env文件中已经设置
+        分析工具需要在环境变量中设置OPENAI_API_KEY，请确认.env文件中已经设置。
         """
         if not os.getenv("OPENAI_API_KEY"):
             raise ValueError("OPENAI_API_KEY 环境变量未设置")
@@ -158,12 +159,12 @@ class AnalysisTool:
         """
         将Markdown文档转换为分析报告
         
-        注意，所有的原始错误将被直接传给调用者，不会进行任何的捕获
+        注意，所有的原始错误将被直接传给调用者，不会进行任何的捕获。
         
-        Args:
+        参数:
             md_content (str): Markdown文本
 
-        Returns:
+        返回:
             str: 转换后的分析报告
         """
         start_time = time.time()

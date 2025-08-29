@@ -34,7 +34,7 @@ admin_bp = Blueprint("admin", __name__, url_prefix="/admin", template_folder="..
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
-# --- Admin数据库操作的辅助函数 ---
+# --- 后台管理数据库操作辅助函数 ---
 
 
 def _update_university_in_db(object_id, update_data, university_id):
@@ -102,6 +102,7 @@ def _update_blog_in_db(object_id, update_data, blog_id):
 
 
 def admin_required(fn):
+    """管理员权限验证装饰器"""
 
     @wraps(fn)
     def wrapper(*args, **kwargs):
@@ -257,7 +258,7 @@ def verify_token():
     return jsonify(status="ok")
 
 
-# --- Data Management Pages ---
+# --- 数据管理页面 ---
 @admin_bp.route("/manage/universities")
 @admin_required
 def manage_universities_page():
@@ -270,7 +271,7 @@ def manage_blogs_page():
     return render_template("manage_blogs.html")
 
 
-# --- Data Management APIs ---
+# --- 数据管理API ---
 @admin_bp.route("/api/universities", methods=["GET"])
 @admin_required
 def get_universities():
@@ -459,13 +460,13 @@ def clear_blogs():
     return jsonify({"message": "数据集合已清空"})
 
 
-# --- Blog Creator ---
+# --- 博客创建工具 ---
 
 
 @admin_bp.route("/blog/create")
 @admin_required
 def create_blog_page():
-    """Renders the blog creation page."""
+    """渲染博客创建页面"""
     return render_template("create_blog.html")
 
 
@@ -473,8 +474,8 @@ def create_blog_page():
 @admin_required
 def search_universities():
     """
-    Searches for universities by name.
-    Accepts a 'q' query parameter for the search term.
+    根据名称搜索大学。
+    接受'q'作为查询参数。
     """
     query = request.args.get("q", "").strip()
     if not query:
@@ -485,7 +486,7 @@ def search_universities():
         return jsonify({"error": "数据库连接失败"}), 500
 
     try:
-        # Search for universities where the name contains the query string (case-insensitive)
+        # 根据名称模糊搜索（不区分大小写）
         universities = list(db.universities.find(
             {
                 "university_name": {
@@ -497,7 +498,7 @@ def search_universities():
                 "_id": 1,
                 "university_name": 1
             },
-        ).limit(20))  # Limit to 20 results for performance
+        ).limit(20))  # 限制20条结果以提高性能
 
         for u in universities:
             u["_id"] = str(u["_id"])
@@ -512,8 +513,8 @@ def search_universities():
 @admin_required
 def generate_blog():
     """
-    Generates blog content using the AI generator.
-    Expects a JSON payload with 'university_ids', 'user_prompt', and 'system_prompt'.
+    使用AI生成博客内容。
+    需要包含'university_ids', 'user_prompt', 'system_prompt'的JSON。
     """
     data = request.get_json()
     if not data:
@@ -522,12 +523,12 @@ def generate_blog():
     university_ids = data.get("university_ids", [])
     user_prompt = data.get("user_prompt", "")
     system_prompt = data.get("system_prompt", "")
-    mode = data.get("mode", "expand")  # Default to expand for safety
+    mode = data.get("mode", "expand")  # 默认为expand模式
 
     if not system_prompt:
         return jsonify({"error": "系统提示词不能为空"}), 400
 
-    # Validate inputs based on mode
+    # 根据模式验证输入
     if mode in ["expand", "compare"] and not university_ids:
         return jsonify({"error": "该模式需要至少选择一所大学"}), 400
     if mode == "compare" and len(university_ids) < 2:
@@ -551,8 +552,8 @@ def generate_blog():
 @admin_required
 def save_blog():
     """
-    Saves a new blog post to the database.
-    Expects a JSON payload with 'title' and 'content_md'.
+    保存新博客文章到数据库。
+    需要包含'title'和'content_md'的JSON。
     """
     data = request.get_json()
     if not data or "title" not in data or "content_md" not in data:
@@ -569,9 +570,9 @@ def save_blog():
         return jsonify({"error": "数据库连接失败"}), 500
 
     try:
-        # Create a URL-friendly title
+        # 创建URL友好标题
         url_title = title.lower().replace(" ", "-").replace("/", "-")
-        # Remove any characters that are not safe for URLs
+        # 移除不安全的URL字符
         url_title = "".join(c for c in url_title if c.isalnum() or c == "-")
 
         new_blog = {
@@ -592,12 +593,11 @@ def save_blog():
             # 线程池满，同步执行
             logging.warning("Admin线程池繁忙，同步保存博客")
             try:
-                # 应用Wiki功能：自动识别学校名称并添加超链接
+                # 应用Wiki功能
                 from utils.blog_wiki_processor import blog_wiki_processor
                 original_content = new_blog.get('content_md', '')
                 processed_content = blog_wiki_processor.process_blog_content(original_content)
 
-                # 如果内容被处理了，更新new_blog
                 if processed_content != original_content:
                     new_blog['content_md'] = processed_content
                     logging.info("Blog内容已应用Wiki功能，自动添加了学校名称超链接")
@@ -609,7 +609,7 @@ def save_blog():
                 logging.error(f"同步保存博客失败: {sync_e}")
                 return jsonify({"error": "保存失败，请重试"}), 500
         else:
-            # 异步任务已提交，无法立即获取blog_id，但通常Admin界面可以接受
+            # 异步任务已提交
             logging.info("Blog save task submitted to thread pool.")
             return jsonify({"message": "文章保存任务已提交", "blog_id": "pending"})
     except Exception as e:
@@ -621,9 +621,9 @@ def save_blog():
 @admin_required
 def edit_blog(blog_id):
     """
-    Handles editing of a blog post.
-    GET: Displays the edit form.
-    POST: Updates the blog post in the database.
+    处理博客文章编辑。
+    GET: 显示编辑表单。
+    POST: 更新数据库中的文章。
     """
     db = get_db()
     if db is None:
@@ -642,7 +642,7 @@ def edit_blog(blog_id):
             blog = db.blogs.find_one({"_id": object_id})
             return render_template("edit_blog.html", blog=blog, error="标题和内容不能为空")
 
-        # Create a URL-friendly title
+        # 创建URL友好标题
         url_title = title.lower().replace(" ", "-").replace("/", "-")
         url_title = "".join(c for c in url_title if c.isalnum() or c == "-")
 
@@ -662,13 +662,12 @@ def edit_blog(blog_id):
             # 线程池满，同步执行
             logging.warning("Admin线程池繁忙，同步更新博客")
             try:
-                # 应用Wiki功能：自动识别学校名称并添加超链接
+                # 应用Wiki功能
                 if 'content_md' in update_data['$set']:
                     from utils.blog_wiki_processor import blog_wiki_processor
                     original_content = update_data['$set']['content_md']
                     processed_content = blog_wiki_processor.process_blog_content(original_content)
 
-                    # 如果内容被处理了，更新update_data
                     if processed_content != original_content:
                         update_data['$set']['content_md'] = processed_content
                         logging.info("Blog内容已应用Wiki功能，自动添加了学校名称超链接")
@@ -687,18 +686,17 @@ def edit_blog(blog_id):
 
         return redirect(url_for("admin.manage_blogs_page"))
 
-    # For GET request
+    # GET请求
     blog = db.blogs.find_one({"_id": object_id})
     if not blog:
         return render_template("404.html"), 404
 
-    # To ensure ObjectId is JSON serializable for the template if needed, though we're passing the raw object
     blog["_id"] = str(blog["_id"])
 
     return render_template("edit_blog.html", blog=blog)
 
 
-# --- PDF Processing Pages ---
+# --- PDF处理页面 ---
 @admin_bp.route("/pdf/processor")
 @admin_required
 def pdf_processor_page():
@@ -723,7 +721,7 @@ def pdf_task_detail_page(task_id):
     return render_template("pdf_task_detail.html", task=task)
 
 
-# --- Analytics: Unique IPs in last 24h ---
+# --- 分析：最近24小时独立IP ---
 @admin_bp.route("/analytics/unique_ips")
 @admin_required
 def unique_ips_page():
@@ -732,7 +730,7 @@ def unique_ips_page():
     if db is None:
         return render_template("unique_ips.html", error="数据库连接失败", items=[])
 
-        # 确保mmdb文件可用
+    # 确保mmdb文件可用
     from utils.ip_geo import ip_geo_manager
 
     logging.info("🔧 检查mmdb文件可用性...")
@@ -785,10 +783,10 @@ def unique_ips_page():
         for r in results:
             ip = r.get("_id")
 
-            # 检查该IP是否已有地理信息（从任意一条访问记录中获取）
+            # 检查该IP是否已有地理信息
             geo_info = None
             if mmdb_available:
-                # 查询该IP的任意一条访问记录，看是否已有地理信息
+                # 从访问记录中查找
                 sample_log = db.access_logs.find_one({"ip": ip, "geo_info": {"$exists": True}})
                 if sample_log and sample_log.get("geo_info"):
                     geo_info = sample_log["geo_info"]
@@ -829,8 +827,8 @@ def _batch_update_geo_info(db, ips_to_lookup, items):
     try:
         logging.info(f"🔍 开始批量更新地理信息，总IP数量: {len(ips_to_lookup)}")
 
-        # 批量处理缺失的IP
-        batch_size = 200  # 限制批量处理数量
+        # 限制批量处理数量
+        batch_size = 200
         processed_count = 0
         skipped_count = 0
 
@@ -841,10 +839,10 @@ def _batch_update_geo_info(db, ips_to_lookup, items):
                 logging.info(f"⏹️ 达到批量处理限制 {batch_size}，跳过剩余 {len(ips_to_lookup) - processed_count} 个IP")
                 break
 
-            # 处理多IP地址的情况：取第一个IP进行地理信息解析
+            # 处理多IP地址的情况
             original_ip = ip
             if "," in ip or " " in ip:
-                # 取第一个IP地址进行地理信息解析
+                # 取第一个IP进行解析
                 first_ip = ip.split(",")[0].strip()
                 logging.debug(f"🔄 多IP地址处理: '{ip}' -> 使用第一个IP '{first_ip}' 进行地理信息解析")
                 ip = first_ip
@@ -853,14 +851,12 @@ def _batch_update_geo_info(db, ips_to_lookup, items):
                 skipped_count += 1
                 continue
 
-            # 查询新的地理信息
             logging.debug(f"🔍 查询IP: {ip}")
             geo_data = ip_geo_manager.lookup_ip(ip)
 
             if geo_data:
                 logging.debug(f"📍 解析成功: {ip} -> {geo_data.get('city', 'N/A')}, {geo_data.get('country_name', 'N/A')}")
 
-                # 准备地理信息数据
                 geo_info = {
                     "country_code": geo_data.get("country_code"),
                     "country_name": geo_data.get("country_name"),
@@ -872,14 +868,11 @@ def _batch_update_geo_info(db, ips_to_lookup, items):
                 }
 
                 try:
-                    # 更新所有该IP的访问记录，添加地理信息
-                    # 注意：使用original_ip进行数据库查询，因为数据库中存储的是完整的IP字符串
+                    # 更新所有该IP的访问记录
                     update_result = db.access_logs.update_many({"ip": original_ip}, {"$set": {"geo_info": geo_info}})
-
                     logging.debug(f"💾 更新访问记录: '{original_ip}' -> {update_result.modified_count} 条记录")
 
-                    # 同时保存到ip_geo_cache作为备份
-                    # 缓存中使用解析后的单个IP作为key
+                    # 保存到缓存
                     geo_doc = {"ip": ip, **geo_info}
                     db.ip_geo_cache.replace_one({"ip": ip}, geo_doc, upsert=True)
                     logging.debug(f"💾 保存到缓存: {ip}")
@@ -912,13 +905,12 @@ def _batch_update_geo_info(db, ips_to_lookup, items):
         logging.error(f"❌ 批量更新地理信息失败: {e}", exc_info=True)
 
 
-# --- PDF Processing APIs ---
+# --- PDF处理API ---
 @admin_bp.route("/api/pdf/upload", methods=["POST"])
 @admin_required
 def upload_pdf():
     """上传PDF文件并开始处理"""
     try:
-        # 检查文件
         if "pdf_file" not in request.files:
             return jsonify({"error": "没有上传文件"}), 400
 
@@ -929,19 +921,15 @@ def upload_pdf():
         if not file.filename.lower().endswith(".pdf"):
             return jsonify({"error": "只支持PDF文件"}), 400
 
-        # 获取大学名称
         university_name = request.form.get("university_name", "").strip()
         if not university_name:
             return jsonify({"error": "请输入大学名称"}), 400
 
         # 保存文件到临时目录
-        # original_filename 保留用户原始文件名用于显示（含中文、日文、句点等字符）
         original_filename = file.filename
-        # 物理存储仍使用安全文件名，避免路径与特殊字符问题
         safe_filename = secure_filename(file.filename)
         temp_filename = f"{uuid.uuid4().hex}_{safe_filename}"
 
-        # 创建临时目录
         temp_dir = os.path.join(tempfile.gettempdir(), "pdf_uploads")
         os.makedirs(temp_dir, exist_ok=True)
 
@@ -1053,17 +1041,12 @@ def dashboard_stream():
         last_data = None
         while True:
             try:
-                # 获取核心统计数据
                 stats_data = _get_dashboard_stats()
-                # 获取线程池状态
                 pool_data = thread_pool_manager.get_pool_stats()
-
-                # 合并数据
                 combined_data = {"stats": stats_data, "pools": pool_data}
-
                 current_data = json.dumps(combined_data, default=str)
 
-                # 仅在数据有变化时发送
+                # 仅在数据变化时发送
                 if current_data != last_data:
                     yield f"data: {current_data}\n\n"
                     last_data = current_data
@@ -1073,7 +1056,7 @@ def dashboard_stream():
                 error_data = json.dumps({"error": "An internal error occurred"})
                 yield f"event: error\ndata: {error_data}\n\n"
 
-            # 每30秒检查一次更新
+            # 每30秒检查一次
             time.sleep(30)
 
     return Response(event_stream(), mimetype="text/event-stream")
@@ -1089,33 +1072,27 @@ def task_stream():
         last_queue_data = None
         while True:
             try:
-                # 获取最新数据
                 tasks = task_manager.get_all_tasks(limit=50)
                 queue_status = task_manager.get_queue_status()
 
-                # 准备要发送的数据
                 current_tasks_data = json.dumps(tasks, default=str)
                 current_queue_data = json.dumps(queue_status)
 
-                # 检查数据是否有变化
+                # 仅在数据变化时发送
                 if (current_tasks_data != last_tasks_data or current_queue_data != last_queue_data):
-                    # 发送合并的数据
                     combined_data = {"tasks": tasks, "queue_status": queue_status}
-                    # 使用 default=str 来处理 ObjectId 和 datetime 对象
                     json_data = json.dumps(combined_data, default=str)
                     yield f"data: {json_data}\n\n"
 
-                    # 更新最后的数据状态
                     last_tasks_data = current_tasks_data
                     last_queue_data = current_queue_data
 
             except Exception as e:
                 logging.error(f"Error in SSE task stream: {e}", exc_info=True)
-                # 如果发生错误，可以发送一个错误事件
                 error_data = json.dumps({"error": "An internal error occurred"})
                 yield f"event: error\ndata: {error_data}\n\n"
 
-            # 等待30秒再检查
+            # 每30秒检查一次
             time.sleep(30)
 
     return Response(event_stream(), mimetype="text/event-stream")
@@ -1139,7 +1116,7 @@ def task_detail_stream(task_id):
                 current_task_data = json.dumps(task, default=str)
 
                 if current_task_data != last_task_data:
-                    # 格式化时间戳以便JS可以直接使用
+                    # 格式化时间戳
                     if "created_at" in task and hasattr(task["created_at"], "strftime"):
                         task["created_at_str"] = task["created_at"].strftime("%Y-%m-%d %H:%M:%S")
                     if "updated_at" in task and hasattr(task["updated_at"], "strftime"):
@@ -1153,7 +1130,7 @@ def task_detail_stream(task_id):
                     yield f"data: {json_data}\n\n"
                     last_task_data = current_task_data
 
-                # 如果任务完成或失败，则停止发送
+                # 如果任务完成或失败，则停止推送
                 if task.get("status") in ["completed", "failed"]:
                     break
 
@@ -1230,10 +1207,8 @@ def process_queue():
     try:
         # 恢复待处理任务到队列
         task_manager.recover_pending_tasks()
-
         # 处理队列
         task_manager.process_queue()
-
         # 获取队列状态
         queue_status = task_manager.get_queue_status()
 

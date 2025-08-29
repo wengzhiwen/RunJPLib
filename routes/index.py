@@ -185,7 +185,6 @@ def get_university_details(name, deadline=None):
     if deadline:
         try:
             # 将 YYYY-MM-DD 格式的字符串转换为 datetime 对象
-            # 我们只关心日期，所以将时间设为当天的开始
             dt = datetime.strptime(deadline, "%Y-%m-%d")
             query["deadline"] = dt
         except (ValueError, TypeError):
@@ -198,7 +197,6 @@ def get_university_details(name, deadline=None):
     try:
         doc = db.universities.find_one(query, sort=sort_order)
         if doc:
-            # 确保返回的 deadline 是 datetime 对象
             deadline_val = doc.get('deadline')
             if deadline_val and isinstance(deadline_val, datetime):
                 logging.info(f"成功找到大学: {doc['university_name']} ({deadline_val.strftime('%Y-%m-%d')})")
@@ -220,14 +218,13 @@ def index_route():
     universities = get_sorted_universities_for_index()
     categories = load_categories()
     recommended_blogs = get_random_blogs_with_summary(3)
-    latest_updates = get_latest_updates()  # 获取最新更新
-    return render_template(
-        "index.html",
-        universities=universities,
-        categories=categories,
-        recommended_blogs=recommended_blogs,
-        latest_updates=latest_updates,  # 传递给模板
-        mode='index')
+    latest_updates = get_latest_updates()
+    return render_template("index.html",
+                           universities=universities,
+                           categories=categories,
+                           recommended_blogs=recommended_blogs,
+                           latest_updates=latest_updates,
+                           mode='index')
 
 
 def university_route(name, deadline=None, content="REPORT"):
@@ -268,7 +265,7 @@ def university_route(name, deadline=None, content="REPORT"):
             template_vars.update({"content": html_content, "chinese_content": chinese_html_content, "pdf_url": pdf_url})
             return render_template("content_original.html", **template_vars)
 
-        else:  # content == "ZH"
+        else:  # 默认处理 "ZH" (中文翻译) 的情况
             html_content = md.convert(content_data.get('translated_md', ''))
             template_vars["content"] = html_content
             return render_template("content.html", **template_vars)

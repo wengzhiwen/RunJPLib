@@ -4,7 +4,7 @@ Blog Wiki处理器
 """
 import logging
 import re
-from typing import List, Tuple, Set
+from typing import List, Set, Tuple
 from urllib.parse import quote
 
 from utils.mongo_client import get_db
@@ -48,7 +48,7 @@ class BlogWikiProcessor:
 
         except Exception as e:
             logger.error(f"加载大学名称时出错: {e}")
-            # 初始化空缓存，避免后续检查出错
+            # 初始化空缓存
             self.university_names_cache = set()
             self.university_names_zh_cache = set()
 
@@ -66,10 +66,11 @@ class BlogWikiProcessor:
         return existing_links
 
     def _find_university_matches(self, content: str) -> List[Tuple[str, str, int]]:
-        """在blog内容中查找大学名称匹配
+        """
+        在blog内容中查找大学名称匹配
         
-        Returns:
-            List of (matched_text, university_name, start_pos) tuples
+        返回:
+            一个元组列表 (matched_text, university_name, start_pos)
         """
         if not self.university_names_cache or not self.university_names_zh_cache:
             logger.warning("大学名称缓存未加载，重新加载...")
@@ -103,14 +104,15 @@ class BlogWikiProcessor:
         return f"[{university_name}](https://www.runjplib.com/university/{encoded_name})"
 
     def _replace_university_names(self, content: str, matches: List[Tuple[str, str, int]], existing_links: Set[str]) -> str:
-        """替换大学名称为超链接
+        """
+        替换大学名称为超链接
         
-        Args:
+        参数:
             content: 原始blog内容
             matches: 大学名称匹配列表
             existing_links: 已存在的超链接集合
         
-        Returns:
+        返回:
             处理后的blog内容
         """
         # 从后往前替换，避免位置偏移问题
@@ -174,12 +176,13 @@ class BlogWikiProcessor:
         return False
 
     def process_blog_content(self, content: str) -> str:
-        """处理blog内容，自动添加大学名称超链接
+        """
+        处理blog内容，自动添加大学名称超链接
         
-        Args:
+        参数:
             content: 原始blog markdown内容
             
-        Returns:
+        返回:
             处理后的blog内容
         """
         try:

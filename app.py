@@ -29,49 +29,46 @@ from utils.mongo_client import get_db
 load_dotenv()
 
 
-# 配置日志
 def setup_logging():
     """配置日志系统"""
     # 确保log目录存在
     if not os.path.exists('log'):
         os.makedirs('log')
 
-    # 1. 从环境变量获取日志级别，默认为INFO
     log_level_str = os.getenv('LOG_LEVEL', 'INFO').upper()
     log_level = getattr(logging, log_level_str, logging.INFO)
 
-    # 2. 获取根logger并设置其级别为最低（DEBUG），以捕获所有消息
+    # 获取根logger并设置级别
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.DEBUG)
 
-    # 3. 清除所有现有的处理器，以避免重复日志
+    # 清除现有处理器，避免重复日志
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 
-    # 4. 创建日志格式器
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-    # 5. 创建文件处理器 (INFO级别)
+    # 文件处理器
     file_handler = RotatingFileHandler(
         'log/app.log',
         maxBytes=1024 * 1024,  # 1MB
         backupCount=10,
         encoding='utf-8')
-    file_handler.setLevel(log_level)  # 文件日志级别也由env决定
+    file_handler.setLevel(log_level)
     file_handler.setFormatter(formatter)
     root_logger.addHandler(file_handler)
 
-    # 6. 创建控制台处理器 (根据环境变量设置级别)
+    # 控制台处理器
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(log_level)  # 控制台日志级别由env决定
+    console_handler.setLevel(log_level)
     console_handler.setFormatter(formatter)
     root_logger.addHandler(console_handler)
 
-    # 7. 将其他库的日志级别设置为INFO，以减少噪音
+    # 减少其他库的日志噪音
     logging.getLogger('werkzeug').setLevel(logging.INFO)
     logging.getLogger('flask').setLevel(logging.INFO)
 
-    # 8. 控制 pymongo 日志级别：默认 INFO，可由环境变量 PYMONGO_LOG_LEVEL 覆盖
+    # 控制pymongo日志级别
     pymongo_level_str = os.getenv('PYMONGO_LOG_LEVEL', 'INFO').upper()
     pymongo_level = getattr(logging, pymongo_level_str, logging.INFO)
     logging.getLogger('pymongo').setLevel(pymongo_level)
@@ -80,19 +77,19 @@ def setup_logging():
 app = Flask(__name__)
 
 # 设置文件上传大小限制 (100MB)
-app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024
 
-# Setup the Flask-JWT-Extended extension
+# 配置Flask-JWT-Extended
 app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "super-secret")
-# Tell Flask-JWT-Extended to expect JWTs in headers and cookies
+# 设置JWT在headers和cookies中均可找到
 app.config["JWT_TOKEN_LOCATION"] = ["headers", "cookies"]
-# Disable CSRF protection for this API-like admin panel for simplicity
+# 为简化管理面板的API调用，禁用CSRF保护
 app.config["JWT_COOKIE_CSRF_PROTECT"] = False
-# Set access token to expire in 7 days for admin convenience
+# 为方便管理员操作，设置访问令牌7天后过期
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(days=7)
 jwt = JWTManager(app)
 
-# Register blueprints
+# 注册蓝图
 app.register_blueprint(admin_bp)
 
 
@@ -113,6 +110,7 @@ def favicon():
     """favicon.svg路由"""
     return send_from_directory('static', 'favicon.svg')
 
+
 @app.route('/BingSiteAuth.xml')
 def bing_site_auth():
     """Bing站点验证文件路由"""
@@ -123,7 +121,7 @@ def bing_site_auth():
         abort(404)
     return send_from_directory(file_dir, file_name)
 
-# 首页路由
+
 @app.route('/')
 def index():
     """首页路由"""
@@ -132,13 +130,12 @@ def index():
 
 class DateConverter(BaseConverter):
     """日期转换器"""
-    regex = r'[^/]+'  # Match any characters except forward slash
+    regex = r'[^/]+'  # 匹配除斜杠外的任何字符
 
 
 app.url_map.converters['date'] = DateConverter
 
 
-# 大学相关路由 - 带deadline的完整路径
 @app.route('/university/<name>/<date:deadline>')
 @app.route('/university/<name>/<date:deadline>/')
 def university_report_with_deadline(name, deadline):
@@ -160,7 +157,6 @@ def university_zh_with_deadline(name, deadline):
     return university_route(name, deadline=deadline, content="ZH")
 
 
-# 大学相关路由 - 简化路径（自动使用最新deadline）
 @app.route('/university/<name>')
 @app.route('/university/<name>/')
 def university_report(name):
@@ -182,7 +178,6 @@ def university_zh(name):
     return university_route(name, content="ZH")
 
 
-# 博客相关路由
 @app.route('/blog')
 @app.route('/blog/')
 def blog_list():
@@ -199,7 +194,7 @@ def blog_detail(title):
 
 @app.route('/pdf/resource/<resource_id>')
 def serve_pdf_from_resource(resource_id):
-    """Serve PDF from GridFS with performance logging."""
+    """通过GridFS提供PDF文件，并记录性能日志"""
     start_time = time.time()
     logging.debug(f"PDF请求已收到: {resource_id}")
 
@@ -227,17 +222,15 @@ def serve_pdf_from_resource(resource_id):
         try:
             grid_out = fs.get(pdf_file_id)
 
-            # 读取PDF数据
             pdf_data = grid_out.read()
 
             response = make_response(pdf_data)
             response.headers['Content-Type'] = 'application/pdf'
 
-            # 使用安全的ASCII文件名，避免HTTP头编码问题，同时确保唯一性
-            # 使用resource_id作为唯一标识，避免缓存冲突
+            # 使用安全的ASCII文件名，避免HTTP头编码问题和缓存冲突
             safe_filename = f"university_{resource_id}_{deadline}.pdf"
 
-            # 尝试从GridFS元数据获取原始文件名，但仅用于日志记录
+            # 尝试从GridFS元数据获取原始文件名，仅用于日志记录
             try:
                 original_filename = grid_out.metadata.get('original_filename', '')
                 if original_filename:
@@ -259,7 +252,7 @@ def serve_pdf_from_resource(resource_id):
     abort(404)
 
 
-# 向后兼容的路由，保持现有功能
+# 向后兼容的路由
 @app.route('/pdf/mongo/<item_id>')
 def serve_pdf_from_mongo_legacy(item_id):
     """向后兼容的MongoDB PDF服务路由（已弃用）"""
@@ -268,12 +261,11 @@ def serve_pdf_from_mongo_legacy(item_id):
 
 
 if __name__ == '__main__':
-    # 设置日志配置
     setup_logging()
-    logging.debug("日志系统配置完成，DEBUG级别已启用（如果env中设置）。")
+    logging.debug("日志系统配置完成。")
     logging.info("应用启动中...")
 
-    # 确保必要的索引存在
+    # 确保数据库索引存在
     try:
         if ensure_indexes():
             logging.info("数据库索引已就绪")

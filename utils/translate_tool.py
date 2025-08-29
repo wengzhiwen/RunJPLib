@@ -13,9 +13,10 @@ class TranslateTool:
     """翻译工具类，用于处理日语到中文的翻译"""
 
     def __init__(self, model_name: str = "gpt-4o", translate_terms: str = ""):
-        """初始化翻译工具类
+        """
+        初始化翻译工具类
         
-        翻译工具需要在环境变量中设置OPENAI_API_KEY请确认.env文件中已经设置
+        翻译工具需要在环境变量中设置OPENAI_API_KEY，请确认.env文件中已经设置。
         """
         if not os.getenv("OPENAI_API_KEY"):
             raise ValueError("OPENAI_API_KEY 环境变量未设置")
@@ -60,12 +61,12 @@ class TranslateTool:
         """
         将日语Markdown转换为中文Markdown
         
-        注意，所有的原始错误将被直接传给调用者，不会进行任何的捕获
+        注意，所有的原始错误将被直接传给调用者，不会进行任何的捕获。
         
-        Args:
+        参数:
             md_content (str): 日语Markdown文本
 
-        Returns:
+        返回:
             str: 转换后的中文Markdown文本
         """
         start_time = time.time()
