@@ -12,10 +12,15 @@ logger = setup_logger(logger_name="AnalysisTool", log_level="INFO")
 class AnalysisTool:
     """分析工具类，用于处理Markdown文档分析"""
 
-    def __init__(self, model_name: str = "gpt-4o", analysis_questions: str = "", translate_terms: str = ""):
+    def __init__(
+        self,
+        model_name: str = "gpt-4o",
+        analysis_questions: str = "",
+        translate_terms: str = "",
+    ):
         """
         初始化分析工具类
-        
+
         分析工具需要在环境变量中设置OPENAI_API_KEY，请确认.env文件中已经设置。
         """
         if not os.getenv("OPENAI_API_KEY"):
@@ -29,8 +34,9 @@ class AnalysisTool:
         """使用OpenAI分析Markdown内容"""
         logger.info("分析Markdown内容...")
 
-        analyzer_agent = Agent(name="Markdown_Analyzer_Agent",
-                               instructions=f"""你是一位严谨的日本留学信息专家,你根据用户最初输入的完整Markdown内容继续以下工作流：
+        analyzer_agent = Agent(
+            name="Markdown_Analyzer_Agent",
+            instructions=f"""你是一位严谨的日本留学信息专家,你根据用户最初输入的完整Markdown内容继续以下工作流：
 0. Markdown原文可能很长，因为有些Markdown包含了大量和留学生入学无关的信息，可以先将这部分信息排除再进行分析
  - 但是要注意，有些学校可能不会直接使用'外国人留学生'这样的说法，但他们事实上招收留学生，如：
    - 允许没有日本国籍的人报名
@@ -56,16 +62,36 @@ class AnalysisTool:
  - 所有的问题都请针对'打算报考学部（本科）的外国人留学生'的状况来回答，不要将其他招生对象的情况包含进来
 
 {self.translate_terms}
-""",
-                               model=self.model_name)
 
-        input_items = [{"role": "user", "content": f"""请根据以下Markdown内容进行分析：
+重要提示：在分析过程中，请识别该PDF文档所属的大学名称，并在分析结果的结尾处添加四行格式为：
+大学中文名称：[简体中文全名]
+大学中文简称：[简体中文简称]
+大学日文名称：[日文全名]
+大学日文简称：[日文简称]
+
+例如：
+大学中文名称：东京大学
+大学中文简称：东大
+大学日文名称：東京大学
+大学日文简称：東大
+
+这个信息将用于后续的数据处理。""",
+            model=self.model_name,
+        )
+
+        input_items = [
+            {
+                "role": "user",
+                "content": f"""请根据以下Markdown内容进行分析：
 
 {md_content}
 
 -----------
 
-请直接返回分析结果。务必尊从系统提示词中的要求来进行分析。"""}]
+请直接返回分析结果。务必尊从系统提示词中的要求来进行分析。
+不要忘记重要提示中关于在分析结果的结尾处添加四行大学名称和简称的信息的要求。""",
+            }
+        ]
 
         result = Runner.run_sync(analyzer_agent, input_items)
         return result.final_output
@@ -74,8 +100,9 @@ class AnalysisTool:
         """使用OpenAI审核分析结果"""
         logger.info("审核分析结果...")
 
-        review_agent = Agent(name="Review_Agent",
-                             instructions=f"""你是一位严谨的校对人员,你根据用户输入的Markdown原文对用户输入的分析结果进行校对。
+        review_agent = Agent(
+            name="Review_Agent",
+            instructions=f"""你是一位严谨的校对人员,你根据用户输入的Markdown原文对用户输入的分析结果进行校对。
 你的工作流程如下：
 0. Markdown原文可能很长，因为有些Markdown包含了大量和留学生入学无关的信息，可以先将这部分信息排除再进行分析
 1. 逐一核对,针对其中不相符的情况直接对分析结果进行修正。
@@ -92,11 +119,13 @@ class AnalysisTool:
 
 {self.translate_terms}
 """,
-                             model=self.model_name)
+            model=self.model_name,
+        )
 
-        input_items = [{
-            "role": "user",
-            "content": f"""请根据以下原始文档内容对分析结果进行校对：
+        input_items = [
+            {
+                "role": "user",
+                "content": f"""请根据以下原始文档内容对分析结果进行校对：
 
 原始文档：
 {md_content}
@@ -106,8 +135,9 @@ class AnalysisTool:
 
 -----------
 
-请直接返回校对后的分析结果。务必尊从系统提示词中的要求来进行校对。"""
-        }]
+请直接返回校对后的分析结果。务必尊从系统提示词中的要求来进行校对。""",
+            }
+        ]
 
         result = Runner.run_sync(review_agent, input_items)
         return result.final_output
@@ -116,8 +146,9 @@ class AnalysisTool:
         """使用OpenAI生成最终报告"""
         logger.info("生成最终报告...")
 
-        report_agent = Agent(name="Report_Agent",
-                             instructions="""你是专业的编辑，你的工作是将用户输入的分析结果整理成Markdown格式的最终报告。
+        report_agent = Agent(
+            name="Report_Agent",
+            instructions="""你是专业的编辑，你的工作是将用户输入的分析结果整理成Markdown格式的最终报告。
 你的工作流程如下：
 1. 基于用户输入的分析结果，整理成Markdown格式的最终报告，不需要再对Markdown文档的原文进行分析，也不要进行任何推测；
     - 报告标题：
@@ -142,15 +173,21 @@ class AnalysisTool:
 5. 根据Markdown的语法，需要添加空格的地方，请务必添加空格；但不要在表格的单元格内填充大量的空格，需要的话填充一个空格即可
 总之，要严格的践行Markdown的语法要求，不要只是看上去像，其实有不少语法错误
 """,
-                             model=self.model_name)
+            model=self.model_name,
+        )
 
-        input_items = [{"role": "user", "content": f"""请将以下分析结果整理成Markdown格式的最终报告：
+        input_items = [
+            {
+                "role": "user",
+                "content": f"""请将以下分析结果整理成Markdown格式的最终报告：
 
 {analysis_result}
 
 -----------
 
-请直接返回最终报告。务必尊从系统提示词中的要求来生成报告。"""}]
+请直接返回最终报告。务必尊从系统提示词中的要求来生成报告。""",
+            }
+        ]
 
         result = Runner.run_sync(report_agent, input_items)
         return result.final_output
@@ -158,9 +195,9 @@ class AnalysisTool:
     def md2report(self, md_content: str) -> str:
         """
         将Markdown文档转换为分析报告
-        
+
         注意，所有的原始错误将被直接传给调用者，不会进行任何的捕获。
-        
+
         参数:
             md_content (str): Markdown文本
 
@@ -185,6 +222,8 @@ class AnalysisTool:
         report_time = time.time() - report_start
 
         total_time = time.time() - start_time
-        logger.info(f"分析步骤耗时: {analysis_time:.2f}秒，审核步骤耗时: {review_time:.2f}秒，报告生成步骤耗时: {report_time:.2f}秒，总耗时: {total_time:.2f}秒")
+        logger.info(
+            f"分析步骤耗时: {analysis_time:.2f}秒，审核步骤耗时: {review_time:.2f}秒，报告生成步骤耗时: {report_time:.2f}秒，总耗时: {total_time:.2f}秒"
+        )
 
         return final_report

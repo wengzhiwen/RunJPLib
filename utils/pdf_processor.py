@@ -2,6 +2,7 @@
 PDF处理器 - 大学招生信息处理器的核心类
 基于Buffalo工作流程管理器来处理PDF文件
 """
+
 from datetime import datetime
 from datetime import time
 import os
@@ -14,7 +15,6 @@ from buffalo import Buffalo
 from buffalo import Project
 from buffalo import Work
 from gridfs import GridFS
-import pandas as pd
 from pdf2image import convert_from_path
 
 from utils.analysis_tool import AnalysisTool
@@ -29,6 +29,7 @@ logger = setup_logger(logger_name="PDFProcessor", log_level="INFO")
 
 class Config:
     """配置类，用于管理所有配置信息（单例模式）"""
+
     _instance = None
     _initialized = False
 
@@ -43,6 +44,7 @@ class Config:
 
         # 加载环境变量配置
         from dotenv import load_dotenv
+
         load_dotenv()
 
         try:
@@ -59,9 +61,13 @@ class Config:
             # buffalo模板文件路径
             self.buffalo_template_file = Path(__file__).parent / "wf_template.yml"
             if not self.buffalo_template_file.exists():
-                raise FileNotFoundError(f"Buffalo模板文件未找到: {self.buffalo_template_file}")
+                raise FileNotFoundError(
+                    f"Buffalo模板文件未找到: {self.buffalo_template_file}"
+                )
         except Exception as e:
-            raise FileNotFoundError(f"Buffalo模板文件未找到: {self.buffalo_template_file}") from e
+            raise FileNotFoundError(
+                f"Buffalo模板文件未找到: {self.buffalo_template_file}"
+            ) from e
 
         # OCR配置
         try:
@@ -78,7 +84,7 @@ class Config:
         try:
             translate_terms_file = os.getenv("TRANSLATE_TERMS_FILE", "")
             if translate_terms_file and Path(translate_terms_file).exists():
-                with open(translate_terms_file, 'r', encoding='utf-8') as f:
+                with open(translate_terms_file, "r", encoding="utf-8") as f:
                     self.translate_terms = f.read()
             else:
                 self.translate_terms = ""
@@ -86,7 +92,9 @@ class Config:
             self.translate_terms = ""
 
         try:
-            self.translate_model_name = os.getenv("OPENAI_TRANSLATE_MODEL", "gpt-4o-mini")
+            self.translate_model_name = os.getenv(
+                "OPENAI_TRANSLATE_MODEL", "gpt-4o-mini"
+            )
         except Exception:
             self.translate_model_name = "gpt-4o-mini"
 
@@ -98,7 +106,7 @@ class Config:
 
         analysis_questions_file = os.getenv("ANALYSIS_QUESTIONS_FILE", "")
         if analysis_questions_file and Path(analysis_questions_file).exists():
-            with open(analysis_questions_file, 'r', encoding='utf-8') as f:
+            with open(analysis_questions_file, "r", encoding="utf-8") as f:
                 self.analysis_questions = f.read()
         else:
             # 默认的分析问题
@@ -119,10 +127,16 @@ class Config:
 class PDFProcessor:
     """PDF处理器主类"""
 
-    def __init__(self, task_id: str, university_name: str, pdf_file_path: str, restart_from_step: str = None):
+    def __init__(
+        self,
+        task_id: str,
+        university_name: str,
+        pdf_file_path: str,
+        restart_from_step: str = None,
+    ):
         """
         初始化PDF处理器
-        
+
         参数:
             task_id: 任务ID
             university_name: 大学名称
@@ -144,7 +158,14 @@ class PDFProcessor:
         self.translate_tool = None
         self.analysis_tool = None
 
-    def _update_task_status(self, status: str, current_step: str = "", progress: int = 0, error_message: str = "", logs: list = None):
+    def _update_task_status(
+        self,
+        status: str,
+        current_step: str = "",
+        progress: int = 0,
+        error_message: str = "",
+        logs: list = None,
+    ):
         """更新任务状态到数据库"""
         try:
             client = get_mongo_client()
@@ -153,7 +174,12 @@ class PDFProcessor:
                 return
 
             db = client.RunJPLib
-            update_data = {"status": status, "current_step": current_step, "progress": progress, "updated_at": datetime.utcnow()}
+            update_data = {
+                "status": status,
+                "current_step": current_step,
+                "progress": progress,
+                "updated_at": datetime.utcnow(),
+            }
 
             if error_message:
                 update_data["error_message"] = error_message
@@ -161,13 +187,17 @@ class PDFProcessor:
             if logs:
                 update_data["$push"] = {"logs": {"$each": logs}}
 
-            db.processing_tasks.update_one({"_id": ObjectId(self.task_id)}, {"$set": update_data} if not logs else {
-                "$set": {
-                    k: v
-                    for k, v in update_data.items() if k != "$push"
-                },
-                **update_data
-            })
+            db.processing_tasks.update_one(
+                {"_id": ObjectId(self.task_id)},
+                (
+                    {"$set": update_data}
+                    if not logs
+                    else {
+                        "$set": {k: v for k, v in update_data.items() if k != "$push"},
+                        **update_data,
+                    }
+                ),
+            )
             logger.info(f"任务 {self.task_id} 状态已更新: {status}")
         except Exception as e:
             logger.error(f"更新任务状态失败: {e}")
@@ -182,7 +212,9 @@ class PDFProcessor:
             client = get_mongo_client()
             if client is not None:
                 db = client.RunJPLib
-                db.processing_tasks.update_one({"_id": ObjectId(self.task_id)}, {"$push": {"logs": log_entry}})
+                db.processing_tasks.update_one(
+                    {"_id": ObjectId(self.task_id)}, {"$push": {"logs": log_entry}}
+                )
         except Exception as e:
             logger.error(f"写入任务日志失败: {e}")
 
@@ -199,15 +231,15 @@ class PDFProcessor:
         self.previous_results = {}
 
         if (self.task_dir / "original.md").exists():
-            with open(self.task_dir / "original.md", 'r', encoding='utf-8') as f:
+            with open(self.task_dir / "original.md", "r", encoding="utf-8") as f:
                 self.previous_results["original_md_content"] = f.read()
 
         if (self.task_dir / "translated.md").exists():
-            with open(self.task_dir / "translated.md", 'r', encoding='utf-8') as f:
+            with open(self.task_dir / "translated.md", "r", encoding="utf-8") as f:
                 self.previous_results["translated_md_content"] = f.read()
 
         if (self.task_dir / "report.md").exists():
-            with open(self.task_dir / "report.md", 'r', encoding='utf-8') as f:
+            with open(self.task_dir / "report.md", "r", encoding="utf-8") as f:
                 self.previous_results["report_md_content"] = f.read()
 
         if self.previous_results:
@@ -234,12 +266,12 @@ class PDFProcessor:
             image_paths = []
             for i, image in enumerate(images, 1):
                 image_path = images_dir / f"page_{i:03d}.png"
-                image.save(str(image_path), 'PNG')
+                image.save(str(image_path), "PNG")
                 image_paths.append(str(image_path))
                 self._log_message(f"已保存页面 {i}: {image_path.name}")
 
             # 保存图片路径列表到实例数据
-            if not hasattr(self, 'step_data'):
+            if not hasattr(self, "step_data"):
                 self.step_data = {}
             self.step_data["image_paths"] = image_paths
             self.step_data["total_pages"] = len(image_paths)
@@ -263,15 +295,20 @@ class PDFProcessor:
                 self.ocr_tool = OCRTool(self.config.ocr_model_name)
 
             # 获取图片路径
-            if hasattr(self, 'step_data') and "image_paths" in self.step_data:
+            if hasattr(self, "step_data") and "image_paths" in self.step_data:
                 image_paths = self.step_data["image_paths"]
-            elif hasattr(self, 'previous_results') and 'image_paths' in self.previous_results:
-                image_paths = self.previous_results['image_paths']
+            elif (
+                hasattr(self, "previous_results")
+                and "image_paths" in self.previous_results
+            ):
+                image_paths = self.previous_results["image_paths"]
             else:
                 # 尝试从文件系统加载
                 images_dir = self.task_dir / "images"
                 if images_dir.exists():
-                    image_paths = sorted([str(p) for p in images_dir.glob("page_*.png")])
+                    image_paths = sorted(
+                        [str(p) for p in images_dir.glob("page_*.png")]
+                    )
                 else:
                     image_paths = []
 
@@ -293,7 +330,7 @@ class PDFProcessor:
 
                         # 保存单页OCR结果
                         page_md_file = ocr_dir / f"page_{i:03d}.md"
-                        with open(page_md_file, 'w', encoding='utf-8') as f:
+                        with open(page_md_file, "w", encoding="utf-8") as f:
                             f.write(md_content)
 
                         self._log_message(f"第 {i} 页OCR完成")
@@ -310,16 +347,18 @@ class PDFProcessor:
             # 合并所有OCR结果
             combined_markdown = "\n\n".join(markdown_contents)
             combined_md_file = self.task_dir / "original.md"
-            with open(combined_md_file, 'w', encoding='utf-8') as f:
+            with open(combined_md_file, "w", encoding="utf-8") as f:
                 f.write(combined_markdown)
 
             # 保存OCR结果到实例数据
-            if not hasattr(self, 'step_data'):
+            if not hasattr(self, "step_data"):
                 self.step_data = {}
             self.step_data["original_md_path"] = str(combined_md_file)
             self.step_data["original_md_content"] = combined_markdown
 
-            self._log_message(f"OCR识别完成，共处理 {len(markdown_contents)} 页有效内容")
+            self._log_message(
+                f"OCR识别完成，共处理 {len(markdown_contents)} 页有效内容"
+            )
             return True
 
         except Exception as e:
@@ -335,18 +374,23 @@ class PDFProcessor:
 
             # 初始化翻译工具
             if not self.translate_tool:
-                self.translate_tool = TranslateTool(self.config.translate_model_name, self.config.translate_terms)
+                self.translate_tool = TranslateTool(
+                    self.config.translate_model_name, self.config.translate_terms
+                )
 
             # 获取OCR结果内容
-            if hasattr(self, 'step_data') and "original_md_content" in self.step_data:
+            if hasattr(self, "step_data") and "original_md_content" in self.step_data:
                 original_md_content = self.step_data["original_md_content"]
-            elif hasattr(self, 'previous_results') and 'original_md_content' in self.previous_results:
-                original_md_content = self.previous_results['original_md_content']
+            elif (
+                hasattr(self, "previous_results")
+                and "original_md_content" in self.previous_results
+            ):
+                original_md_content = self.previous_results["original_md_content"]
             else:
                 # 尝试从文件加载
                 original_md_file = self.task_dir / "original.md"
                 if original_md_file.exists():
-                    with open(original_md_file, 'r', encoding='utf-8') as f:
+                    with open(original_md_file, "r", encoding="utf-8") as f:
                         original_md_content = f.read()
                 else:
                     original_md_content = ""
@@ -360,11 +404,11 @@ class PDFProcessor:
 
             # 保存翻译结果
             translated_md_file = self.task_dir / "translated.md"
-            with open(translated_md_file, 'w', encoding='utf-8') as f:
+            with open(translated_md_file, "w", encoding="utf-8") as f:
                 f.write(translated_content)
 
             # 保存翻译结果到实例数据
-            if not hasattr(self, 'step_data'):
+            if not hasattr(self, "step_data"):
                 self.step_data = {}
             self.step_data["translated_md_path"] = str(translated_md_file)
             self.step_data["translated_md_content"] = translated_content
@@ -385,18 +429,25 @@ class PDFProcessor:
 
             # 初始化分析工具
             if not self.analysis_tool:
-                self.analysis_tool = AnalysisTool(self.config.analysis_model_name, self.config.analysis_questions, self.config.translate_terms)
+                self.analysis_tool = AnalysisTool(
+                    self.config.analysis_model_name,
+                    self.config.analysis_questions,
+                    self.config.translate_terms,
+                )
 
             # 获取翻译结果内容
-            if hasattr(self, 'step_data') and "translated_md_content" in self.step_data:
+            if hasattr(self, "step_data") and "translated_md_content" in self.step_data:
                 translated_md_content = self.step_data["translated_md_content"]
-            elif hasattr(self, 'previous_results') and 'translated_md_content' in self.previous_results:
-                translated_md_content = self.previous_results['translated_md_content']
+            elif (
+                hasattr(self, "previous_results")
+                and "translated_md_content" in self.previous_results
+            ):
+                translated_md_content = self.previous_results["translated_md_content"]
             else:
                 # 尝试从文件加载
                 translated_md_file = self.task_dir / "translated.md"
                 if translated_md_file.exists():
-                    with open(translated_md_file, 'r', encoding='utf-8') as f:
+                    with open(translated_md_file, "r", encoding="utf-8") as f:
                         translated_md_content = f.read()
                 else:
                     translated_md_content = ""
@@ -410,7 +461,7 @@ class PDFProcessor:
 
             # 保存分析报告
             report_md_file = self.task_dir / "report.md"
-            with open(report_md_file, 'w', encoding='utf-8') as f:
+            with open(report_md_file, "w", encoding="utf-8") as f:
                 f.write(analysis_report)
 
             self.step_data["report_md_path"] = str(report_md_file)
@@ -425,41 +476,27 @@ class PDFProcessor:
             self.step_data["error"] = error_msg
             return False
 
-    _university_df = None
+    def _extract_university_name_zh(self, analysis_report: str) -> str:
+        """从分析报告中提取大学的简体中文全称"""
+        try:
+            # 查找"大学中文名称："开头的行
+            lines = analysis_report.split("\n")
+            for line in lines:
+                line = line.strip()
+                if line.startswith("大学中文名称："):
+                    # 提取冒号后的内容
+                    university_name_zh = line.split("：", 1)[1].strip()
+                    if university_name_zh:
+                        self._log_message(
+                            f"从分析报告中提取到大学中文名称: {university_name_zh}"
+                        )
+                        return university_name_zh
 
-    def _load_university_data(self):
-        """加载并缓存大学数据"""
-        if PDFProcessor._university_df is None:
-            try:
-                csv_path = Path(__file__).parent.parent / "data" / "university_categories.csv"
-                if not csv_path.exists():
-                    self._log_message(f"大学数据文件不存在: {csv_path}", "WARNING")
-                    PDFProcessor._university_df = pd.DataFrame(columns=['name', 'ja_name'])
-                    return
-
-                df = pd.read_csv(csv_path)
-                # 按日文名称长度降序排序，优先匹配长名称
-                df['ja_name_len'] = df['ja_name'].str.len()
-                df = df.sort_values(by='ja_name_len', ascending=False).drop(columns=['ja_name_len'])
-                PDFProcessor._university_df = df
-                self._log_message(f"成功加载 {len(df)} 条大学数据")
-            except Exception as e:
-                self._log_message(f"加载大学数据失败: {e}", "ERROR")
-                PDFProcessor._university_df = pd.DataFrame(columns=['name', 'ja_name'])
-
-    def _find_university_name_zh(self, text: str) -> str:
-        """在文本中查找大学的简体中文全称"""
-        self._load_university_data()
-        if PDFProcessor._university_df.empty:
+            self._log_message("未在分析报告中找到大学中文名称", "WARNING")
             return None
-
-        for _, row in PDFProcessor._university_df.iterrows():
-            if row['ja_name'] in text:
-                self._log_message(f"在文本中匹配到大学: {row['ja_name']} -> {row['name']}")
-                return row['name']
-
-        self._log_message("未在文本中匹配到任何大学名称", "WARNING")
-        return None
+        except Exception as e:
+            self._log_message(f"提取大学中文名称时出错: {e}", "ERROR")
+            return None
 
     def process_step_05_output(self, work: Work) -> bool:
         """步骤5: 输出到MongoDB"""
@@ -477,33 +514,41 @@ class PDFProcessor:
             report_md = self.step_data.get("report_md_content", "")
 
             # 如果当前步骤数据中没有，尝试从之前的结果获取
-            if hasattr(self, 'previous_results'):
+            if hasattr(self, "previous_results"):
                 if not original_md:
                     original_md = self.previous_results.get("original_md_content", "")
                 if not translated_md:
-                    translated_md = self.previous_results.get("translated_md_content", "")
+                    translated_md = self.previous_results.get(
+                        "translated_md_content", ""
+                    )
                 if not report_md:
                     report_md = self.previous_results.get("report_md_content", "")
 
             if not all([original_md, translated_md, report_md]):
                 raise ValueError("处理结果不完整")
 
-            # 查找大学中文全称
-            university_name_zh = self._find_university_name_zh(original_md) or self.university_name
+            # 从分析报告中提取大学中文全称
+            university_name_zh = self._extract_university_name_zh(report_md)
+            if not university_name_zh:
+                # 如果没有提取到，使用原始大学名称作为备选
+                university_name_zh = self.university_name
+                self._log_message(f"使用原始大学名称作为中文名称: {university_name_zh}")
 
             # 将PDF文件保存到GridFS
             fs = GridFS(db)
-            with open(self.pdf_file_path, 'rb') as pdf_file:
-                pdf_file_id = fs.put(pdf_file,
-                                     filename=str(uuid.uuid4()),
-                                     metadata={
-                                         "university_name": self.university_name,
-                                         "university_name_zh": university_name_zh,
-                                         "deadline": datetime.combine(datetime.now().date(), time.min),
-                                         "upload_time": datetime.utcnow(),
-                                         "original_filename": f"{self.university_name}_{datetime.now().strftime('%Y%m%d')}.pdf",
-                                         "task_id": self.task_id
-                                     })
+            with open(self.pdf_file_path, "rb") as pdf_file:
+                pdf_file_id = fs.put(
+                    pdf_file,
+                    filename=str(uuid.uuid4()),
+                    metadata={
+                        "university_name": self.university_name,
+                        "university_name_zh": university_name_zh,
+                        "deadline": datetime.combine(datetime.now().date(), time.min),
+                        "upload_time": datetime.utcnow(),
+                        "original_filename": f"{self.university_name}_{datetime.now().strftime('%Y%m%d')}.pdf",
+                        "task_id": self.task_id,
+                    },
+                )
 
             # 创建大学信息文档
             university_doc = {
@@ -516,8 +561,8 @@ class PDFProcessor:
                     "original_md": original_md,
                     "translated_md": translated_md,
                     "report_md": report_md,
-                    "pdf_file_id": pdf_file_id
-                }
+                    "pdf_file_id": pdf_file_id,
+                },
             }
 
             # 插入到数据库
@@ -543,7 +588,10 @@ class PDFProcessor:
             self._update_task_status("processing", "initializing", 5)
 
             # 初始化Buffalo工作流程
-            buffalo = Buffalo(base_dir=self.config.temp_dir, template_path=self.config.buffalo_template_file)
+            buffalo = Buffalo(
+                base_dir=self.config.temp_dir,
+                template_path=self.config.buffalo_template_file,
+            )
 
             # 创建或加载项目
             project_name = f"pdf_processing_{self.task_id}"
@@ -636,7 +684,9 @@ class PDFProcessor:
             self._update_task_status("failed", "error", 0, error_msg)
             return False
 
-    def _setup_restart_from_step(self, buffalo: Buffalo, project: Project, restart_step: str):
+    def _setup_restart_from_step(
+        self, buffalo: Buffalo, project: Project, restart_step: str
+    ):
         """设置从指定步骤重启，将之前的步骤标记为已完成"""
         project_name = project.folder_name
 
@@ -648,7 +698,9 @@ class PDFProcessor:
                         buffalo.update_work_status(project_name, prev_work, "done")
                         self._log_message(f"步骤 {prev_work.name} 标记为已完成")
                     elif prev_work.index >= work.index:
-                        buffalo.update_work_status(project_name, prev_work, "not_started")
+                        buffalo.update_work_status(
+                            project_name, prev_work, "not_started"
+                        )
                         self._log_message(f"步骤 {prev_work.name} 重置为未开始")
                 break
 
@@ -677,16 +729,21 @@ class PDFProcessor:
             self._log_message(f"清理临时文件失败: {str(e)}", "WARNING")
 
 
-def run_pdf_processor(task_id: str, university_name: str, pdf_file_path: str, restart_from_step: str = None) -> bool:
+def run_pdf_processor(
+    task_id: str,
+    university_name: str,
+    pdf_file_path: str,
+    restart_from_step: str = None,
+) -> bool:
     """
     运行PDF处理器的入口函数
-    
+
     参数:
         task_id: 任务ID
         university_name: 大学名称
         pdf_file_path: PDF文件路径
         restart_from_step: 从哪个步骤开始重启（可选）
-        
+
     返回:
         bool: 处理是否成功
     """
