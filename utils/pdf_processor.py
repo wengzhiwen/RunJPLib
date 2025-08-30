@@ -479,13 +479,20 @@ class PDFProcessor:
     def _extract_university_name_zh(self, analysis_report: str) -> str:
         """从分析报告中提取大学的简体中文全称"""
         try:
-            # 查找"大学中文名称："开头的行
+            # 查找"大学中文名称："或"大学中文名称:"开头的行
             lines = analysis_report.split("\n")
             for line in lines:
-                line = line.strip()
-                if line.startswith("大学中文名称："):
-                    # 提取冒号后的内容
-                    university_name_zh = line.split("：", 1)[1].strip()
+                line_stripped = line.strip()
+                # 支持中文冒号和英文冒号两种格式
+                if line_stripped.startswith(
+                    "大学中文名称："
+                ) or line_stripped.startswith("大学中文名称:"):
+                    # 提取冒号后的内容（支持中文冒号和英文冒号）
+                    if "：" in line_stripped:
+                        university_name_zh = line_stripped.split("：", 1)[1].strip()
+                    else:
+                        university_name_zh = line_stripped.split(":", 1)[1].strip()
+
                     if university_name_zh:
                         self._log_message(
                             f"从分析报告中提取到大学中文名称: {university_name_zh}"
