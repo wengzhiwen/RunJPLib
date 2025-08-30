@@ -99,18 +99,21 @@ def main():
 
     print(f"找到 {total} 所大学需要翻译中文名称。")
 
-    # 提取日文名称
-    japanese_names = []
+    # 提取日文名称和对应的文档ID
+    japanese_names_with_ids = []
     for uni in universities_without_chinese:
         japanese_name = uni.get("university_name")
         if japanese_name:
-            japanese_names.append(japanese_name)
+            japanese_names_with_ids.append((japanese_name, uni["_id"]))
         else:
             print(f"警告: _id 为 {uni['_id']} 的文档缺少 'university_name' 字段，已跳过。")
 
-    if not japanese_names:
+    if not japanese_names_with_ids:
         print("没有找到需要翻译的大学名称。")
         return
+
+    # 提取日文名称用于翻译
+    japanese_names = [name for name, _ in japanese_names_with_ids]
 
     # 批量翻译
     translations = translate_names_batch(japanese_names)
@@ -122,13 +125,24 @@ def main():
     # 更新数据库
     updated_count = 0
     for japanese_name, chinese_name in translations.items():
+        # 找到对应的文档ID
+        doc_id = None
+        for name, doc_id_val in japanese_names_with_ids:
+            if name == japanese_name:
+                doc_id = doc_id_val
+                break
+
+        if doc_id is None:
+            print(f"警告: 未找到 '{japanese_name}' 对应的文档ID，跳过更新")
+            continue
+
         try:
-            result = universities_collection.update_one({"university_name": japanese_name}, {"$set": {"university_name_zh": chinese_name}})
+            result = universities_collection.update_one({"_id": doc_id}, {"$set": {"university_name_zh": chinese_name}})
             if result.modified_count > 0:
                 updated_count += 1
                 print(f"成功更新 '{japanese_name}' -> '{chinese_name}'")
             else:
-                print(f"警告: 未找到匹配的大学记录 '{japanese_name}'")
+                print(f"警告: 更新失败，文档ID: {doc_id}")
         except Exception as e:
             print(f"更新数据库时出错 '{japanese_name}': {e}")
 
