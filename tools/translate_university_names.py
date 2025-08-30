@@ -13,33 +13,56 @@ from pymongo.collection import Collection
 from utils.mongo_client import get_db
 
 
-def translate_name(name: str) -> str:
+def translate_names_batch(names: list[str]) -> dict[str, str]:
     """
-    使用AI将给定的名称翻译成简体中文。
+    批量翻译大学名称，使用AI将给定的日文名称翻译成简体中文。
+    
+    Args:
+        names: 需要翻译的日文名称列表
+        
+    Returns:
+        翻译结果字典，键为日文名称，值为中文名称
     """
-    if not name:
-        return ""
+    if not names:
+        return {}
 
-    print(f"正在翻译: {name}")
+    print(f"正在批量翻译 {len(names)} 个大学名称...")
 
     # 创建一个专门用于翻译的Agent
-    translator_agent = Agent(name="Translator_Agent", instructions="你是一个专业的翻译引擎，请将用户提供的日本大学名称准确地翻译成简体中文。只返回翻译后的中文名称，不要包含任何额外的解释或文字。", model="gpt-4o")
+    translator_agent = Agent(name="Translator_Agent",
+                             instructions="你是一个专业的翻译引擎，请将用户提供的日本大学名称准确地翻译成简体中文。用户会提供多个大学名称，请按照以下格式返回结果：每个大学名称占一行，格式为'日文名称:中文名称'。只返回翻译结果，不要包含任何额外的解释或文字。",
+                             model="gpt-4o")
 
-    input_items = [{"role": "user", "content": name}]
+    # 将所有名称组合成一个输入
+    combined_names = "\n".join(names)
+    input_items = [{"role": "user", "content": f"请翻译以下日本大学名称：\n{combined_names}"}]
 
     try:
         result = Runner.run_sync(translator_agent, input_items)
-        translated_name = result.final_output.strip()
-        print(f"翻译结果: {translated_name}")
-        return translated_name
+        translated_text = result.final_output.strip()
+
+        # 解析翻译结果
+        translations = {}
+        for line in translated_text.split('\n'):
+            line = line.strip()
+            if ':' in line:
+                japanese, chinese = line.split(':', 1)
+                japanese = japanese.strip()
+                chinese = chinese.strip()
+                if japanese and chinese:
+                    translations[japanese] = chinese
+
+        print(f"成功翻译 {len(translations)} 个名称")
+        return translations
+
     except Exception as e:
-        print(f"翻译 '{name}' 时出错: {e}")
-        return ""
+        print(f"批量翻译时出错: {e}")
+        return {}
 
 
 def main():
     """
-    主函数，用于执行大学名称翻译和数据库更新。
+    主函数，用于执行大学名称增量翻译和数据库更新。
     """
     # 加载环境变量
     dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
@@ -56,30 +79,60 @@ def main():
 
     universities_collection: Collection = db.universities
 
-    # 查找所有大学
-    universities = list(universities_collection.find({}))
-    total = len(universities)
-    print(f"共找到 {total} 所大学需要处理。")
+    # 查找所有没有中文名称的大学
+    universities_without_chinese = list(
+        universities_collection.find({"$or": [{
+            "university_name_zh": {
+                "$exists": False
+            }
+        }, {
+            "university_name_zh": ""
+        }, {
+            "university_name_zh": None
+        }]}))
 
-    for i, uni in enumerate(universities):
+    total = len(universities_without_chinese)
+
+    if total == 0:
+        print("所有大学都已经有中文名称，无需翻译。")
+        return
+
+    print(f"找到 {total} 所大学需要翻译中文名称。")
+
+    # 提取日文名称
+    japanese_names = []
+    for uni in universities_without_chinese:
         japanese_name = uni.get("university_name")
-
-        if not japanese_name:
-            print(f"警告: _id 为 {uni['_id']} 的文档缺少 'university_name' 字段，已跳过。")
-            continue
-
-        print(f"--- 处理进度: {i+1}/{total} ---")
-        chinese_name = translate_name(japanese_name)
-
-        if chinese_name:
-            # 更新数据库
-            universities_collection.update_one({"_id": uni["_id"]}, {"$set": {"university_name_zh": chinese_name}})
-            print(f"成功更新 '{japanese_name}' -> '{chinese_name}'")
+        if japanese_name:
+            japanese_names.append(japanese_name)
         else:
-            print(f"未能获取 '{japanese_name}' 的翻译，跳过数据库更新。")
-        print("-" * 20)
+            print(f"警告: _id 为 {uni['_id']} 的文档缺少 'university_name' 字段，已跳过。")
 
-    print("所有大学名称翻译和更新完成！")
+    if not japanese_names:
+        print("没有找到需要翻译的大学名称。")
+        return
+
+    # 批量翻译
+    translations = translate_names_batch(japanese_names)
+
+    if not translations:
+        print("翻译失败，无法更新数据库。")
+        return
+
+    # 更新数据库
+    updated_count = 0
+    for japanese_name, chinese_name in translations.items():
+        try:
+            result = universities_collection.update_one({"university_name": japanese_name}, {"$set": {"university_name_zh": chinese_name}})
+            if result.modified_count > 0:
+                updated_count += 1
+                print(f"成功更新 '{japanese_name}' -> '{chinese_name}'")
+            else:
+                print(f"警告: 未找到匹配的大学记录 '{japanese_name}'")
+        except Exception as e:
+            print(f"更新数据库时出错 '{japanese_name}': {e}")
+
+    print(f"翻译完成！成功更新了 {updated_count} 所大学的中文名称。")
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ from buffalo import Buffalo
 from buffalo import Project
 from buffalo import Work
 from gridfs import GridFS
+import pandas as pd
 from pdf2image import convert_from_path
 
 from utils.analysis_tool import AnalysisTool
@@ -424,6 +425,42 @@ class PDFProcessor:
             self.step_data["error"] = error_msg
             return False
 
+    _university_df = None
+
+    def _load_university_data(self):
+        """加载并缓存大学数据"""
+        if PDFProcessor._university_df is None:
+            try:
+                csv_path = Path(__file__).parent.parent / "data" / "university_categories.csv"
+                if not csv_path.exists():
+                    self._log_message(f"大学数据文件不存在: {csv_path}", "WARNING")
+                    PDFProcessor._university_df = pd.DataFrame(columns=['name', 'ja_name'])
+                    return
+
+                df = pd.read_csv(csv_path)
+                # 按日文名称长度降序排序，优先匹配长名称
+                df['ja_name_len'] = df['ja_name'].str.len()
+                df = df.sort_values(by='ja_name_len', ascending=False).drop(columns=['ja_name_len'])
+                PDFProcessor._university_df = df
+                self._log_message(f"成功加载 {len(df)} 条大学数据")
+            except Exception as e:
+                self._log_message(f"加载大学数据失败: {e}", "ERROR")
+                PDFProcessor._university_df = pd.DataFrame(columns=['name', 'ja_name'])
+
+    def _find_university_name_zh(self, text: str) -> str:
+        """在文本中查找大学的简体中文全称"""
+        self._load_university_data()
+        if PDFProcessor._university_df.empty:
+            return None
+
+        for _, row in PDFProcessor._university_df.iterrows():
+            if row['ja_name'] in text:
+                self._log_message(f"在文本中匹配到大学: {row['ja_name']} -> {row['name']}")
+                return row['name']
+
+        self._log_message("未在文本中匹配到任何大学名称", "WARNING")
+        return None
+
     def process_step_05_output(self, work: Work) -> bool:
         """步骤5: 输出到MongoDB"""
         try:
@@ -451,6 +488,9 @@ class PDFProcessor:
             if not all([original_md, translated_md, report_md]):
                 raise ValueError("处理结果不完整")
 
+            # 查找大学中文全称
+            university_name_zh = self._find_university_name_zh(original_md) or self.university_name
+
             # 将PDF文件保存到GridFS
             fs = GridFS(db)
             with open(self.pdf_file_path, 'rb') as pdf_file:
@@ -458,6 +498,7 @@ class PDFProcessor:
                                      filename=str(uuid.uuid4()),
                                      metadata={
                                          "university_name": self.university_name,
+                                         "university_name_zh": university_name_zh,
                                          "deadline": datetime.combine(datetime.now().date(), time.min),
                                          "upload_time": datetime.utcnow(),
                                          "original_filename": f"{self.university_name}_{datetime.now().strftime('%Y%m%d')}.pdf",
@@ -467,6 +508,7 @@ class PDFProcessor:
             # 创建大学信息文档
             university_doc = {
                 "university_name": self.university_name,
+                "university_name_zh": university_name_zh,
                 "deadline": datetime.combine(datetime.now().date(), time.min),
                 "created_at": datetime.utcnow(),
                 "is_premium": False,
