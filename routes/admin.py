@@ -925,6 +925,11 @@ def upload_pdf():
         if not university_name:
             return jsonify({"error": "请输入大学名称"}), 400
 
+        # 获取处理模式
+        processing_mode = request.form.get("processing_mode", "normal").strip()
+        if processing_mode not in ["normal", "batch"]:
+            return jsonify({"error": "无效的处理模式"}), 400
+
         # 保存文件到临时目录
         original_filename = file.filename
         safe_filename = secure_filename(file.filename)
@@ -941,6 +946,7 @@ def upload_pdf():
             university_name=university_name,
             pdf_file_path=temp_filepath,
             original_filename=original_filename,
+            processing_mode=processing_mode,
         )
 
         if task_id:

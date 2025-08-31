@@ -4,10 +4,11 @@ PDF处理器 - 大学招生信息处理器的核心类
 """
 
 from datetime import datetime
-from datetime import time
+from datetime import time as datetime_time
 import os
 from pathlib import Path
 import shutil
+import time
 import uuid
 
 from bson.objectid import ObjectId
@@ -23,6 +24,7 @@ from utils.mongo_client import get_db
 from utils.mongo_client import get_mongo_client
 from utils.ocr_tool import OCRTool
 from utils.translate_tool import TranslateTool
+from utils.batch_ocr_tool import BatchOCRTool
 
 logger = setup_logger(logger_name="PDFProcessor", log_level="INFO")
 
@@ -61,13 +63,9 @@ class Config:
             # buffalo模板文件路径
             self.buffalo_template_file = Path(__file__).parent / "wf_template.yml"
             if not self.buffalo_template_file.exists():
-                raise FileNotFoundError(
-                    f"Buffalo模板文件未找到: {self.buffalo_template_file}"
-                )
+                raise FileNotFoundError(f"Buffalo模板文件未找到: {self.buffalo_template_file}")
         except Exception as e:
-            raise FileNotFoundError(
-                f"Buffalo模板文件未找到: {self.buffalo_template_file}"
-            ) from e
+            raise FileNotFoundError(f"Buffalo模板文件未找到: {self.buffalo_template_file}") from e
 
         # OCR配置
         try:
@@ -92,9 +90,7 @@ class Config:
             self.translate_terms = ""
 
         try:
-            self.translate_model_name = os.getenv(
-                "OPENAI_TRANSLATE_MODEL", "gpt-4o-mini"
-            )
+            self.translate_model_name = os.getenv("OPENAI_TRANSLATE_MODEL", "gpt-4o-mini")
         except Exception:
             self.translate_model_name = "gpt-4o-mini"
 
@@ -133,6 +129,7 @@ class PDFProcessor:
         university_name: str,
         pdf_file_path: str,
         restart_from_step: str = None,
+        processing_mode: str = "normal",
     ):
         """
         初始化PDF处理器
@@ -142,11 +139,13 @@ class PDFProcessor:
             university_name: 大学名称
             pdf_file_path: PDF文件路径
             restart_from_step: 从哪个步骤开始重启（可选）
+            processing_mode: 处理模式 ("normal" | "batch")
         """
         self.task_id = task_id
         self.university_name = university_name
         self.pdf_file_path = pdf_file_path
         self.restart_from_step = restart_from_step
+        self.processing_mode = processing_mode
         self.config = Config()
 
         # 创建任务专用的工作目录
@@ -155,6 +154,7 @@ class PDFProcessor:
 
         # 初始化各种工具
         self.ocr_tool = None
+        self.batch_ocr_tool = None
         self.translate_tool = None
         self.analysis_tool = None
 
@@ -189,14 +189,15 @@ class PDFProcessor:
 
             db.processing_tasks.update_one(
                 {"_id": ObjectId(self.task_id)},
-                (
-                    {"$set": update_data}
-                    if not logs
-                    else {
-                        "$set": {k: v for k, v in update_data.items() if k != "$push"},
-                        **update_data,
-                    }
-                ),
+                ({
+                    "$set": update_data
+                } if not logs else {
+                    "$set": {
+                        k: v
+                        for k, v in update_data.items() if k != "$push"
+                    },
+                    **update_data,
+                }),
             )
             logger.info(f"任务 {self.task_id} 状态已更新: {status}")
         except Exception as e:
@@ -212,9 +213,7 @@ class PDFProcessor:
             client = get_mongo_client()
             if client is not None:
                 db = client.RunJPLib
-                db.processing_tasks.update_one(
-                    {"_id": ObjectId(self.task_id)}, {"$push": {"logs": log_entry}}
-                )
+                db.processing_tasks.update_one({"_id": ObjectId(self.task_id)}, {"$push": {"logs": log_entry}})
         except Exception as e:
             logger.error(f"写入任务日志失败: {e}")
 
@@ -286,8 +285,15 @@ class PDFProcessor:
 
     def process_step_02_ocr(self, work: Work) -> bool:
         """步骤2: OCR识别"""
+        if self.processing_mode == "batch":
+            return self._process_batch_ocr()
+        else:
+            return self._process_normal_ocr()
+
+    def _process_normal_ocr(self) -> bool:
+        """普通OCR处理模式"""
         try:
-            self._log_message("开始OCR识别...")
+            self._log_message("开始OCR识别（普通模式）...")
             self._update_task_status("processing", "02_ocr", 30)
 
             # 初始化OCR工具
@@ -295,23 +301,7 @@ class PDFProcessor:
                 self.ocr_tool = OCRTool(self.config.ocr_model_name)
 
             # 获取图片路径
-            if hasattr(self, "step_data") and "image_paths" in self.step_data:
-                image_paths = self.step_data["image_paths"]
-            elif (
-                hasattr(self, "previous_results")
-                and "image_paths" in self.previous_results
-            ):
-                image_paths = self.previous_results["image_paths"]
-            else:
-                # 尝试从文件系统加载
-                images_dir = self.task_dir / "images"
-                if images_dir.exists():
-                    image_paths = sorted(
-                        [str(p) for p in images_dir.glob("page_*.png")]
-                    )
-                else:
-                    image_paths = []
-
+            image_paths = self._get_image_paths()
             if not image_paths:
                 raise ValueError("没有找到图片文件")
 
@@ -346,25 +336,182 @@ class PDFProcessor:
 
             # 合并所有OCR结果
             combined_markdown = "\n\n".join(markdown_contents)
-            combined_md_file = self.task_dir / "original.md"
-            with open(combined_md_file, "w", encoding="utf-8") as f:
-                f.write(combined_markdown)
+            self._save_ocr_results(combined_markdown)
 
-            # 保存OCR结果到实例数据
-            if not hasattr(self, "step_data"):
-                self.step_data = {}
-            self.step_data["original_md_path"] = str(combined_md_file)
-            self.step_data["original_md_content"] = combined_markdown
-
-            self._log_message(
-                f"OCR识别完成，共处理 {len(markdown_contents)} 页有效内容"
-            )
+            self._log_message(f"OCR识别完成，共处理 {len(markdown_contents)} 页有效内容")
             return True
 
         except Exception as e:
             error_msg = f"OCR识别失败: {str(e)}"
             self._log_message(error_msg, "ERROR")
             return False
+
+    def _process_batch_ocr(self) -> bool:
+        """批量OCR处理模式"""
+        try:
+            self._log_message("开始OCR识别（批量模式）...")
+            self._update_task_status("processing", "02_ocr", 30)
+
+            # 初始化批量OCR工具和普通OCR工具（用于失败页面补救）
+            if not self.batch_ocr_tool:
+                self.batch_ocr_tool = BatchOCRTool(self.config.ocr_model_name)
+            if not self.ocr_tool:
+                self.ocr_tool = OCRTool(self.config.ocr_model_name)
+
+            # 获取图片路径
+            image_paths = self._get_image_paths()
+            if not image_paths:
+                raise ValueError("没有找到图片文件")
+
+            # 保存图片路径列表到实例数据（确保数据一致性）
+            if not hasattr(self, "step_data"):
+                self.step_data = {}
+            self.step_data["image_paths"] = image_paths
+            self.step_data["total_pages"] = len(image_paths)
+
+            # 检查是否已有批次在处理中
+            batch_status = self.batch_ocr_tool.check_batch_status(self.task_id)
+
+            if "error" not in batch_status and batch_status.get("total_batches", 0) > 0:
+                # 已有批次，检查状态
+                self._log_message(f"发现已提交的批次，总数: {batch_status['total_batches']}")
+                if not batch_status.get("all_completed", False):
+                    # 还没完成，继续等待
+                    self._log_message("批次尚未完成，继续等待...")
+                    self._update_task_status("processing", "02_ocr_batch_waiting", 35)
+                    return self._wait_for_batch_completion()
+                else:
+                    # 已完成，获取结果
+                    self._log_message("批次已完成，获取结果...")
+                    return self._retrieve_and_save_batch_results()
+            else:
+                # 没有批次，提交新的批次
+                self._log_message(f"提交批量OCR处理，共 {len(image_paths)} 页")
+                try:
+                    batch_ids = self.batch_ocr_tool.submit_batch_ocr(image_paths, self.task_id)
+                    self._log_message(f"已提交 {len(batch_ids)} 个批次: {batch_ids}")
+                    self._update_task_status("processing", "02_ocr_batch_submitted", 32)
+
+                    # 开始等待完成
+                    return self._wait_for_batch_completion()
+
+                except Exception as e:
+                    self._log_message(f"提交批量OCR失败，回退到普通模式: {e}", "WARNING")
+                    return self._process_normal_ocr()
+
+        except Exception as e:
+            error_msg = f"批量OCR处理失败: {str(e)}"
+            self._log_message(error_msg, "ERROR")
+            # 回退到普通模式
+            self._log_message("回退到普通OCR模式", "WARNING")
+            return self._process_normal_ocr()
+
+    def _wait_for_batch_completion(self) -> bool:
+        """等待批次完成"""
+        max_wait_time = 24 * 60 * 60  # 最大等待24小时
+        check_interval = 5 * 60  # 每5分钟检查一次
+        start_time = time.time()
+
+        while time.time() - start_time < max_wait_time:
+            batch_status = self.batch_ocr_tool.check_batch_status(self.task_id)
+
+            if "error" in batch_status:
+                self._log_message(f"检查批次状态失败: {batch_status['error']}", "ERROR")
+                return False
+
+            completed = batch_status.get("completed_batches", 0)
+            total = batch_status.get("total_batches", 0)
+            failed = batch_status.get("failed_batches", 0)
+            processing = batch_status.get("processing_batches", 0)
+
+            self._log_message(f"批次状态: {completed}/{total} 完成, {failed} 失败, {processing} 处理中")
+
+            if batch_status.get("all_completed", False):
+                self._log_message("所有批次已完成！")
+                return self._retrieve_and_save_batch_results()
+
+            # 更新进度
+            if total > 0:
+                progress = 30 + int((completed / total) * 10)  # 30-40%的进度
+                self._update_task_status("processing", "02_ocr_batch_waiting", progress)
+
+            # 等待下次检查
+            self._log_message(f"等待 {check_interval//60} 分钟后再次检查...")
+            time.sleep(check_interval)
+
+        # 超时
+        self._log_message("批次处理超时，回退到普通模式", "WARNING")
+        return self._process_normal_ocr()
+
+    def _retrieve_and_save_batch_results(self) -> bool:
+        """获取并保存批次结果"""
+        try:
+            self._log_message("获取批次处理结果...")
+            page_results = self.batch_ocr_tool.retrieve_batch_results(self.task_id, self.ocr_tool)
+
+            if not page_results:
+                raise ValueError("批次处理未返回任何结果")
+
+            # 创建OCR输出目录
+            ocr_dir = self.task_dir / "ocr"
+            ocr_dir.mkdir(exist_ok=True)
+
+            # 保存单页结果并收集有效内容
+            markdown_contents = []
+            for page_key in sorted(page_results.keys()):
+                md_content = page_results[page_key]
+                if md_content and md_content.strip() != "EMPTY_PAGE":
+                    markdown_contents.append(md_content)
+
+                    # 保存单页OCR结果
+                    page_md_file = ocr_dir / f"page_{page_key}.md"
+                    with open(page_md_file, "w", encoding="utf-8") as f:
+                        f.write(md_content)
+
+            if not markdown_contents:
+                raise ValueError("所有页面批次处理都失败了")
+
+            # 合并所有OCR结果
+            combined_markdown = "\n\n".join(markdown_contents)
+            self._save_ocr_results(combined_markdown)
+
+            # 清理批次数据
+            self.batch_ocr_tool.cleanup_batch_data(self.task_id)
+
+            self._log_message(f"批量OCR识别完成，共处理 {len(markdown_contents)} 页有效内容")
+            return True
+
+        except Exception as e:
+            error_msg = f"获取批次结果失败: {str(e)}"
+            self._log_message(error_msg, "ERROR")
+            return False
+
+    def _get_image_paths(self) -> list:
+        """获取图片路径列表"""
+        if hasattr(self, "step_data") and "image_paths" in self.step_data:
+            return self.step_data["image_paths"]
+        elif (hasattr(self, "previous_results") and "image_paths" in self.previous_results):
+            return self.previous_results["image_paths"]
+        else:
+            # 尝试从文件系统加载
+            images_dir = self.task_dir / "images"
+            if images_dir.exists():
+                return sorted([str(p) for p in images_dir.glob("page_*.png")])
+            else:
+                return []
+
+    def _save_ocr_results(self, combined_markdown: str):
+        """保存OCR结果"""
+        # 保存合并结果
+        combined_md_file = self.task_dir / "original.md"
+        with open(combined_md_file, "w", encoding="utf-8") as f:
+            f.write(combined_markdown)
+
+        # 保存OCR结果到实例数据
+        if not hasattr(self, "step_data"):
+            self.step_data = {}
+        self.step_data["original_md_path"] = str(combined_md_file)
+        self.step_data["original_md_content"] = combined_markdown
 
     def process_step_03_translate(self, work: Work) -> bool:
         """步骤3: 翻译"""
@@ -374,17 +521,12 @@ class PDFProcessor:
 
             # 初始化翻译工具
             if not self.translate_tool:
-                self.translate_tool = TranslateTool(
-                    self.config.translate_model_name, self.config.translate_terms
-                )
+                self.translate_tool = TranslateTool(self.config.translate_model_name, self.config.translate_terms)
 
             # 获取OCR结果内容
             if hasattr(self, "step_data") and "original_md_content" in self.step_data:
                 original_md_content = self.step_data["original_md_content"]
-            elif (
-                hasattr(self, "previous_results")
-                and "original_md_content" in self.previous_results
-            ):
+            elif (hasattr(self, "previous_results") and "original_md_content" in self.previous_results):
                 original_md_content = self.previous_results["original_md_content"]
             else:
                 # 尝试从文件加载
@@ -438,10 +580,7 @@ class PDFProcessor:
             # 获取翻译结果内容
             if hasattr(self, "step_data") and "translated_md_content" in self.step_data:
                 translated_md_content = self.step_data["translated_md_content"]
-            elif (
-                hasattr(self, "previous_results")
-                and "translated_md_content" in self.previous_results
-            ):
+            elif (hasattr(self, "previous_results") and "translated_md_content" in self.previous_results):
                 translated_md_content = self.previous_results["translated_md_content"]
             else:
                 # 尝试从文件加载
@@ -484,9 +623,7 @@ class PDFProcessor:
             for line in lines:
                 line_stripped = line.strip()
                 # 支持中文冒号和英文冒号两种格式
-                if line_stripped.startswith(
-                    "大学中文名称："
-                ) or line_stripped.startswith("大学中文名称:"):
+                if line_stripped.startswith("大学中文名称：") or line_stripped.startswith("大学中文名称:"):
                     # 提取冒号后的内容（支持中文冒号和英文冒号）
                     if "：" in line_stripped:
                         university_name_zh = line_stripped.split("：", 1)[1].strip()
@@ -494,9 +631,7 @@ class PDFProcessor:
                         university_name_zh = line_stripped.split(":", 1)[1].strip()
 
                     if university_name_zh:
-                        self._log_message(
-                            f"从分析报告中提取到大学中文名称: {university_name_zh}"
-                        )
+                        self._log_message(f"从分析报告中提取到大学中文名称: {university_name_zh}")
                         return university_name_zh
 
             self._log_message("未在分析报告中找到大学中文名称", "WARNING")
@@ -525,9 +660,7 @@ class PDFProcessor:
                 if not original_md:
                     original_md = self.previous_results.get("original_md_content", "")
                 if not translated_md:
-                    translated_md = self.previous_results.get(
-                        "translated_md_content", ""
-                    )
+                    translated_md = self.previous_results.get("translated_md_content", "")
                 if not report_md:
                     report_md = self.previous_results.get("report_md_content", "")
 
@@ -550,7 +683,7 @@ class PDFProcessor:
                     metadata={
                         "university_name": self.university_name,
                         "university_name_zh": university_name_zh,
-                        "deadline": datetime.combine(datetime.now().date(), time.min),
+                        "deadline": datetime.combine(datetime.now().date(), datetime_time.min),
                         "upload_time": datetime.utcnow(),
                         "original_filename": f"{self.university_name}_{datetime.now().strftime('%Y%m%d')}.pdf",
                         "task_id": self.task_id,
@@ -561,7 +694,7 @@ class PDFProcessor:
             university_doc = {
                 "university_name": self.university_name,
                 "university_name_zh": university_name_zh,
-                "deadline": datetime.combine(datetime.now().date(), time.min),
+                "deadline": datetime.combine(datetime.now().date(), datetime_time.min),
                 "created_at": datetime.utcnow(),
                 "is_premium": False,
                 "content": {
@@ -691,9 +824,7 @@ class PDFProcessor:
             self._update_task_status("failed", "error", 0, error_msg)
             return False
 
-    def _setup_restart_from_step(
-        self, buffalo: Buffalo, project: Project, restart_step: str
-    ):
+    def _setup_restart_from_step(self, buffalo: Buffalo, project: Project, restart_step: str):
         """设置从指定步骤重启，将之前的步骤标记为已完成"""
         project_name = project.folder_name
 
@@ -705,9 +836,7 @@ class PDFProcessor:
                         buffalo.update_work_status(project_name, prev_work, "done")
                         self._log_message(f"步骤 {prev_work.name} 标记为已完成")
                     elif prev_work.index >= work.index:
-                        buffalo.update_work_status(
-                            project_name, prev_work, "not_started"
-                        )
+                        buffalo.update_work_status(project_name, prev_work, "not_started")
                         self._log_message(f"步骤 {prev_work.name} 重置为未开始")
                 break
 
@@ -741,6 +870,7 @@ def run_pdf_processor(
     university_name: str,
     pdf_file_path: str,
     restart_from_step: str = None,
+    processing_mode: str = "normal",
 ) -> bool:
     """
     运行PDF处理器的入口函数
@@ -750,9 +880,10 @@ def run_pdf_processor(
         university_name: 大学名称
         pdf_file_path: PDF文件路径
         restart_from_step: 从哪个步骤开始重启（可选）
+        processing_mode: 处理模式 ("normal" | "batch")
 
     返回:
         bool: 处理是否成功
     """
-    processor = PDFProcessor(task_id, university_name, pdf_file_path, restart_from_step)
+    processor = PDFProcessor(task_id, university_name, pdf_file_path, restart_from_step, processing_mode)
     return processor.run_processing()

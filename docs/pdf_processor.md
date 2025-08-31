@@ -11,10 +11,29 @@
 系统采用基于Buffalo工作流程管理器的五步处理流程：
 
 1. **PDF转图片** - 将上传的PDF文档转换为高清图片
-2. **OCR识别** - 使用OpenAI Vision模型识别图片中的文字内容
+2. **OCR识别** - 使用OpenAI Vision模型识别图片中的文字内容（支持普通模式和批量模式）
 3. **翻译** - 将识别的日语内容翻译为中文
 4. **分析** - 分析招生信息内容，生成结构化报告，并识别大学中文名称
 5. **发布** - 将处理结果保存到MongoDB数据库并对外发布
+
+### 处理模式
+
+系统支持两种处理模式：
+
+#### 普通模式
+- **特点**：实时处理，逐页进行OCR识别
+- **优势**：处理速度快，立即获得结果
+- **适用场景**：少量页面（1-20页）的PDF文档
+- **成本**：标准OpenAI API定价
+
+#### 批量模式（推荐）
+- **特点**：使用OpenAI Batch API进行批量处理
+- **优势**：成本节省约50%，自动分批优化，失败页面自动补救
+- **处理时间**：通常5-30分钟，最长24小时
+- **适用场景**：大量页面的PDF文档，对成本敏感的场景
+- **智能分批**：系统自动将页面分配到多个批次（如66页分为2批33页）
+- **断点续传**：支持服务器重启后继续监控批次状态
+- **失败恢复**：批次中失败的页面会自动使用普通模式补救
 
 ### 大学中文名称识别
 
@@ -44,7 +63,10 @@
 
 1. 输入准确的大学名称（如：東京大学）
 2. 选择要处理的PDF文件（支持最大50MB）
-3. 点击"开始处理"按钮
+3. 选择处理模式：
+   - **普通模式**：实时处理，立即获得结果，适合少量页面
+   - **批量模式**：使用OpenAI批量API，成本节省约50%，需要等待5-30分钟
+4. 点击"开始处理"按钮
 
 ### 3. 监控处理进度
 
@@ -96,6 +118,8 @@ OPENAI_API_KEY=your_openai_api_key
 
 # 数据库配置
 MONGODB_URI=your_mongodb_connection_string
+
+# 注意：批量模式需要 openai>=1.54.0 包
 ```
 
 ### 可选的环境变量
@@ -128,13 +152,16 @@ ANALYSIS_QUESTIONS_FILE=path/to/analysis_questions.txt # 分析问题文件
    - 支持临时文件管理
 
 3. **处理工具类**
-   - `OCRTool`: OpenAI Vision OCR识别
+   - `OCRTool`: OpenAI Vision OCR识别（普通模式）
+   - `BatchOCRTool`: OpenAI Batch API OCR识别（批量模式）
    - `TranslateTool`: 日语到中文翻译
    - `AnalysisTool`: 招生信息分析
 
 ### 数据存储
 
-- **MongoDB集合**: `processing_tasks`
+- **MongoDB集合**: 
+  - `processing_tasks`: 存储任务信息（包含处理模式字段）
+  - `ocr_batches`: 存储批量OCR的批次信息
 - **GridFS**: 存储PDF文件
 - **索引**: 支持按时间、状态查询
 
@@ -147,6 +174,7 @@ Content-Type: multipart/form-data
 
 university_name: 大学名称
 pdf_file: PDF文件
+processing_mode: 处理模式 ("normal" | "batch")
 ```
 
 ### 获取任务列表
@@ -222,6 +250,8 @@ Content-Type: application/json
 
 如需扩展功能，主要涉及以下文件：
 - `utils/pdf_processor.py` - 核心处理逻辑
+- `utils/ocr_tool.py` - 普通OCR工具
+- `utils/batch_ocr_tool.py` - 批量OCR工具
 - `utils/task_manager.py` - 任务管理
 - `routes/admin.py` - API接口
 - `templates/admin/` - 前端界面

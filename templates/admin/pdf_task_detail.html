@@ -26,6 +26,15 @@
                         <p><strong>任务ID:</strong> {{ task._id }}</p>
                         <p><strong>大学名称:</strong> {{ task.university_name }}</p>
                         <p><strong>文件名:</strong> <span id="filename-display">{{ task.original_filename }}</span></p>
+                        <p><strong>处理模式:</strong> 
+                            {% if task.processing_mode == 'batch' %}
+                                <span class="badge bg-success">批量模式</span>
+                                <small class="text-muted">(省钱50%)</small>
+                            {% else %}
+                                <span class="badge bg-primary">普通模式</span>
+                                <small class="text-muted">(实时处理)</small>
+                            {% endif %}
+                        </p>
                     </div>
                     <div class="col-md-6">
                         <p><strong>创建时间:</strong> {{ task.created_at_str if task.created_at_str else task.created_at.strftime('%Y-%m-%d %H:%M:%S') if task.created_at else '-' }}</p>
@@ -283,7 +292,8 @@ function updateTaskInfo(task) {
     // 更新当前步骤
     const currentStepElement = document.getElementById('current-step');
     if (currentStepElement) {
-        currentStepElement.innerHTML = `<strong>当前步骤:</strong> ${escapeHtml(task.current_step || '-')}`;
+        const stepText = formatStepText(task.current_step || '-');
+        currentStepElement.innerHTML = `<strong>当前步骤:</strong> ${stepText}`;
     }
     
     // 更新时间
@@ -358,6 +368,23 @@ function getProgressBarClass(status) {
         'failed': 'bg-danger'
     };
     return classes[status] || 'bg-secondary';
+}
+
+function formatStepText(step) {
+    const stepMap = {
+        '01_pdf2img': 'PDF转图片',
+        '02_ocr': 'OCR识别',
+        '02_ocr_batch_submitted': 'OCR识别 <span class="badge bg-info ms-1">批量已提交</span>',
+        '02_ocr_batch_waiting': 'OCR识别 <span class="badge bg-warning ms-1">批量处理中</span>',
+        '03_translate': '翻译',
+        '04_analysis': '分析',
+        '05_output': '输出',
+        'initializing': '初始化',
+        'finished': '完成',
+        'error': '错误'
+    };
+    
+    return stepMap[step] || escapeHtml(step);
 }
 
 function escapeHtml(text) {

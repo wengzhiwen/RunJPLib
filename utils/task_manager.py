@@ -138,7 +138,7 @@ class TaskManager:
             self.queue_processor_thread.start()
             logger.info("任务队列处理服务已启动")
 
-    def create_task(self, university_name: str, pdf_file_path: str, original_filename: str) -> Optional[str]:
+    def create_task(self, university_name: str, pdf_file_path: str, original_filename: str, processing_mode: str = "normal") -> Optional[str]:
         """
         创建新的处理任务
         
@@ -146,6 +146,7 @@ class TaskManager:
             university_name: 大学名称
             pdf_file_path: PDF文件路径
             original_filename: 原始文件名
+            processing_mode: 处理模式 ("normal" | "batch")
             
         返回:
             任务ID字符串，失败时返回None
@@ -161,6 +162,7 @@ class TaskManager:
                 "university_name": university_name,
                 "original_filename": original_filename,
                 "pdf_file_path": pdf_file_path,
+                "processing_mode": processing_mode,  # 处理模式: normal, batch
                 "status": "pending",  # 任务状态: pending, processing, completed, failed
                 "current_step": "",
                 "progress": 0,
@@ -218,10 +220,12 @@ class TaskManager:
                 try:
                     logger.info(f"开始处理任务: {task_id}")
                     restart_from_step = task.get("restart_from_step")
+                    processing_mode = task.get("processing_mode", "normal")
                     success = run_pdf_processor(task_id=task_id,
                                                 university_name=task["university_name"],
                                                 pdf_file_path=task["pdf_file_path"],
-                                                restart_from_step=restart_from_step)
+                                                restart_from_step=restart_from_step,
+                                                processing_mode=processing_mode)
 
                     if success:
                         logger.info(f"任务处理成功: {task_id}")
