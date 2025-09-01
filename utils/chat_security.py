@@ -8,6 +8,7 @@ import logging
 import os
 import secrets
 import time
+import dotenv
 from urllib.parse import urlparse
 
 from cachetools import TTLCache
@@ -21,6 +22,8 @@ rate_limit_cache = TTLCache(maxsize=10000, ttl=3600)  # 1小时TTL
 
 # CSRF令牌缓存 - 会话ID -> 令牌
 csrf_token_cache = TTLCache(maxsize=1000, ttl=1800)  # 30分钟TTL
+
+dotenv.load_dotenv()
 
 # 获取允许的域名列表
 ALLOWED_DOMAINS = os.getenv('ALLOWED_DOMAINS', 'localhost,127.0.0.1,100.88.88.88').split(',')
