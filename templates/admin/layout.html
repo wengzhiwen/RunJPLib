@@ -36,6 +36,13 @@
             </li>
             <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.manage_blogs_page') }}">Blog一览</a></li>
             
+            <!-- AI对话分组 -->
+            <li class="nav-item mt-3">
+                <div class="px-3 text-muted small fw-bold">AI对话</div>
+            </li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('chat.chat_page') }}">大学AI对话测试</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.chat_logs_page') }}">用户聊天记录</a></li>
+            
             <li class="nav-item mt-3"><a class="nav-link" href="/admin/logout">退出登录</a></li>
         </ul>
     </div>

@@ -20,6 +20,7 @@ from werkzeug.routing import BaseConverter
 from routes.admin import admin_bp
 from routes.blog import blog_detail_route
 from routes.blog import blog_list_route
+from routes.chat import chat_bp
 from routes.index import index_route
 from routes.index import sitemap_route
 from routes.index import university_route
@@ -91,6 +92,7 @@ jwt = JWTManager(app)
 
 # 注册蓝图
 app.register_blueprint(admin_bp)
+app.register_blueprint(chat_bp)
 
 
 @app.route('/robots.txt')
@@ -176,6 +178,14 @@ def university_original(name):
 def university_zh(name):
     """大学详情页路由 - 最新翻译"""
     return university_route(name, content="ZH")
+
+
+@app.route('/university/<name>/chat/api/<path:endpoint>', methods=['GET', 'POST'])
+@app.route('/university/<name>/<date:deadline>/chat/api/<path:endpoint>', methods=['GET', 'POST'])
+def university_chat_api(name, endpoint, deadline=None):
+    """大学聊天API路由"""
+    from routes.university_chat import handle_university_chat_api
+    return handle_university_chat_api(name, endpoint, deadline)
 
 
 @app.route('/blog')

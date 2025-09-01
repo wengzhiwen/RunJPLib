@@ -180,3 +180,9 @@ ref/
 log/*
 temp/*
 data/db/*
+
+# Database and cache directories (keep directory structure, ignore contents)
+chroma_db/*
+!chroma_db/.gitkeep
+llama_index_cache/*
+!llama_index_cache/.gitkeep

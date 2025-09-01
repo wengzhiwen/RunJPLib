@@ -64,6 +64,47 @@ def ensure_indexes() -> bool:
         )
         logging.info(f"已确保索引存在: ip_geo_cache.{result_name_ip_geo_country}")
 
+        # chat_sessions 索引: user_ip + start_time（用于用户查询和统计）
+        result_name_chat_user = db.chat_sessions.create_index(
+            [("user_ip", 1), ("start_time", -1)],
+            name="idx_chat_sessions_user_ip_start_time",
+            background=True,
+        )
+        logging.info(f"已确保索引存在: chat_sessions.{result_name_chat_user}")
+
+        # chat_sessions 索引: browser_session_id + university_id + last_activity（用于隐私保护的会话查找）
+        result_name_chat_browser = db.chat_sessions.create_index(
+            [("browser_session_id", 1), ("university_id", 1), ("last_activity", -1)],
+            name="idx_chat_sessions_browser_university_activity",
+            background=True,
+        )
+        logging.info(f"已确保索引存在: chat_sessions.{result_name_chat_browser}")
+
+        # chat_sessions 索引: university_name + start_time（用于大学统计）
+        result_name_chat_uni = db.chat_sessions.create_index(
+            [("university_name", 1), ("start_time", -1)],
+            name="idx_chat_sessions_university_start_time",
+            background=True,
+        )
+        logging.info(f"已确保索引存在: chat_sessions.{result_name_chat_uni}")
+
+        # chat_sessions 索引: session_id 唯一索引
+        result_name_chat_session = db.chat_sessions.create_index(
+            [("session_id", 1)],
+            name="idx_chat_sessions_session_id_unique",
+            unique=True,
+            background=True,
+        )
+        logging.info(f"已确保索引存在: chat_sessions.{result_name_chat_session}")
+
+        # chat_sessions 索引: start_time（用于时间范围查询）
+        result_name_chat_time = db.chat_sessions.create_index(
+            [("start_time", -1)],
+            name="idx_chat_sessions_start_time_desc",
+            background=True,
+        )
+        logging.info(f"已确保索引存在: chat_sessions.{result_name_chat_time}")
+
         return True
     except Exception as e:
         logging.error(f"创建索引失败: {e}", exc_info=True)

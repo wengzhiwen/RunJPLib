@@ -1,0 +1,2 @@
+# This file ensures the llama_index_cache directory is tracked by git
+# The directory itself should be preserved, but its contents are ignored
