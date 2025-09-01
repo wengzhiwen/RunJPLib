@@ -21,7 +21,7 @@ def ensure_indexes() -> bool:
             name="idx_universities_isPremium_deadline_desc",
             background=True,
         )
-        logging.info(f"已确保索引存在: universities.{result_name}")
+        logging.debug(f"已确保索引存在: universities.{result_name}")
 
         # access_logs 复合索引: timestamp 降序 + page_type 升序
         result_name_access = db.access_logs.create_index(
@@ -29,7 +29,7 @@ def ensure_indexes() -> bool:
             name="idx_access_logs_timestamp_page_type",
             background=True,
         )
-        logging.info(f"已确保索引存在: access_logs.{result_name_access}")
+        logging.debug(f"已确保索引存在: access_logs.{result_name_access}")
 
         # processing_tasks 索引: created_at 降序（用于按创建时间排序）
         result_name_tasks = db.processing_tasks.create_index(
@@ -37,7 +37,7 @@ def ensure_indexes() -> bool:
             name="idx_processing_tasks_created_at_desc",
             background=True,
         )
-        logging.info(f"已确保索引存在: processing_tasks.{result_name_tasks}")
+        logging.debug(f"已确保索引存在: processing_tasks.{result_name_tasks}")
 
         # processing_tasks 索引: status（用于按状态查询）
         result_name_tasks_status = db.processing_tasks.create_index(
@@ -45,7 +45,7 @@ def ensure_indexes() -> bool:
             name="idx_processing_tasks_status",
             background=True,
         )
-        logging.info(f"已确保索引存在: processing_tasks.{result_name_tasks_status}")
+        logging.debug(f"已确保索引存在: processing_tasks.{result_name_tasks_status}")
 
         # ip_geo_cache 索引: ip 唯一索引
         result_name_ip_geo = db.ip_geo_cache.create_index(
@@ -54,7 +54,7 @@ def ensure_indexes() -> bool:
             unique=True,
             background=True,
         )
-        logging.info(f"已确保索引存在: ip_geo_cache.{result_name_ip_geo}")
+        logging.debug(f"已确保索引存在: ip_geo_cache.{result_name_ip_geo}")
 
         # ip_geo_cache 索引: country_code（用于统计）
         result_name_ip_geo_country = db.ip_geo_cache.create_index(
@@ -62,7 +62,7 @@ def ensure_indexes() -> bool:
             name="idx_ip_geo_cache_country_code",
             background=True,
         )
-        logging.info(f"已确保索引存在: ip_geo_cache.{result_name_ip_geo_country}")
+        logging.debug(f"已确保索引存在: ip_geo_cache.{result_name_ip_geo_country}")
 
         # chat_sessions 索引: user_ip + start_time（用于用户查询和统计）
         result_name_chat_user = db.chat_sessions.create_index(
@@ -70,7 +70,7 @@ def ensure_indexes() -> bool:
             name="idx_chat_sessions_user_ip_start_time",
             background=True,
         )
-        logging.info(f"已确保索引存在: chat_sessions.{result_name_chat_user}")
+        logging.debug(f"已确保索引存在: chat_sessions.{result_name_chat_user}")
 
         # chat_sessions 索引: browser_session_id + university_id + last_activity（用于隐私保护的会话查找）
         result_name_chat_browser = db.chat_sessions.create_index(
@@ -78,7 +78,7 @@ def ensure_indexes() -> bool:
             name="idx_chat_sessions_browser_university_activity",
             background=True,
         )
-        logging.info(f"已确保索引存在: chat_sessions.{result_name_chat_browser}")
+        logging.debug(f"已确保索引存在: chat_sessions.{result_name_chat_browser}")
 
         # chat_sessions 索引: university_name + start_time（用于大学统计）
         result_name_chat_uni = db.chat_sessions.create_index(
@@ -86,7 +86,7 @@ def ensure_indexes() -> bool:
             name="idx_chat_sessions_university_start_time",
             background=True,
         )
-        logging.info(f"已确保索引存在: chat_sessions.{result_name_chat_uni}")
+        logging.debug(f"已确保索引存在: chat_sessions.{result_name_chat_uni}")
 
         # chat_sessions 索引: session_id 唯一索引
         result_name_chat_session = db.chat_sessions.create_index(
@@ -95,7 +95,7 @@ def ensure_indexes() -> bool:
             unique=True,
             background=True,
         )
-        logging.info(f"已确保索引存在: chat_sessions.{result_name_chat_session}")
+        logging.debug(f"已确保索引存在: chat_sessions.{result_name_chat_session}")
 
         # chat_sessions 索引: start_time（用于时间范围查询）
         result_name_chat_time = db.chat_sessions.create_index(
@@ -103,7 +103,7 @@ def ensure_indexes() -> bool:
             name="idx_chat_sessions_start_time_desc",
             background=True,
         )
-        logging.info(f"已确保索引存在: chat_sessions.{result_name_chat_time}")
+        logging.debug(f"已确保索引存在: chat_sessions.{result_name_chat_time}")
 
         return True
     except Exception as e:
