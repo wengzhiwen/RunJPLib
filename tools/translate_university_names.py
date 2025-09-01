@@ -31,7 +31,7 @@ def translate_names_batch(names: list[str]) -> dict[str, str]:
     # 创建一个专门用于翻译的Agent
     translator_agent = Agent(name="Translator_Agent",
                              instructions="你是一个专业的翻译引擎，请将用户提供的日本大学名称准确地翻译成简体中文。用户会提供多个大学名称，请按照以下格式返回结果：每个大学名称占一行，格式为'日文名称:中文名称'。只返回翻译结果，不要包含任何额外的解释或文字。",
-                             model="gpt-4o")
+                             model=os.getenv("OPENAI_TRANSLATE_MODEL", "gpt-4o"))
 
     # 将所有名称组合成一个输入
     combined_names = "\n".join(names)
