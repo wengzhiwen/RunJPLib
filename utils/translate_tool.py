@@ -12,7 +12,7 @@ logger = setup_logger(logger_name="TranslateTool", log_level="INFO")
 class TranslateTool:
     """翻译工具类，用于处理日语到中文的翻译"""
 
-    def __init__(self, model_name: str = "gpt-4o", translate_terms: str = ""):
+    def __init__(self, translate_terms: str = ""):
         """
         初始化翻译工具类
         
@@ -21,7 +21,8 @@ class TranslateTool:
         if not os.getenv("OPENAI_API_KEY"):
             raise ValueError("OPENAI_API_KEY 环境变量未设置")
 
-        self.model_name = model_name
+        # 从环境变量读取模型名称
+        self.model_name = os.getenv("OPENAI_TRANSLATE_MODEL", "gpt-4o")
         self.translate_terms = translate_terms
 
     def _translate_markdown(self, md_content: str) -> str:

@@ -14,7 +14,7 @@ logger = setup_logger(logger_name="OCRTool", log_level="INFO")
 class OCRTool:
     """OCR工具类，用于处理图像OCR识别"""
 
-    def __init__(self, ocr_model_name: str = "gpt-4o-mini"):
+    def __init__(self):
         """
         初始化OCR工具类
         
@@ -23,7 +23,8 @@ class OCRTool:
         if not os.getenv("OPENAI_API_KEY"):
             raise ValueError("OPENAI_API_KEY 环境变量未设置")
 
-        self.model_name = ocr_model_name
+        # 从环境变量读取模型名称
+        self.model_name = os.getenv("OCR_MODEL_NAME", "gpt-4o-mini")
 
     def _perform_ocr(self, image_path):
         """使用OpenAI Vision模型进行OCR"""

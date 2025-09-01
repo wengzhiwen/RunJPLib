@@ -73,10 +73,8 @@ class Config:
         except Exception:
             self.ocr_dpi = 150
 
-        try:
-            self.ocr_model_name = os.getenv("OCR_MODEL_NAME", "gpt-4o-mini")
-        except Exception:
-            self.ocr_model_name = "gpt-4o-mini"
+        # 优先从环境变量读取OCR模型名称
+        self.ocr_model_name = os.getenv("OCR_MODEL_NAME", "gpt-4o-mini")
 
         # 翻译配置
         try:
@@ -89,16 +87,11 @@ class Config:
         except Exception:
             self.translate_terms = ""
 
-        try:
-            self.translate_model_name = os.getenv("OPENAI_TRANSLATE_MODEL", "gpt-4o-mini")
-        except Exception:
-            self.translate_model_name = "gpt-4o-mini"
+        # 优先从环境变量读取翻译模型名称
+        self.translate_model_name = os.getenv("OPENAI_TRANSLATE_MODEL", "gpt-4o-mini")
 
-        # 分析配置
-        try:
-            self.analysis_model_name = os.getenv("OPENAI_ANALYSIS_MODEL", "gpt-4o-mini")
-        except Exception:
-            self.analysis_model_name = "gpt-4o-mini"
+        # 优先从环境变量读取分析模型名称
+        self.analysis_model_name = os.getenv("OPENAI_ANALYSIS_MODEL", "gpt-4o-mini")
 
         analysis_questions_file = os.getenv("ANALYSIS_QUESTIONS_FILE", "")
         if analysis_questions_file and Path(analysis_questions_file).exists():
@@ -298,7 +291,7 @@ class PDFProcessor:
 
             # 初始化OCR工具
             if not self.ocr_tool:
-                self.ocr_tool = OCRTool(self.config.ocr_model_name)
+                self.ocr_tool = OCRTool()
 
             # 获取图片路径
             image_paths = self._get_image_paths()
@@ -352,11 +345,11 @@ class PDFProcessor:
             self._log_message("开始OCR识别（批量模式）...")
             self._update_task_status("processing", "02_ocr", 30)
 
-            # 初始化批量OCR工具和普通OCR工具（用于失败页面补救）
+            # 初始化批量OCR工具
             if not self.batch_ocr_tool:
-                self.batch_ocr_tool = BatchOCRTool(self.config.ocr_model_name)
+                self.batch_ocr_tool = BatchOCRTool()
             if not self.ocr_tool:
-                self.ocr_tool = OCRTool(self.config.ocr_model_name)
+                self.ocr_tool = OCRTool()
 
             # 获取图片路径
             image_paths = self._get_image_paths()
@@ -521,7 +514,7 @@ class PDFProcessor:
 
             # 初始化翻译工具
             if not self.translate_tool:
-                self.translate_tool = TranslateTool(self.config.translate_model_name, self.config.translate_terms)
+                self.translate_tool = TranslateTool(self.config.translate_terms)
 
             # 获取OCR结果内容
             if hasattr(self, "step_data") and "original_md_content" in self.step_data:
@@ -572,7 +565,6 @@ class PDFProcessor:
             # 初始化分析工具
             if not self.analysis_tool:
                 self.analysis_tool = AnalysisTool(
-                    self.config.analysis_model_name,
                     self.config.analysis_questions,
                     self.config.translate_terms,
                 )

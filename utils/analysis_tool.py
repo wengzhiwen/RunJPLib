@@ -14,7 +14,6 @@ class AnalysisTool:
 
     def __init__(
         self,
-        model_name: str = "gpt-4o",
         analysis_questions: str = "",
         translate_terms: str = "",
     ):
@@ -26,7 +25,8 @@ class AnalysisTool:
         if not os.getenv("OPENAI_API_KEY"):
             raise ValueError("OPENAI_API_KEY 环境变量未设置")
 
-        self.model_name = model_name
+        # 从环境变量读取模型名称
+        self.model_name = os.getenv("OPENAI_ANALYSIS_MODEL", "gpt-4o")
         self.analysis_questions = analysis_questions
         self.translate_terms = translate_terms
 
