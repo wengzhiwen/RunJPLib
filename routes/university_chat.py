@@ -108,17 +108,9 @@ def create_chat_session(university_id: str, university_name: str, user_ip: str):
         # 检查用户是否触发降级
         should_degrade, delay_seconds = chat_logger.should_apply_degradation(user_ip)
         if should_degrade:
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "error": f"您今日的对话次数较多，请等待 {delay_seconds} 秒后再试",
-                        "error_code": "RATE_DEGRADED",
-                        "delay_seconds": delay_seconds,
-                    }
-                ),
-                429,
-            )
+            # 后端延迟处理，用户无感知
+            logger.info(f"用户 {user_ip} 触发降级，延迟 {delay_seconds} 秒处理")
+            time.sleep(delay_seconds)
 
         chat_mgr = get_chat_manager()
         session = None
@@ -129,9 +121,7 @@ def create_chat_session(university_id: str, university_name: str, user_ip: str):
         browser_session_id = data.get("browser_session_id")
 
         # 首先尝试查找现有的活跃会话
-        existing_session_data = chat_logger.get_active_session_for_university(
-            user_ip, university_id, browser_session_id
-        )
+        existing_session_data = chat_logger.get_active_session_for_university(user_ip, university_id, browser_session_id)
 
         if existing_session_data:
             # 尝试恢复现有会话
@@ -242,11 +232,11 @@ def send_chat_message(university_id: str, university_name: str, user_ip: str):
                 "success": True,
                 "response": ai_response,
                 "processing_time": round(processing_time, 2),
-                "session_info": {"message_count": result.get("session_info", {}).get("message_count", 0)},
+                "session_info": {
+                    "message_count": result.get("session_info", {}).get("message_count", 0)
+                },
             }
 
-            if should_degrade:
-                filtered_result["notice"] = f"由于使用频繁，此次回答延迟了 {delay_seconds} 秒"
         else:
             # 即使失败也要记录
             chat_logger.log_chat_message(
@@ -272,9 +262,7 @@ def send_chat_message(university_id: str, university_name: str, user_ip: str):
 
 
 @public_chat_api_protection(max_requests=10, time_window=60)
-def get_chat_history(
-    university_id: str, university_name: str, user_ip: str
-):  # university_name used for logging context
+def get_chat_history(university_id: str, university_name: str, user_ip: str):  # university_name used for logging context
     """获取聊天历史"""
     _ = university_name  # 避免未使用参数警告
     try:
@@ -311,37 +299,33 @@ def get_chat_history(
 
         # 获取历史消息
         db_messages = session_detail.get("messages", [])
+        logger.info(f"获取会话 {session_id} 的历史消息，原始消息数量: {len(db_messages)}")
 
         # 转换消息格式为前端期望的格式
         formatted_messages = []
         for msg in db_messages[-20:]:  # 只取最近20条消息
+            # 确保消息包含必要字段
+            if not msg.get("timestamp"):
+                logger.warning(f"跳过没有时间戳的消息: {msg}")
+                continue
+
             # 添加用户消息
-            if "user_input" in msg and msg["user_input"]:
-                formatted_messages.append(
-                    {
-                        "role": "user",
-                        "content": msg["user_input"],
-                        "timestamp": (
-                            msg.get("timestamp", "").isoformat()
-                            if hasattr(msg.get("timestamp", ""), "isoformat")
-                            else str(msg.get("timestamp", ""))
-                        ),
-                    }
-                )
+            if msg.get("user_input"):
+                formatted_messages.append({
+                    "role": "user",
+                    "content": msg["user_input"],
+                    "timestamp": (msg["timestamp"].isoformat() if hasattr(msg["timestamp"], "isoformat") else str(msg["timestamp"])),
+                })
 
             # 添加AI回复
-            if "ai_response" in msg and msg["ai_response"]:
-                formatted_messages.append(
-                    {
-                        "role": "assistant",
-                        "content": msg["ai_response"],
-                        "timestamp": (
-                            msg.get("timestamp", "").isoformat()
-                            if hasattr(msg.get("timestamp", ""), "isoformat")
-                            else str(msg.get("timestamp", ""))
-                        ),
-                    }
-                )
+            if msg.get("ai_response"):
+                formatted_messages.append({
+                    "role": "assistant",
+                    "content": msg["ai_response"],
+                    "timestamp": (msg["timestamp"].isoformat() if hasattr(msg["timestamp"], "isoformat") else str(msg["timestamp"])),
+                })
+
+        logger.info(f"转换后的消息数量: {len(formatted_messages)}")
 
         return jsonify({"success": True, "messages": formatted_messages, "total_count": len(formatted_messages)})
 
@@ -358,19 +342,17 @@ def health_check():  # university_id, university_name unused but required by rou
         daily_count = chat_logger.get_user_daily_message_count(user_ip)
         should_degrade, delay_seconds = chat_logger.should_apply_degradation(user_ip)
 
-        response = jsonify(
-            {
-                "success": True,
-                "status": "healthy",
-                "service": "university_chat",
-                "timestamp": datetime.now().isoformat(),
-                "user_status": {
-                    "daily_message_count": daily_count,
-                    "degraded": should_degrade,
-                    "delay_seconds": delay_seconds if should_degrade else 0,
-                },
-            }
-        )
+        response = jsonify({
+            "success": True,
+            "status": "healthy",
+            "service": "university_chat",
+            "timestamp": datetime.now().isoformat(),
+            "user_status": {
+                "daily_message_count": daily_count,
+                "degraded": should_degrade,
+                "delay_seconds": delay_seconds if should_degrade else 0,
+            },
+        })
         return add_security_headers(response)
 
     except Exception as e:

@@ -71,62 +71,86 @@
 
 ## 技术架构
 
-### 最新更新 (2025-01-27)
-- **GridFS PDF存储**：解决MongoDB 16MB文档大小限制
-- **安全文件名策略**：使用UUID防止文件名注入攻击
-- **智能文件去重**：避免重复存储相同文件
-
 ### 技术栈
-- **后端**: Flask + MongoDB + GridFS
+- **后端**: Flask + MongoDB + GridFS + LlamaIndex + ChromaDB
 - **前端**: HTML + CSS + JavaScript + PDF.js
-- **认证**: JWT + 访问码保护
+- **AI对话**: OpenAI GPT-4o-mini + 混合搜索策略
+- **向量搜索**: LlamaIndex + OpenAI Embeddings
+- **认证**: JWT + 访问码保护 + 浏览器会话ID
 - **部署**: 支持Docker和传统部署
 
 ### 数据存储
 - **大学信息**: MongoDB + GridFS (PDF文件)
 - **博客文章**: MongoDB
-- **文件系统**: 作为MongoDB的回退数据源
+- **向量索引**: ChromaDB (LlamaIndex)
 
-## 开发文档
+### AI功能特性
+- **智能混合搜索**：结合向量搜索和关键词搜索的优势
+- **同义词扩展**：自动识别中日文同义词，提高查询准确性
+- **内存优化**：实时监控内存使用，自动清理临时数据
+- **隐私保护**：基于浏览器会话的完全隔离机制
+- **会话管理**：智能会话恢复和历史消息加载
 
-详细的开发文档请查看 `docs/` 目录：
-- [MongoDB设计文档](docs/mongoDB_design.md)
-- [GridFS迁移指南](docs/GridFS_migration_guide.md)
-- [管理面板文档](docs/admin_panel.md)
-- [线程池架构设计](docs/thread_pool_architecture.md)
-- [变更日志](docs/CHANGELOG.md)
 
 ## 快速开始
 
+### 环境要求
+- Python 3.8+
+- MongoDB 4.4+
+- OpenAI API Key
+- 至少4GB内存（推荐8GB+）
+
+### 安装步骤
+
 ```bash
-# 克隆项目
-git clone https://github.com/wengzhiwen/RunJPLib.git
+# 1. 克隆项目
+git clone https://github.com/your-username/RunJPLib.git
 cd RunJPLib
 
-# 安装依赖
+# 2. 创建虚拟环境
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+# 或 venv\Scripts\activate  # Windows
+
+# 3. 安装依赖
 pip install -r requirements.txt
 
-# 配置环境变量
+# 4. 配置环境变量
 cp .env.example .env
-# 编辑 .env 文件，设置以下重要配置：
-# - MongoDB连接和访问码
-# - 线程池大小（可选，有默认值）
-# - 详见docs/thread_pool_architecture.md
+# 编辑 .env 文件，填入必要的配置
 
-# 运行迁移脚本（如果需要）
-python tools/migrate_to_gridfs.py
+# 5. 启动MongoDB
+./start-mongodb-dev.sh
 
-# 启动应用
+# 6. 创建数据库索引
+python -c "from utils.db_indexes import create_indexes; create_indexes()"
+
+# 7. 启动应用
 python app.py
 ```
 
-## 贡献
+### 环境变量配置
 
-欢迎提交Issue和Pull Request！请确保：
-1. 遵循现有的代码风格
-2. 更新相关文档
-3. 测试功能完整性
+```bash
+# OpenAI配置
+OPENAI_API_KEY=your_openai_api_key
+OPENAI_CHAT_MODEL=gpt-4o-mini
+OPENAI_EXT_QUERY_MODEL=gpt-4o-mini
+OPENAI_EMBEDDING_MODEL=text-embedding-ada-002
 
-## 许可证
+# 数据库配置
+MONGODB_URI=mongodb://localhost:27017/runjplib
 
-本项目采用MIT许可证，详见 [LICENSE](LICENSE) 文件。
+# ChromaDB配置
+CHROMA_DB_PATH=./chroma_db
+
+# 混合搜索配置
+HYBRID_SEARCH_ENABLED=true
+MEMORY_CLEANUP_THRESHOLD=80
+REGEX_CACHE_SIZE=50
+SEARCH_TIMEOUT_VECTOR=5.0
+SEARCH_TIMEOUT_KEYWORD=3.0
+
+# 会话配置
+CHAT_SESSION_TIMEOUT=3600
+```

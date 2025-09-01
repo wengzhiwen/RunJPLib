@@ -1,95 +1,241 @@
-# 端口占用清理脚本使用说明
+# 系统工具使用指南
 
-## 概述
-这个脚本用于查找并杀掉占用 `FLASK_APP_PORT` 端口的程序。
+## 端口管理工具
 
-## 功能特性
-- 自动从 `.env` 文件中读取 `FLASK_APP_PORT` 配置
-- 查找占用指定端口的进程
-- 显示进程详细信息（PID、PPID、命令）
-- 提供用户交互界面，支持优雅终止和强制杀掉
-- 错误处理和权限检查
+### kill_port.py
 
-## 使用方法
+一个用于终止占用特定端口的进程的Python脚本。
+
+#### 功能特点
+- 自动检测指定端口上的进程
+- 安全地终止进程（先尝试SIGTERM，再使用SIGKILL）
+- 支持多个端口同时处理
+- 提供详细的进程信息
+
+#### 使用方法
 
 ```bash
-# 激活虚拟环境（必需）
-source venv/bin/activate
+# 终止单个端口
+python kill_port.py 5000
 
-# 运行脚本
-python3 kill_port.py
+# 终止多个端口
+python kill_port.py 5000 8000 3000
+
+# 查看帮助
+python kill_port.py --help
 ```
 
-## 操作选项
-当脚本找到占用端口的进程时，会提示你选择操作：
-- `y` 或 `yes` - 优雅地终止进程（发送 SIGTERM 信号）
-- `f` 或 `force` - 强制杀掉进程（发送 SIGKILL 信号）
-- `n` 或 `no` - 取消操作
-
-## 技术实现
-
-### 核心依赖
-- `python-dotenv` - 用于加载 `.env` 文件
-- `subprocess` - 用于执行系统命令
-- `os` - 用于进程信号处理
-
-### 主要功能
-1. **环境变量加载**：使用 `load_dotenv()` 加载 `.env` 文件
-2. **端口查找**：使用 `lsof -ti :{port}` 查找占用端口的进程
-3. **进程信息**：使用 `ps -p {pid}` 获取进程详细信息
-4. **进程终止**：使用 `os.kill()` 发送终止信号
-
-## 注意事项
-1. **需要激活虚拟环境**，因为依赖 `python-dotenv` 包
-2. 确保在项目根目录下运行脚本（包含 `.env` 文件的目录）
-3. 脚本需要读取 `.env` 文件中的 `FLASK_APP_PORT` 配置
-4. 某些进程可能需要管理员权限才能杀掉
-5. 强制杀掉进程可能会导致数据丢失，请谨慎使用
-
-## 示例输出
+#### 示例输出
 ```
-=== 端口占用清理脚本 ===
-查找占用端口 5070 的进程...
-找到 2 个占用端口 5070 的进程:
-  1.  9138 86343 /opt/homebrew/Cellar/python@3.12/3.12.10/Frameworks/Python.framework/Versions/3.12/Resources/Python.app/Contents/MacOS/Python /Users/wengzhiwen/dev/RunJPLib/app.py
-  2. 13360  9138 /opt/homebrew/Cellar/python@3.12/3.12.10/Frameworks/Python.framework/Versions/3.12/Resources/Python.app/Contents/MacOS/Python /Users/wengzhiwen/dev/RunJPLib/app.py
-
-是否要杀掉这些进程? (y/n/f - f表示强制杀掉): y
-终止进程 9138
-终止进程 13360
-
-成功终止了 2 个进程
+正在检查端口 5000...
+发现进程 PID 12345 (python) 占用端口 5000
+正在终止进程...
+进程已成功终止
 ```
 
-## 代码结构
+#### 安全特性
+- 优先使用SIGTERM信号，给进程优雅关闭的机会
+- 如果SIGTERM无效，才使用SIGKILL强制终止
+- 显示详细的进程信息，便于确认
 
-```python
-#!/usr/bin/env python3
-"""
-端口占用清理脚本
-查找并杀掉占用 FLASK_APP_PORT 端口的程序
-"""
+## 索引状态检查工具
 
-import os
-import sys
-import subprocess
-import signal
-from dotenv import load_dotenv
+### check_index_status.py
 
-def main():
-    # 加载 .env 文件
-    load_dotenv()
-    
-    # 获取端口号
-    port = os.getenv('FLASK_APP_PORT')
-    
-    # 查找占用端口的进程
-    # 显示进程信息
-    # 用户交互
-    # 终止进程
+用于检查指定大学在MongoDB中的状态和在LlamaIndex中的索引状态的调试工具。
+
+#### 功能特点
+- 检查MongoDB中大学文档的最新状态
+- 验证LlamaIndex/ChromaDB中的索引状态
+- 比较数据库和索引的时间戳
+- 提供详细的诊断信息
+
+#### 使用方法
+
+```bash
+# 检查指定大学的索引状态
+python tools/check_index_status.py "京都工芸繊維大学"
+
+# 检查其他大学
+python tools/check_index_status.py "东京大学"
 ```
 
-## 更新历史
+#### 示例输出
+```
+--- 开始检查大学: 京都工芸繊維大学 ---
 
-- **v2.0** - 使用 `python-dotenv` 简化代码，移除复杂的文件解析逻辑
-- **v1.0** - 初始版本，手动解析 `.env` 文件
+[步骤 1/2] 正在查询 MongoDB...
+  - MongoDB 文档 ID: 507f1f77bcf86cd799439011
+  - MongoDB last_modified: 2025-01-26T10:30:00.000Z (类型: <class 'datetime.datetime'>)
+
+[步骤 2/2] 正在查询 LlamaIndex/ChromaDB...
+  - 索引元数据: {'source_last_modified': '2025-01-26T10:30:00.000Z'}
+  - 索引 source_last_modified: 2025-01-26T10:30:00.000Z (类型: <class 'str'>)
+
+--- 结论 ---
+  - 时间戳一致。数据库版本和索引版本相同。(2025-01-26T10:30:00.000Z)
+  - 结论：如果问题仍然存在，说明问题与时间戳检查无关，可能在其他地方。
+```
+
+#### 诊断功能
+- **时间戳比较**：比较MongoDB和LlamaIndex的时间戳
+- **索引存在性检查**：验证索引是否已创建
+- **数据一致性验证**：确保数据库和索引数据一致
+- **问题定位**：帮助定位索引更新问题
+
+#### 使用场景
+- 调试索引更新问题
+- 验证混合搜索功能
+- 检查数据同步状态
+- 系统维护和故障排除
+
+## 系统维护工具
+
+### 数据库索引管理
+
+#### 创建索引
+```bash
+# 创建所有必要的数据库索引
+python -c "from utils.db_indexes import create_indexes; create_indexes()"
+```
+
+#### 检查索引状态
+```bash
+# 检查MongoDB索引
+python -c "from utils.db_indexes import check_indexes; check_indexes()"
+```
+
+### 日志管理
+
+#### 查看检索日志
+```bash
+# 实时查看检索日志
+tail -f log/retrieval.log
+
+# 查看最近的检索记录
+tail -n 50 log/retrieval.log
+```
+
+#### 查看应用日志
+```bash
+# 查看今天的应用日志
+cat log/app_$(date +%Y%m%d).log
+
+# 搜索特定大学的日志
+grep "京都工芸繊維大学" log/retrieval.log
+```
+
+## 性能监控工具
+
+### 内存使用监控
+
+#### 实时监控
+```bash
+# 监控内存使用率
+python -c "
+import psutil
+import time
+while True:
+    memory = psutil.virtual_memory()
+    print(f'内存使用率: {memory.percent:.1f}%')
+    time.sleep(5)
+"
+```
+
+#### 搜索性能监控
+```bash
+# 分析搜索性能日志
+grep "混合搜索耗时" log/retrieval.log | tail -10
+```
+
+## 故障排除指南
+
+### 常见问题
+
+#### 1. 端口被占用
+```bash
+# 检查端口占用
+lsof -i :5000
+
+# 终止占用进程
+python kill_port.py 5000
+```
+
+#### 2. 索引不同步
+```bash
+# 检查索引状态
+python tools/check_index_status.py "大学名称"
+
+# 重新创建索引
+python -c "from utils.llama_index_integration import LlamaIndexIntegration; LlamaIndexIntegration().recreate_index('大学ID')"
+```
+
+#### 3. 内存使用过高
+```bash
+# 检查内存使用
+ps aux | grep python
+
+# 重启应用
+pkill -f "python app.py"
+python app.py
+```
+
+#### 4. 搜索功能异常
+```bash
+# 检查检索日志
+tail -f log/retrieval.log
+
+# 检查OpenAI API状态
+curl -H "Authorization: Bearer $OPENAI_API_KEY" https://api.openai.com/v1/models
+```
+
+### 调试技巧
+
+#### 1. 启用详细日志
+```bash
+# 设置日志级别为DEBUG
+export LOG_LEVEL=DEBUG
+python app.py
+```
+
+#### 2. 检查环境变量
+```bash
+# 验证环境变量
+python -c "import os; print('OPENAI_API_KEY:', 'SET' if os.getenv('OPENAI_API_KEY') else 'NOT SET')"
+```
+
+#### 3. 测试混合搜索
+```bash
+# 使用测试脚本验证搜索功能
+python -c "
+from utils.enhanced_search_strategy import EnhancedSearchStrategy
+from utils.llama_index_integration import LlamaIndexIntegration
+from openai import OpenAI
+
+searcher = EnhancedSearchStrategy(LlamaIndexIntegration(), OpenAI())
+result = searcher.expand_query_with_keywords('有计算机系吗？', '京都工芸繊維大学')
+print(result)
+"
+```
+
+## 最佳实践
+
+### 1. 定期维护
+- 每周检查索引状态
+- 监控内存使用情况
+- 清理过期日志文件
+
+### 2. 性能优化
+- 定期重启应用释放内存
+- 监控搜索响应时间
+- 优化数据库查询
+
+### 3. 安全考虑
+- 定期更新依赖包
+- 监控异常访问日志
+- 备份重要数据
+
+---
+
+*文档版本：v2.0*
+*最后更新：2025-01-26*

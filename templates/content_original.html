@@ -228,7 +228,7 @@
 
         isPdfLoading = true;
 
-        const pdfUrl = '{{ pdf_url }}';
+        const pdfUrl = {{ pdf_url | tojson }};
 
         async function loadPDFWithProgress() {
             const response = await fetch(pdfUrl);
