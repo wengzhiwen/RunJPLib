@@ -1,5 +1,32 @@
 # 变更日志 (CHANGELOG)
 
+## [2025-09-02] - 新增Admin后台聊天履历功能
+
+### 🚀 新功能
+- **聊天会话履历**: 在Admin后台新增“用户聊天记录”页面 (`/admin/chat-logs`)，用于展示所有用户的聊天会话列表。
+- **会话列表**: 列表按会话的最后活动时间逆序排列，并显示会话ID、最后活动时间、IP地址和消息数量。
+- **会话详情**: 点击“查看详情”可以进入单个会话的详细页面 (`/admin/chat_log/<session_id>`)，按时间顺序查看该会话的所有对话内容，包括用户提问和AI的回答。
+
+### ✨ 功能改进
+- **仪表盘统计增强**: 在Admin后台的仪表盘页面，新增了两个关于对话功能的统计卡片：
+    - **24小时对话IP数**: 显示在过去24小时内，使用过对话功能的独立IP地址总数。
+    - **24小时对话数**: 显示在过去24小时内，用户与AI的总对话次数（一次提问计为一次）。
+
+### 🔧 技术实现
+- **后端路由**: 在 `routes/admin.py` 中新增了 `/admin/chat-logs` 和 `/admin/chat_log/<session_id>` 两个路由，分别用于处理会话列表和会话详情的逻辑。
+- **数据库查询**: 使用MongoDB的聚合查询来高效地分组和排序会话数据。
+- **前端模板**: 创建了 `templates/admin/chat_logs.html` 和 `templates/admin/chat_log_detail.html` 两个新的模板来渲染页面。
+- **仪表盘数据更新**: 修改了 `_get_dashboard_stats` 函数，增加了对 `chat_logs` 集合的查询。
+
+### 📁 文件更改
+- `routes/admin.py`: 添加了新路由和仪表盘统计逻辑。
+- `templates/admin/dashboard.html`: 添加了新的统计卡片。
+- `templates/admin/chat_logs.html`: 新增会话列表页面模板。
+- `templates/admin/chat_log_detail.html`: 新增会话详情页面模板。
+- `docs/CHANGELOG.md`: 记录本次功能新增。
+
+---
+
 ## [2025-01-26] - 混合搜索策略实施完成
 
 ### 🎯 核心功能

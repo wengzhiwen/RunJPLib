@@ -36,6 +36,14 @@
             <h3>24小时博客页面浏览量</h3>
             <p>{{ stats.blog_views_24h | default('N/A') }}</p>
         </div>
+        <div class="stat-card">
+            <h3>24小时对话IP数</h3>
+            <p>{{ stats.unique_chat_ip_count_24h | default('N/A') }}</p>
+        </div>
+        <div class="stat-card">
+            <h3>24小时对话数</h3>
+            <p>{{ stats.chat_count_24h | default('N/A') }}</p>
+        </div>
     </div>
     
     <!-- 线程池状态 -->

@@ -1,0 +1,70 @@
+{% extends "layout.html" %}
+
+{% block title %}会话详情 - {{ session_id }}{% endblock %}
+
+{% block content %}
+<h1>会话详情</h1>
+<p><strong>会话ID:</strong> {{ session_id }}</p>
+<a href="{{ url_for('admin.chat_logs_page') }}" class="btn btn-secondary mb-3">返回会话列表</a>
+
+{% if error %}
+    <div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<div class="chat-log-container">
+    {% for log in logs %}
+    <div class="chat-entry">
+        <div class="timestamp">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }} UTC</div>
+        <div class="message user-message">
+            <strong>User (IP: {{ log.ip_address }}):</strong>
+            <pre>{{ log.message }}</pre>
+        </div>
+        <div class="message bot-message">
+            <strong>Bot:</strong>
+            <pre>{{ log.response }}</pre>
+        </div>
+    </div>
+    {% else %}
+    <p>没有找到该会话的聊天记录。</p>
+    {% endfor %}
+</div>
+
+<style>
+.chat-log-container {
+    border: 1px solid #ccc;
+    padding: 15px;
+    border-radius: 5px;
+}
+.chat-entry {
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #eee;
+}
+.chat-entry:last-child {
+    border-bottom: none;
+}
+.timestamp {
+    font-size: 0.85em;
+    color: #666;
+    margin-bottom: 10px;
+}
+.message {
+    padding: 10px;
+    border-radius: 5px;
+}
+.user-message {
+    background-color: #f0f0f0;
+    margin-bottom: 10px;
+}
+.bot-message {
+    background-color: #e0f7fa;
+}
+pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    margin: 0;
+    font-family: inherit;
+}
+</style>
+
+{% endblock %}

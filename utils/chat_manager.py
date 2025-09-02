@@ -110,14 +110,12 @@ class ChatManager:
                 next(reader)  # 跳过表头
                 for row in reader:
                     if len(row) >= 3 and all(term.strip() for term in row[:3]):
-                        examples.append(
-                            {
-                                "japanese": row[0].strip(),
-                                "japan_style_chinese": row[1].strip(),
-                                "simplified_chinese": row[2].strip(),
-                                "traditional_chinese": row[3].strip(),
-                            }
-                        )
+                        examples.append({
+                            "japanese": row[0].strip(),
+                            "japan_style_chinese": row[1].strip(),
+                            "simplified_chinese": row[2].strip(),
+                            "traditional_chinese": row[3].strip(),
+                        })
                         # 只取前100个有代表性的例子
                         if len(examples) >= 100:
                             break
@@ -152,8 +150,7 @@ class ChatManager:
             examples_list = []
             for example in self.synonym_examples[:100]:  # 只使用前100个例子
                 examples_list.append(
-                    f"• {example['japanese']} = {example['japan_style_chinese']} = {example['simplified_chinese']} = {example['traditional_chinese']}"
-                )
+                    f"• {example['japanese']} = {example['japan_style_chinese']} = {example['simplified_chinese']} = {example['traditional_chinese']}")
             synonym_examples_str = "\n".join(examples_list)
 
         system_prompt = f"""你是一位专业的日本大学招生信息查询优化专家。
@@ -248,8 +245,14 @@ class ChatManager:
             response = self.client.chat.completions.create(
                 model=self.ext_query_model,
                 messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"请分析并扩展以下查询：{query}"},
+                    {
+                        "role": "system",
+                        "content": system_prompt
+                    },
+                    {
+                        "role": "user",
+                        "content": f"请分析并扩展以下查询：{query}"
+                    },
                 ],
                 temperature=0.1,
                 max_tokens=1000,
@@ -306,9 +309,7 @@ class ChatManager:
                 "confidence": 0.3,
             }
 
-    def _get_query_response_for_invalid_query(
-        self, query_type: str, reason: str, university_name: str, university_name_zh: str
-    ) -> str:
+    def _get_query_response_for_invalid_query(self, query_type: str, reason: str, university_name: str, university_name_zh: str) -> str:
         """
         为无效查询生成相应的回复
 
@@ -363,9 +364,7 @@ class ChatManager:
                 try:
                     index_last_modified = datetime.fromisoformat(str(index_last_modified_str))
                     if source_last_modified > index_last_modified:
-                        logger.info(
-                            f"源文档 {university_name} 已更新，需要重建索引。源: {source_last_modified}, 索引: {index_last_modified}"
-                        )
+                        logger.info(f"源文档 {university_name} 已更新，需要重建索引。源: {source_last_modified}, 索引: {index_last_modified}")
                         update_needed = True
                     else:
                         logger.info(f"索引 {university_name} 是最新的，无需更新。")
@@ -461,14 +460,14 @@ class ChatManager:
             # 恢复消息历史
             messages = session_data.get("messages", [])
             logger.info(f"恢复会话 {session_id} 的消息历史，原始消息数量: {len(messages)}")
-            
+
             for msg in messages:
                 # 处理数据库格式的消息 (user_input + ai_response)
                 if msg.get("user_input"):
                     session.add_message("user", msg["user_input"])
                 if msg.get("ai_response"):
                     session.add_message("assistant", msg["ai_response"])
-                    
+
             logger.info(f"恢复会话 {session_id} 完成，恢复的消息数量: {len(session.messages)}")
 
             # 存储会话
@@ -543,9 +542,7 @@ class ChatManager:
                 self.enhanced_searcher = EnhancedSearchStrategy(self.llama_index, self.client)
 
             # 使用LLM进行智能查询扩展和安全检查
-            query_analysis = self._expand_query_with_llm(
-                user_message, session.university_name, session.university_name_zh
-            )
+            query_analysis = self._expand_query_with_llm(user_message, session.university_name, session.university_name_zh)
 
             # 检查查询是否有效
             if not query_analysis.get("is_valid_query", True):
@@ -577,14 +574,10 @@ class ChatManager:
 
             if hybrid_search_enabled:
                 # 使用混合搜索
-                relevant_docs = self.enhanced_searcher.hybrid_search(
-                    university_id=session.university_id, query_analysis=query_analysis, top_k=5
-                )
+                relevant_docs = self.enhanced_searcher.hybrid_search(university_id=session.university_id, query_analysis=query_analysis, top_k=5)
             else:
                 # 保持原有向量搜索作为后备
-                relevant_docs = self.llama_index.search_university_content(
-                    university_id=session.university_id, query=primary_query, top_k=5
-                )
+                relevant_docs = self.llama_index.search_university_content(university_id=session.university_id, query=primary_query, top_k=5)
 
             # 记录检索日志
             self.retrieval_logger.info("\n--- New Retrieval Request ---")
@@ -613,9 +606,7 @@ class ChatManager:
             messages = self._build_messages(system_prompt, context, user_message, session)
 
             # 调用OpenAI API
-            response = self.client.chat.completions.create(
-                model=self.model, messages=messages, temperature=0.1, max_tokens=3000, top_p=0.9
-            )
+            response = self.client.chat.completions.create(model=self.model, messages=messages, temperature=0.1, max_tokens=3000, top_p=0.9)
 
             # 提取AI回答
             ai_response = response.choices[0].message.content
@@ -704,9 +695,7 @@ class ChatManager:
         if self.synonym_examples:
             examples_list = []
             for example in self.synonym_examples[:8]:  # 使用前8个例子
-                examples_list.append(
-                    f"• {example['japanese']} = {example['simplified_chinese']} = {example['traditional_chinese']}"
-                )
+                examples_list.append(f"• {example['japanese']} = {example['simplified_chinese']} = {example['traditional_chinese']}")
             synonym_examples_str = "\n".join(examples_list)
 
         return f"""你是一位专业的日本大学招生信息咨询助手。

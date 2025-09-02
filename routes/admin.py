@@ -140,6 +140,8 @@ def _get_dashboard_stats():
         stats["blog_count"] = db.blogs.count_documents({})
         twenty_four_hours_ago = datetime.utcnow() - timedelta(hours=24)
         query_24h = {"timestamp": {"$gte": twenty_four_hours_ago}}
+
+        # 访问日志统计
         unique_ips = db.access_logs.distinct("ip", query_24h)
         stats["unique_ip_count_24h"] = len(unique_ips)
         query_uni_24h = {
@@ -156,6 +158,13 @@ def _get_dashboard_stats():
             "page_type": "blog",
         }
         stats["blog_views_24h"] = db.access_logs.count_documents(query_blog_24h)
+
+        # 对话功能统计
+        chat_query_24h = {"last_activity": {"$gte": twenty_four_hours_ago}}
+        stats["chat_count_24h"] = db.chat_sessions.count_documents(chat_query_24h)
+        unique_chat_ips = db.chat_sessions.distinct("user_ip", chat_query_24h)
+        stats["unique_chat_ip_count_24h"] = len(unique_chat_ips)
+
     except Exception as e:
         logging.error(f"查询仪表盘统计数据时出错: {e}", exc_info=True)
         return {"error": "查询统计数据时出错"}
@@ -266,7 +275,64 @@ def verify_token():
 @admin_required
 def chat_logs_page():
     """聊天记录管理页面"""
-    return render_template("chat_logs.html")
+    db = get_db()
+    if db is None:
+        return render_template("chat_logs.html", error="数据库连接失败", sessions=[])
+
+    try:
+        # 查询所有会话，按最后活动时间排序
+        sessions = list(db.chat_sessions.find().sort("last_activity", -1))
+        
+        # 转换数据格式以匹配模板期望
+        formatted_sessions = []
+        for session in sessions:
+            formatted_sessions.append({
+                "_id": session["session_id"],  # 使用session_id作为_id
+                "session_id": session["session_id"],
+                "last_activity": session["last_activity"],
+                "ip_address": session["user_ip"],
+                "message_count": session["total_messages"],
+                "university_name": session.get("university_name", "未知"),
+                "user_agent": session.get("user_agent", "")
+            })
+        
+        return render_template("chat_logs.html", sessions=formatted_sessions)
+    except Exception as e:
+        logging.error(f"获取聊天会话列表失败: {e}", exc_info=True)
+        return render_template("chat_logs.html", error="查询会话列表失败", sessions=[])
+
+
+@admin_bp.route("/chat_log/<session_id>")
+@admin_required
+def chat_log_detail(session_id):
+    """显示特定会话的聊天记录"""
+    db = get_db()
+    if db is None:
+        return render_template("chat_log_detail.html", error="数据库连接失败", logs=[])
+
+    try:
+        # 查询特定会话
+        session = db.chat_sessions.find_one({"session_id": session_id})
+        if not session:
+            return render_template("chat_log_detail.html", error="会话不存在", logs=[])
+        
+        # 获取会话中的消息
+        messages = session.get("messages", [])
+        
+        # 转换消息格式以匹配模板期望
+        formatted_logs = []
+        for msg in messages:
+            formatted_logs.append({
+                "timestamp": msg.get("timestamp"),
+                "message": msg.get("user_input", ""),
+                "response": msg.get("ai_response", ""),
+                "processing_time": msg.get("processing_time", 0)
+            })
+        
+        return render_template("chat_log_detail.html", logs=formatted_logs, session_id=session_id)
+    except Exception as e:
+        logging.error(f"获取会话 {session_id} 的聊天记录失败: {e}", exc_info=True)
+        return render_template("chat_log_detail.html", error="查询聊天记录失败", logs=[])
 
 
 @admin_bp.route("/api/chat-sessions", methods=["GET"])
