@@ -1,6 +1,26 @@
 # 变更日志 (CHANGELOG)
 
-## [2025-09-02] - 推荐阅读性能优化：添加缓存机制
+## [2025-09-02] - 检索日志自动分日功能
+
+### 🚀 新功能
+- **检索日志自动分日**: 为检索日志系统添加了自动分日功能，现在检索日志文件会按照日期自动分割，格式为 `retrieval_YYYYMMDD.log`，与其他工具日志保持一致。
+- **日志管理优化**: 通过按日期分割日志文件，便于日志管理和历史数据查询，避免单个日志文件过大。
+
+### 🔧 技术实现
+- **修改文件**: `utils/logging_config.py` 中的 `setup_retrieval_logger()` 函数
+- **实现方式**: 将固定的 `retrieval.log` 文件名改为动态的 `retrieval_{datetime.datetime.now().strftime('%Y%m%d')}.log`
+- **保持一致性**: 与项目中其他日志工具（如 `BatchOCRTool`、`TaskManager` 等）使用相同的自动分日机制
+
+### 📊 日志文件结构
+- **旧格式**: `log/retrieval.log`（单一文件，持续增长）
+- **新格式**: `log/retrieval_20250902.log`、`log/retrieval_20250903.log` 等（按日期自动分割）
+
+### 📁 文件更改
+- `utils/logging_config.py`: 修改 `setup_retrieval_logger()` 函数，实现自动分日功能
+- `docs/logging.md`: 更新日志配置文档，反映新的日志文件命名规则和监控命令
+- `docs/CHANGELOG.md`: 记录本次功能更新
+
+---
 
 ### 🚀 性能优化
 - **推荐阅读缓存机制**: 为推荐阅读功能添加了TTL缓存机制，避免每次用户访问页面都重新计算推荐内容，显著提升页面加载速度。

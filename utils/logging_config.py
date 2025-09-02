@@ -50,7 +50,7 @@ def setup_retrieval_logger() -> logging.Logger:
     """
     logger_name = "retrieval"
     log_dir = "log"
-    log_file_path = os.path.join(log_dir, "retrieval.log")
+    log_file_path = os.path.join(log_dir, f"{logger_name}_{datetime.datetime.now().strftime('%Y%m%d')}.log")
 
     retrieval_logger = logging.getLogger(logger_name)
     retrieval_logger.setLevel(logging.INFO)

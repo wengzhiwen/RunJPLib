@@ -11,7 +11,7 @@
 ## 检索日志系统
 
 ### 专用检索日志
-- 日志文件：`log/retrieval.log`
+- 日志文件：`log/retrieval_YYYYMMDD.log`（按日期自动分日）
 - 作用：专门记录 LlamaIndex 检索操作和混合搜索策略的详细信息
 - 内容：会话ID、用户查询、搜索结果、搜索策略、性能指标
 
@@ -21,7 +21,7 @@
 def setup_retrieval_logger() -> logging.Logger:
     """设置专门用于记录检索操作的日志记录器"""
     logger_name = "retrieval"
-    log_file_path = os.path.join("log", "retrieval.log")
+    log_file_path = os.path.join("log", f"{logger_name}_{datetime.datetime.now().strftime('%Y%m%d')}.log")
     
     retrieval_logger = logging.getLogger(logger_name)
     retrieval_logger.setLevel(logging.INFO)
@@ -72,7 +72,7 @@ MEMORY_CLEANUP_THRESHOLD=80
 
 ```
 log/
-├── retrieval.log          # 检索操作专用日志
+├── retrieval_20250902.log  # 检索操作专用日志（按日期）
 ├── app_20250126.log       # 应用日志（按日期）
 └── error_20250126.log     # 错误日志（按日期）
 ```
@@ -82,22 +82,22 @@ log/
 ### 检索性能监控
 ```bash
 # 查看混合搜索性能
-grep "混合搜索耗时" log/retrieval.log | tail -10
+grep "混合搜索耗时" log/retrieval_$(date +%Y%m%d).log | tail -10
 
 # 查看内存使用情况
-grep "内存:" log/retrieval.log | tail -10
+grep "内存:" log/retrieval_$(date +%Y%m%d).log | tail -10
 
 # 查看搜索策略分布
-grep "search_strategy" log/retrieval.log | sort | uniq -c
+grep "search_strategy" log/retrieval_$(date +%Y%m%d).log | sort | uniq -c
 ```
 
 ### 错误追踪
 ```bash
 # 查看搜索错误
-grep "ERROR" log/retrieval.log
+grep "ERROR" log/retrieval_$(date +%Y%m%d).log
 
 # 查看内存清理操作
-grep "内存清理" log/retrieval.log
+grep "内存清理" log/retrieval_$(date +%Y%m%d).log
 ```
 
 ## 生效位置
