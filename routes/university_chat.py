@@ -152,7 +152,7 @@ def create_chat_session(university_id: str, university_name: str, user_ip: str):
         csrf_token = get_csrf_token_for_session(session.session_id)
 
         # 返回会话信息
-        notice = "继续之前的对话..." if is_restored else "欢迎使用AI对话助手！每日有使用次数限制。"
+        notice = ("继续之前的对话..." if is_restored else "欢迎使用AI对话助手！每日有使用次数限制。")
 
         response_data = {
             "success": True,
@@ -258,7 +258,14 @@ def send_chat_message(university_id: str, university_name: str, user_ip: str):
 
     except Exception as e:
         logger.error(f"发送聊天消息时出错: {e}", exc_info=True)
-        return jsonify({"success": False, "error": "服务暂时不可用", "error_code": "SERVICE_UNAVAILABLE"}), 500
+        return (
+            jsonify({
+                "success": False,
+                "error": "服务暂时不可用",
+                "error_code": "SERVICE_UNAVAILABLE",
+            }),
+            500,
+        )
 
 
 @public_chat_api_protection(max_requests=10, time_window=60)
@@ -327,7 +334,11 @@ def get_chat_history(university_id: str, university_name: str, user_ip: str):  #
 
         logger.info(f"转换后的消息数量: {len(formatted_messages)}")
 
-        return jsonify({"success": True, "messages": formatted_messages, "total_count": len(formatted_messages)})
+        return jsonify({
+            "success": True,
+            "messages": formatted_messages,
+            "total_count": len(formatted_messages),
+        })
 
     except Exception as e:
         logger.error(f"获取聊天历史时出错: {e}", exc_info=True)

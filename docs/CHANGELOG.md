@@ -1,6 +1,23 @@
 # 变更日志 (CHANGELOG)
 
-## [2025-09-02] - 新增Admin后台聊天履历功能
+## [2025-01-27] - 统一时间显示为UTC格式
+
+### 🐛 Bug修复
+- **时间显示不一致问题**: 修复了AI对话功能中时间显示不一致的问题。之前用户端和Admin端显示的是本地时间，而历史记录显示的是UTC时间，现在统一为UTC时间显示。
+- **用户端时间显示**: 修改 `templates/chat_modal.html` 中的 `createMessageDiv` 函数，将 `toLocaleTimeString('zh-CN')` 改为UTC时间格式。
+- **Admin端时间显示**: 修改 `templates/admin/chat.html` 中的 `formatDateTime` 函数和 `addMessageToChat` 函数，将本地时间格式改为UTC时间格式。
+
+### 🔧 技术实现
+- **统一时间格式**: 所有时间显示都使用 `toISOString().replace('T', ' ').substring(0, 19) + ' UTC'` 格式
+- **前端一致性**: 确保用户端和Admin端的时间显示格式完全一致
+- **后端兼容性**: 保持后端存储的UTC时间格式不变，只修改前端显示
+
+### 📁 文件更改
+- `templates/chat_modal.html`: 修改时间显示函数，统一为UTC格式
+- `templates/admin/chat.html`: 修改时间格式化函数，统一为UTC格式
+- `docs/CHANGELOG.md`: 记录本次修复
+
+---
 
 ### 🚀 新功能
 - **聊天会话履历**: 在Admin后台新增“用户聊天记录”页面 (`/admin/chat-logs`)，用于展示所有用户的聊天会话列表。

@@ -351,7 +351,17 @@
     function createMessageDiv(className, content, timestamp) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `d-flex ${className === 'user-message' ? 'justify-content-end' : 'justify-content-start'} mb-2`;
-        const timeStr = timestamp ? new Date(timestamp).toLocaleTimeString('zh-CN') : new Date().toLocaleTimeString('zh-CN');
+        
+        // 统一显示UTC时间
+        let timeStr;
+        if (timestamp) {
+            const date = new Date(timestamp);
+            timeStr = date.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+        } else {
+            const now = new Date();
+            timeStr = now.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+        }
+        
         const bubbleClass = className === 'user-message' ? 'user-message' : 'assistant-message';
         
         messageDiv.innerHTML = `

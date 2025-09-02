@@ -198,7 +198,7 @@ function hideError() {
 
 function formatDateTime(dateString) {
     const date = new Date(dateString);
-    return date.toLocaleString('zh-CN');
+    return date.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
 }
 
 // 搜索大学
@@ -455,13 +455,17 @@ function addMessageToChat(role, content) {
     const roleLabel = role === 'user' ? '用户' : (role === 'assistant' ? '助手' : '系统');
     const badgeClass = role === 'user' ? 'bg-primary' : (role === 'assistant' ? 'bg-success' : 'bg-warning');
     
+    // 统一显示UTC时间
+    const now = new Date();
+    const timeStr = now.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+    
     messageDiv.innerHTML = `
         <div class="d-inline-block">
             <span class="badge ${badgeClass} mb-1">${roleLabel}</span>
             <div class="card ${role === 'user' ? 'bg-primary text-white' : 'bg-light'}" style="max-width: 80%;">
                 <div class="card-body py-2 px-3">
                     <p class="mb-0">${content.replace(/\n/g, '<br>')}</p>
-                    <small class="text-muted">${new Date().toLocaleTimeString('zh-CN')}</small>
+                    <small class="text-muted">${timeStr}</small>
                 </div>
             </div>
         </div>

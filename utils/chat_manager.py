@@ -25,7 +25,13 @@ logger = logging.getLogger(__name__)
 class ChatSession:
     """对话会话类"""
 
-    def __init__(self, session_id: str, university_id: str, university_name: str, university_name_zh: str = ""):
+    def __init__(
+        self,
+        session_id: str,
+        university_id: str,
+        university_name: str,
+        university_name_zh: str = "",
+    ):
         self.session_id = session_id
         self.university_id = university_id
         self.university_name = university_name
@@ -37,7 +43,11 @@ class ChatSession:
 
     def add_message(self, role: str, content: str) -> None:
         """添加消息到会话"""
-        message = {"role": role, "content": content, "timestamp": datetime.now().isoformat()}
+        message = {
+            "role": role,
+            "content": content,
+            "timestamp": datetime.now().isoformat(),
+        }
         self.messages.append(message)
         self.last_activity = datetime.now()
 
@@ -309,7 +319,13 @@ class ChatManager:
                 "confidence": 0.3,
             }
 
-    def _get_query_response_for_invalid_query(self, query_type: str, reason: str, university_name: str, university_name_zh: str) -> str:
+    def _get_query_response_for_invalid_query(
+        self,
+        query_type: str,
+        reason: str,
+        university_name: str,
+        university_name_zh: str,
+    ) -> str:
         """
         为无效查询生成相应的回复
 
@@ -526,7 +542,11 @@ class ChatManager:
             # 获取会话
             session = self.get_session(session_id)
             if not session:
-                return {"success": False, "error": "会话不存在或已过期", "error_code": "SESSION_NOT_FOUND"}
+                return {
+                    "success": False,
+                    "error": "会话不存在或已过期",
+                    "error_code": "SESSION_NOT_FOUND",
+                }
 
             logger.info(f"处理消息: {session_id} - {user_message[:50]}...")
 
@@ -570,11 +590,15 @@ class ChatManager:
             primary_query = query_analysis.get("primary_query", user_message)
 
             # 使用混合搜索策略进行检索
-            hybrid_search_enabled = os.getenv("HYBRID_SEARCH_ENABLED", "true").lower() == "true"
+            hybrid_search_enabled = (os.getenv("HYBRID_SEARCH_ENABLED", "true").lower() == "true")
 
             if hybrid_search_enabled:
                 # 使用混合搜索
-                relevant_docs = self.enhanced_searcher.hybrid_search(university_id=session.university_id, query_analysis=query_analysis, top_k=5)
+                relevant_docs = self.enhanced_searcher.hybrid_search(
+                    university_id=session.university_id,
+                    query_analysis=query_analysis,
+                    top_k=5,
+                )
             else:
                 # 保持原有向量搜索作为后备
                 relevant_docs = self.llama_index.search_university_content(university_id=session.university_id, query=primary_query, top_k=5)
@@ -592,7 +616,7 @@ class ChatManager:
                     metadata = doc.get("metadata", {})
                     title = metadata.get("title", "N/A")
                     score = doc.get("score", "N/A")
-                    content_snippet = doc.get("content", "").strip().replace("\n", " ")[:200]
+                    content_snippet = (doc.get("content", "").strip().replace("\n", " ")[:200])
                     self.retrieval_logger.info(f"  [{i+1}] Score: {score}, Title: {title}")
                     self.retrieval_logger.info(f"      Content: {content_snippet}...")
             else:
@@ -606,7 +630,13 @@ class ChatManager:
             messages = self._build_messages(system_prompt, context, user_message, session)
 
             # 调用OpenAI API
-            response = self.client.chat.completions.create(model=self.model, messages=messages, temperature=0.1, max_tokens=3000, top_p=0.9)
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=0.1,
+                max_tokens=3000,
+                top_p=0.9,
+            )
 
             # 提取AI回答
             ai_response = response.choices[0].message.content
@@ -622,7 +652,7 @@ class ChatManager:
                     self.enhanced_searcher._cleanup_memory()
 
                 # 清理局部变量
-                relevant_docs_sources = [doc.get("metadata", {}) for doc in relevant_docs] if relevant_docs else []
+                relevant_docs_sources = ([doc.get("metadata", {}) for doc in relevant_docs] if relevant_docs else [])
                 relevant_docs = None  # 释放检索结果内存
 
                 import gc
@@ -641,7 +671,11 @@ class ChatManager:
 
         except Exception as e:
             logger.error(f"处理消息时出错: {e}", exc_info=True)
-            return {"success": False, "error": f"处理消息时出错: {str(e)}", "error_code": "PROCESSING_ERROR"}
+            return {
+                "success": False,
+                "error": f"处理消息时出错: {str(e)}",
+                "error_code": "PROCESSING_ERROR",
+            }
 
     def _build_context(self, session: ChatSession, relevant_docs: List[Dict]) -> str:
         """
@@ -863,6 +897,6 @@ class ChatManager:
             "total_sessions": len(self.sessions),
             "active_sessions": len(active_sessions),
             "total_messages": total_messages,
-            "indexed_universities": len(self.llama_index.list_indexed_universities()) if self.llama_index else 0,
+            "indexed_universities": (len(self.llama_index.list_indexed_universities()) if self.llama_index else 0),
             "session_timeout_hours": self.session_timeout // 3600,
         }

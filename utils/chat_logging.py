@@ -62,7 +62,12 @@ class ChatLoggingManager:
             return ""
 
     def log_chat_message(
-        self, session_id: str, user_input: str, ai_response: str, user_ip: str, processing_time: float = 0
+        self,
+        session_id: str,
+        user_input: str,
+        ai_response: str,
+        user_ip: str,
+        processing_time: float = 0,
     ) -> bool:
         """
         记录聊天消息
@@ -97,9 +102,15 @@ class ChatLoggingManager:
             update_result = db.chat_sessions.update_one(
                 {"session_id": session_id},
                 {
-                    "$push": {"messages": message_record},
-                    "$inc": {"total_messages": 1},
-                    "$set": {"last_activity": datetime.now()},
+                    "$push": {
+                        "messages": message_record
+                    },
+                    "$inc": {
+                        "total_messages": 1
+                    },
+                    "$set": {
+                        "last_activity": datetime.now()
+                    },
                 },
             )
 
@@ -149,8 +160,22 @@ class ChatLoggingManager:
 
             # 聚合查询统计今日消息数
             pipeline = [
-                {"$match": {"user_ip": user_ip, "last_activity": {"$gte": today_start}}},
-                {"$group": {"_id": None, "total_messages": {"$sum": "$total_messages"}}},
+                {
+                    "$match": {
+                        "user_ip": user_ip,
+                        "last_activity": {
+                            "$gte": today_start
+                        },
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": None,
+                        "total_messages": {
+                            "$sum": "$total_messages"
+                        },
+                    }
+                },
             ]
 
             result = list(db.chat_sessions.aggregate(pipeline))
@@ -207,12 +232,17 @@ class ChatLoggingManager:
         try:
             sessions = list(
                 db.chat_sessions.find(
-                    {"user_ip": user_ip},
-                    {"session_id": 1, "university_name": 1, "start_time": 1, "last_activity": 1, "total_messages": 1},
-                )
-                .sort("last_activity", -1)
-                .limit(limit)
-            )
+                    {
+                        "user_ip": user_ip
+                    },
+                    {
+                        "session_id": 1,
+                        "university_name": 1,
+                        "start_time": 1,
+                        "last_activity": 1,
+                        "total_messages": 1,
+                    },
+                ).sort("last_activity", -1).limit(limit))
 
             # 转换ObjectId为字符串
             for session in sessions:
@@ -225,7 +255,11 @@ class ChatLoggingManager:
             return []
 
     def get_active_session_for_university(
-        self, user_ip: str, university_id: str, browser_session_id: str = None, timeout_hours: int = 1
+        self,
+        user_ip: str,
+        university_id: str,
+        browser_session_id: str = None,
+        timeout_hours: int = 1,
     ) -> Optional[Dict]:
         """
         获取用户在特定大学的活跃会话
@@ -248,7 +282,12 @@ class ChatLoggingManager:
             timeout_time = datetime.now() - timedelta(hours=timeout_hours)
 
             # 构建查询条件 - 优先使用浏览器会话ID，回退到IP地址
-            query = {"university_id": university_id, "last_activity": {"$gte": timeout_time}}
+            query = {
+                "university_id": university_id,
+                "last_activity": {
+                    "$gte": timeout_time
+                },
+            }
 
             if browser_session_id:
                 # 如果有浏览器会话ID，优先使用它来查找
@@ -299,7 +338,11 @@ class ChatLoggingManager:
             return None
 
     def get_all_chat_sessions(
-        self, skip: int = 0, limit: int = 50, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None
+        self,
+        skip: int = 0,
+        limit: int = 50,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
     ) -> List[Dict]:
         """
         获取所有聊天会话（管理员用）
@@ -339,11 +382,7 @@ class ChatLoggingManager:
                         "total_messages": 1,
                         "user_agent": 1,
                     },
-                )
-                .sort("start_time", -1)
-                .skip(skip)
-                .limit(limit)
-            )
+                ).sort("start_time", -1).skip(skip).limit(limit))
 
             # 转换ObjectId为字符串
             for session in sessions:
@@ -385,25 +424,39 @@ class ChatLoggingManager:
             month_sessions = db.chat_sessions.count_documents({"start_time": {"$gte": month_start}})
 
             # 总消息数
-            total_messages_result = list(
-                db.chat_sessions.aggregate([{"$group": {"_id": None, "total": {"$sum": "$total_messages"}}}])
-            )
-            total_messages = total_messages_result[0]["total"] if total_messages_result else 0
+            total_messages_result = list(db.chat_sessions.aggregate([{"$group": {"_id": None, "total": {"$sum": "$total_messages"}}}]))
+            total_messages = (total_messages_result[0]["total"] if total_messages_result else 0)
 
             # 活跃用户数（本周）
             active_users = len(db.chat_sessions.distinct("user_ip", {"last_activity": {"$gte": week_start}}))
 
             # 热门大学（本月）
             popular_universities = list(
-                db.chat_sessions.aggregate(
-                    [
-                        {"$match": {"start_time": {"$gte": month_start}}},
-                        {"$group": {"_id": "$university_name", "count": {"$sum": 1}}},
-                        {"$sort": {"count": -1}},
-                        {"$limit": 10},
-                    ]
-                )
-            )
+                db.chat_sessions.aggregate([
+                    {
+                        "$match": {
+                            "start_time": {
+                                "$gte": month_start
+                            }
+                        }
+                    },
+                    {
+                        "$group": {
+                            "_id": "$university_name",
+                            "count": {
+                                "$sum": 1
+                            }
+                        }
+                    },
+                    {
+                        "$sort": {
+                            "count": -1
+                        }
+                    },
+                    {
+                        "$limit": 10
+                    },
+                ]))
 
             return {
                 "total_sessions": total_sessions,
