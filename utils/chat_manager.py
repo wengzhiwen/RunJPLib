@@ -14,10 +14,10 @@ import uuid
 
 from openai import OpenAI
 
+from utils.enhanced_search_strategy import EnhancedSearchStrategy
 from utils.llama_index_integration import LlamaIndexIntegration
 from utils.logging_config import setup_retrieval_logger
 from utils.university_document_manager import UniversityDocumentManager
-from utils.enhanced_search_strategy import EnhancedSearchStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -207,16 +207,16 @@ class ChatManager:
 }}
 
 ## 扩展策略
-1. **专业术语替换**：将中文专业术语替换为对应的日语术语
-   - 例：计算机系 → 情報学、情報工学
-   - 例：机械工程 → 機械工学
+1. **专业术语替换**：按语义，结合中国留学生在日的用语习惯进行扩展
+   - 例：计算机系 → 情報学、情報工学、情报学、情报工学
+   - 例：机械工程 → 機械工学、机械工学
 
-2. **同义词扩展**：基于同义词库进行扩展
-   - 例：报名 → 出願、受験
-   - 例：专业 → 専攻、学科
+2. **同义词扩展**：基于同义词库进行扩展，结合中国留学生在日的用语习惯进行扩展
+   - 例：报名 → 出願、受験、出愿
+   - 例：专业 → 専攻、学科、专攻
 
-3. **概念扩展**：扩展相关的概念词汇
-   - 例：入学考试 → 入学試験、受験、合格
+3. **概念扩展**：扩展相关的概念词汇，结合中国留学生在日的用语习惯进行扩展
+   - 例：入学考试 → 入学試験、入学试验、受験、受验
 
 ## 关键词分类规则
 1. **exact_keywords（精确匹配）**：
@@ -245,7 +245,12 @@ class ChatManager:
 - 优先使用和制汉字的简体中文（因为要被检索的文档是简体中文，但里面混入了大量的和制汉字）
 - 确保扩展后的查询词在语义上与原始查询一致
 - 你提供的搜索词中不要包含大学名称（因为要被检索的文档本来就是限定在这个大学上的）
-- 不要过度扩展，通常3-5个扩展查询词即可"""
+- 不要过度扩展，通常3-5个扩展查询词即可
+- 除了了你自己的判断之外，如果遇到以下要求，请判断为与当前大学有关，不要标记unrelated
+    - 询问大学的地址
+    - 询问考场的地址
+    - 询问大学的联系方式
+"""
 
         try:
             # 记录ext query API调用开始
@@ -641,6 +646,14 @@ class ChatManager:
             # 提取AI回答
             ai_response = response.choices[0].message.content
 
+            # 记录LLM会话回答日志
+            self.retrieval_logger.info("\n--- LLM Response Generated ---")
+            self.retrieval_logger.info(f"Session ID: {session_id}")
+            self.retrieval_logger.info(f"Model: {self.model}")
+            self.retrieval_logger.info(f"Response Length: {len(ai_response)} characters")
+            self.retrieval_logger.info(f"Response Content: {ai_response}")
+            self.retrieval_logger.info("--- LLM Response End ---\n")
+
             # 添加AI回答到会话
             session.add_message("assistant", ai_response)
 
@@ -670,6 +683,12 @@ class ChatManager:
             }
 
         except Exception as e:
+            # 记录LLM会话回答失败日志
+            self.retrieval_logger.info("\n--- LLM Response Failed ---")
+            self.retrieval_logger.info(f"Session ID: {session_id}")
+            self.retrieval_logger.info(f"Error: {str(e)}")
+            self.retrieval_logger.info("--- LLM Response Failed End ---\n")
+
             logger.error(f"处理消息时出错: {e}", exc_info=True)
             return {
                 "success": False,
@@ -728,7 +747,7 @@ class ChatManager:
         synonym_examples_str = ""
         if self.synonym_examples:
             examples_list = []
-            for example in self.synonym_examples[:8]:  # 使用前8个例子
+            for example in self.synonym_examples[:100]:  # 使用前100个例子
                 examples_list.append(f"• {example['japanese']} = {example['simplified_chinese']} = {example['traditional_chinese']}")
             synonym_examples_str = "\n".join(examples_list)
 
@@ -741,31 +760,40 @@ class ChatManager:
 ## 任务背景
 中国留学生在查询日本大学信息时，经常使用中文、日语和和制汉字中文的混合表达。为了提高信息检索的准确性和召回率，系统已经对用户的查询进行了智能扩展和优化。
 
-## 同义词理解（日语=简体中文=繁体中文）
-{synonym_examples_str}
-
 ## 你的职责
-1. **专注当前大学**：只回答与{university_name_zh}（{university_name}）相关的问题
+1. **专注当前大学**：只回答与大学招生、入学相关的信息
 2. **基于文档信息**：只能基于提供的大学信息来回答问题，不要编造任何信息
 3. **同义词识别**：在理解用户意图和分析文档时，将同义词视为等价概念
 4. **专业指导**：为留学生提供准确、专业的报考指导
 
 ## 回答规则
-1. 只回答与当前大学相关的问题
+1. 只回答与大学招生、入学相关的信息，比如：
+    - 询问大学的地址
+    - 询问考场的地址
+    - 询问大学的联系方式
+    - 询问有哪些专业
+    - 询问有哪些出愿方式
+    - 询问具体专业的报名要求
+    - 询问入学试验的具体安排
+    - 询问口头试问具体会问到什么样的问题
+    - 询问笔记试验相关的具体说明
+    - 等等
 2. 如果信息不明确，请明确说明
 3. 用中文回答
-4. 保持专业、友好的语调
-5. 拒绝回答与当前大学无关的问题
-6. 如果用户询问其他大学的信息，请明确拒绝并说明只能回答{university_name_zh}的相关问题
-7. 如果没有相关信息，请诚实地说明没有找到相关信息
+4. 保持专业、谦虚、友好的语调
+5. 如果用户询问其他大学的信息，请明确拒绝并说明只能回答{university_name_zh}的相关问题
+6. 如果没有相关信息，请诚实地说明没有找到相关信息
 
 ## 同义词处理
-在本次对话中，部分词汇在日语、简体中文和繁体中文中具有相同含义。例如：
+在本次对话中，部分词汇在日语、日式简体中文、简体中文和繁体中文中具有相同含义。例如：
 - "出願"、"报名"和"报考"都指同一个概念
 - "専攻"、"专业"和"学科"在特定语境下可以互换
-- "入学試験"、"入学考试"和"受験"都指入学考试
+- "入学試験"、"入学考试"、"入学试验"和"受験"都指入学考试
 
-请根据提供的文档信息和对话历史来回答用户的问题。"""
+请根据提供的文档信息和对话历史来回答用户的问题。
+
+## 附，同义词参考词表（日语=日式简体中文=简体中文=繁体中文）
+{synonym_examples_str}"""
 
     def _build_messages(self, system_prompt: str, context: str, user_message: str, session: ChatSession) -> List[Dict]:
         """
