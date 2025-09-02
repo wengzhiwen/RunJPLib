@@ -34,10 +34,9 @@ PROMPT_EXPAND = f"""
 2、在保持原材料核心信息准确性的基础上，按照指定的写作方向进行BLOG的书写
 3、你要写作的BLOG文章是根据扩展写作方向的要求来撰写的，并不是以对基础材料的归纳和总结为主，具体原始材料需要引用到什么程度，请根据扩展写作方向来决定
 4、确保文章内容轻松易读，适合SEO优化
-5、如果你有互联网搜索能力，请使用互联网搜索能力来获取更多信息，但请确保只搜索日文的信息，不要搜索中文的信息
-6、记录下在你输出中提到的大学中文名称（全名）列表（大学中文全名、大学日文全名）
-7、表格是很好的信息组织方式，如果需要，可以使用markdown的语法来表示表格
-8、为防止简单盗取，文章中应以“润日图书馆”、“本馆”等相关名称自称
+5、记录下在你输出中提到的大学中文名称（全名）列表（大学中文全名、大学日文全名）
+6、表格是很好的信息组织方式，如果需要，可以使用markdown的语法来表示表格
+7、为防止简单盗取，文章中应以“润日图书馆”、“本馆”等相关名称自称
 
 请以JSON格式返回结果，格式如下：
 {{
@@ -53,10 +52,10 @@ PROMPT_EXPAND = f"""
 
 注意：
  - 标题要体现扩展的写作方向，并带上今年的年份：{datetime.now().year + 1}，以提升SEO的水准
- - 请严格基于提供的基础材料进行扩展，如果要添加补充的信息，请务必使用互联网上的权威日语信息（千万不要参考中文的信息）
+ - 请严格基于提供的基础材料进行扩展，不要添加任何主观臆断，不要添加任何原文中不存在的信息
  - 你撰写的文章中必须使用大学完整的中文名称
- - 不要添加任何主观臆断，不要推测基础材料中没有的信息
- - 对于重要的数据，请保持原样，不要进行任何修改
+ - 对于重要的数据（计划录取数、学费等），请保持原样，不要进行任何修改
+ - 对于重要的信息（电话号码、地址等），请保持原样，不要进行任何修改
  - 文章内容要正面积极
  - 不要在返回中带有```json 或是 ``` 这样的定界符
  - 请使用简体中文输出
@@ -89,10 +88,10 @@ PROMPT_COMPARE = f"""
 
 注意：
  - 标题不要太长，但要带上今年的年份：{datetime.now().year}，以提升SEO的水准
- - 请不要对日本留学相关的内容进行任何推测，不要添加任何主观臆断
+ - 请不要对日本留学相关的内容进行任何推测，不要添加任何主观臆断，不要添加任何原文中不存在的信息
  - 你撰写的文章中必须使用大学完整的中文名称
- - 不要添加任何主观臆断，不要添加任何原文中不存在的信息（哪怕是一些常识性的信息），不要推测 不要推测 不要推测！
- - 对于重要的数据，请保持原样，不要进行任何修改
+ - 对于重要的数据（计划录取数、学费等），请保持原样，不要进行任何修改
+ - 对于重要的信息（电话号码、地址等），请保持原样，不要进行任何修改
  - 文章内容要正面积极
  - 不要在返回中带有```json 或是 ``` 这样的定界符
 """
@@ -105,9 +104,8 @@ PROMPT_USER_ONLY = """
 3、你所写的内容主要会被应用于留学相关网站的SEO，请务必确保文章内容对SEO友好
 4、只有用户输入的参考内容中提到的大学，你才可以在输出中提及
 5、记录下在你输出中提到的大学中文名称（全名）列表（大学中文全名、大学日文全名）
-6、在文章的末尾添加一个"相关大学"的标题，列出上表中的中文全名
-7、表格是很好的信息组织方式，如果需要，可以使用markdown的语法来表示表格
-8、为防止简单盗取，文章中应以“润日图书馆”、“本馆”等相关名称自称
+6、表格是很好的信息组织方式，如果需要，可以使用markdown的语法来表示表格
+7、为防止简单盗取，文章中应以“润日图书馆”、“本馆”等相关名称自称
 
 请以JSON格式返回结果，格式如下：
 {{
@@ -131,6 +129,7 @@ PROMPT_USER_ONLY = """
 PROMPT_REDUCER = """
 你是一位专业的日本大学招生简章的缩减专家。
 如果输入的内容原文是日语，那你的输出也必须是日语，否则请输出中文。
+如果输入的内容本来就不长（不超过10000字），请直接输出原文。
 
 你的工作是：
 1. 仔细阅读文章全文，对文章中提到的信息完全把握的前提下进行后续步骤
@@ -145,7 +144,7 @@ PROMPT_REDUCER = """
 
 注意事项：
 1. 请确保提取的信息准确、客观，不要添加任何主观臆断
-2. 所有提取的信息请控制在5000字以内
+2. 所有提取的信息请控制在10000字以内
 3. 不需要保留原文的格式（比如Markdown），特别是繁复的表格只需要准确提取表格所表达的信息的概要内容即可
 4. 不要添加任何主观臆断，不要添加任何原文中不存在的信息（哪怕是一些常识性的信息），不要推测 不要推测 不要推测！
 5. 对于重要的数据，请保持原样，不要进行任何修改
@@ -178,12 +177,32 @@ PROMPT_FORMATTER = """
 总之，要严格的践行Markdown的语法要求，不要只是看上去像，其实有不少语法错误
 """
 
+PROMPT_WEB_SEARCH = """
+你是一个专业的信息检索助手。
+
+你的职责：
+为文章撰写Agent提供补充材料；
+补充的方向是为了让撰写出来的文章更加丰富，具有更大的吸引力和更强的SEO，而不是为了补充具体的招生信息；
+根据用户的原始需求，从权威的日语站点（Wikipedia、大学官网等）中检索与用户的原始需求有关联的内容。
+
+请直接以无格式的文本，按照相关度输出搜索结果（只要文本内容，不需要URL）。
+
+注意：
+- 不需要检索任何具体大学的招生政策，这些信息用户已经完全掌握
+- 仅使用日语的权威来源，输出结果也为日语，你不需要处理翻译的工作
+- 不要使用任何中文来源，也不要使用任何自媒体（如Twitter、Facebook等）的内容
+- 不要编造，不要主观臆断
+- 不要过长，控制在5000字以内
+"""
+
 
 class BlogGenerator:
 
     def __init__(self):
         load_dotenv()
         self.model = os.getenv("OPENAI_BLOG_WRITER_MODEL", "gpt-4o")
+        self.web_search_enabled = os.getenv("OPENAI_WEB_SEARCH_ENABLED", "true").lower() == "true"
+        self.web_search_model = os.getenv("OPENAI_WEB_SEARCH_MODEL", "gpt-4o-mini")
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             logger.error("OPENAI_API_KEY environment variable not set.")
@@ -192,41 +211,89 @@ class BlogGenerator:
         # 设置环境变量禁用重试，避免429错误时的自动重试
         os.environ["OPENAI_MAX_RETRIES"] = "0"
 
-        logger.info(f'BlogGenerator setup with model: {self.model}')
+        logger.info(f"完成BlogGenerator的初始化，模型: {self.model}，网络搜索: {self.web_search_enabled}")
+        if self.web_search_enabled:
+            logger.info(f"网络搜索启用，模型: {self.web_search_model}")
 
     def _create_agent(self, name: str, system_prompt: str) -> Agent:
         return Agent(name=name, model=self.model, instructions=system_prompt)
 
     def _run_agent_and_parse_json(self, agent: Agent, task_prompt: str) -> Dict:
-        logger.info(f"Running agent: {agent.name}...")
-        logger.info(f"Task prompt length: {len(task_prompt)} characters")
+        logger.info(f"执行Agent: {agent.name}...")
+        logger.info(f"任务提示词长度: {len(task_prompt)} 字符")
 
         with trace(f"Agent-{agent.name}"):
             input_items = [{"role": "user", "content": task_prompt}]
             try:
                 result = Runner.run_sync(agent, input_items)
                 if not result or not result.final_output:
-                    raise Exception(f"Agent {agent.name} failed to generate content.")
+                    raise Exception(f"Agent {agent.name} 生成内容失败。")
             except Exception as e:
-                logger.error(f"Agent {agent.name} execution failed: {e}", exc_info=True)
+                logger.error(f"Agent {agent.name} 执行失败: {e}", exc_info=True)
                 # 检查是否是429错误
                 if "429" in str(e):
-                    logger.warning(f"Detected 429 error in agent {agent.name}, this should not retry automatically")
+                    logger.warning(f"检测到Agent {agent.name} 的429错误，不应自动重试")
                 raise e
 
-        logger.info(f"Agent {agent.name} finished generation.")
-        logger.info(f"Agent {agent.name} output length: {len(result.final_output)} characters")
-        logger.debug(f"Agent {agent.name} raw output: {result.final_output[:500]}...")
+        logger.info(f"Agent {agent.name} 完成生成。")
+        logger.info(f"Agent {agent.name} 输出长度: {len(result.final_output)} 字符")
+        logger.debug(f"Agent {agent.name} 原始输出: {result.final_output[:500]}...")
 
         try:
             parsed_result = json.loads(result.final_output)
-            logger.info(f"Successfully parsed JSON from agent {agent.name}")
+            logger.info(f"成功解析Agent {agent.name} 的JSON输出")
             logger.debug(f"Parsed result keys: {list(parsed_result.keys())}")
             return parsed_result
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse JSON from agent {agent.name}. Error: {e}")
+            logger.error(f"解析JSON from agent {agent.name}失败. Error: {e}")
             logger.error(f"Raw output (first 1000 chars): {result.final_output[:1000]}")
             return {"title": "生成结果（JSON格式错误）", "content": result.final_output, "universities": []}
+
+    def _web_search_supplement(self, user_prompt: str, materials_data: List[Dict]) -> str:
+        """使用OpenAI Responses API的web_search工具基于用户输入与大学名称做一次检索，
+        返回简要中文要点以及URL列表，作为补充材料。
+
+        返回：格式化好的补充文本，失败时返回空字符串。
+        """
+        if not self.web_search_enabled:
+            return ""
+
+        try:
+            # 组合查询：用户要求 + 大学中文/日文名，强调仅检索日文权威来源
+            university_names = []
+            for u in materials_data:
+                name = u.get("name")
+                if name:
+                    university_names.append(name)
+            universities_text = "、".join(university_names) if university_names else ""
+            logger.debug(f"WEB Search - 相关大学: {universities_text}")
+
+            query_instruction = "请仅使用日语权威来源进行网络检索，补充与原材料相关的信息（比如大学的历史、特色、优势、名人、知名日剧等）。"
+
+            input_text = (f"用户需求：{user_prompt}\n"
+                          f"相关大学：{universities_text}\n"
+                          f"检索要求：{query_instruction}")
+
+            logger.debug(f"WEB Search - 输入文本: {input_text}")
+
+            search_agent = Agent(name="web_search_agent", model=self.web_search_model, instructions=PROMPT_WEB_SEARCH)
+            input_items = [{"role": "user", "content": [{"type": "input_text", "text": input_text}]}]
+            result = Runner.run_sync(search_agent, input_items)
+            text_output = (result.final_output or "").strip()
+
+            if not text_output:
+                return ""
+
+            # 控制补充长度，避免过长
+            if len(text_output) > 10000:
+                text_output = text_output[:10000] + "..."
+
+            supplement = ("网络检索补充材料（优先以大学官方信息为准）：\n\n"
+                          f"{text_output.strip()}\n")
+            return supplement
+        except Exception as e:
+            logger.warning(f"Web search supplement failed: {e}")
+            return ""
 
     def _get_university_materials(self, university_ids: List[str]) -> List[Dict]:
         client = get_mongo_client()
@@ -293,48 +360,59 @@ class BlogGenerator:
     def _generate_expand_mode(self, university_ids: List[str], user_prompt: str, system_prompt: str) -> Dict:
         materials_data = self._get_university_materials(university_ids)
         if not materials_data:
-            raise ValueError("Expand mode requires at least one university to be selected.")
+            raise ValueError("Expand mode requires at least one university to be selected.")        
 
-        # 首先尝试使用原始内容
-        materials_text = "\n\n---\n\n".join([f"大学名称: {u['name']}\n\n{u['original_md']}" for u in materials_data])
+        # 先执行一次web search补充材料
+        web_search_text = self._web_search_supplement(user_prompt=user_prompt, materials_data=materials_data)
+
+        reducer_agent = self._create_agent("article_reducer", PROMPT_REDUCER)
+        summaries = []
+
+        for material in materials_data:
+            if len(material['original_md']) > 10000:
+                logger.info(f"Reducing content for {material['name']}...")
+                task_prompt = f"请缩减以下文章内容：\n\n{material['original_md']}"
+                input_items = [{"role": "user", "content": task_prompt}]
+                try:
+                    result = Runner.run_sync(reducer_agent, input_items)
+                    if result and result.final_output:
+                        summaries.append(result.final_output)
+                except Exception as e:
+                    logger.error(f"Reducing content for {material['name']} failed: {e}", exc_info=True)
+                    # 如果缩减失败，则使用原始内容的截断版本
+                    summaries.append(material['original_md'][:10000] + "...")
+            else:
+                summaries.append(material['original_md'])
+
+            # 添加基础分析报告
+            summaries.append(material['report_md'])
+
+        # 合并所有内容
+        materials_text_report = "\n\n---\n\n".join(summaries)
+
         task_prompt = f"""
-请根据以下基础材料和扩展写作方向，撰写一篇扩展性的日本留学BLOG文章。
-基础材料：
-{materials_text}
-扩展写作方向：
+请根据以下基础材料、网络检索补充材料和扩展写作方向，撰写一篇扩展性的日本留学BLOG文章。
+用户指定的写作方向：
 {user_prompt}
+
+可信的基础材料：
+{materials_text_report}
+
+通过网络检索补充的材料（以下为日语，但不影响你输出中文）：
+{web_search_text}
 """
+        logger.debug(f"Blog写作（扩展模式）完整提示词: {task_prompt}")
+        if len(task_prompt) > 200000:
+            logger.warning(f"Blog写作（扩展模式）完整提示词长度达到：{len(task_prompt)}，超过200000字符，将会实施截断")
+            task_prompt = task_prompt[:200000] + "..."
+
         agent = self._create_agent("expand_writer", system_prompt)
 
         try:
             return self._run_agent_and_parse_json(agent, task_prompt)
         except Exception as e:
-            # 检查是否是OpenAI API速率限制错误
-            if "429" in str(e) and "tokens per min" in str(e):
-                logger.warning(f"OpenAI API速率限制错误，尝试使用基础分析报告替代长文本内容: {e}")
-
-                # 使用基础分析报告替代原始内容
-                materials_text_report = "\n\n---\n\n".join([f"大学名称: {u['name']}\n\n{u['report_md']}" for u in materials_data if u.get('report_md')])
-                if not materials_text_report:
-                    logger.error("没有可用的基础分析报告，无法继续处理")
-                    raise e
-
-                task_prompt_report = f"""
-请根据以下基础材料和扩展写作方向，撰写一篇扩展性的日本留学BLOG文章。
-基础材料（基于分析报告）：
-{materials_text_report}
-扩展写作方向：
-{user_prompt}
-"""
-
-                try:
-                    return self._run_agent_and_parse_json(agent, task_prompt_report)
-                except Exception as e2:
-                    logger.error(f"使用基础分析报告后仍然失败: {e2}", exc_info=True)
-                    raise e2
-            else:
-                # 其他类型的错误，直接抛出
-                raise e
+            logger.error(f"Blog写作（扩展模式）失败: {e}", exc_info=True)
+            raise e
 
     def _generate_compare_mode(self, university_ids: List[str], user_prompt: str, system_prompt: str) -> Dict:
         materials_data = self._get_university_materials(university_ids)
