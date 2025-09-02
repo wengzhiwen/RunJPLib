@@ -360,7 +360,7 @@ class BlogGenerator:
     def _generate_expand_mode(self, university_ids: List[str], user_prompt: str, system_prompt: str) -> Dict:
         materials_data = self._get_university_materials(university_ids)
         if not materials_data:
-            raise ValueError("Expand mode requires at least one university to be selected.")        
+            raise ValueError("Expand mode requires at least one university to be selected.")
 
         # 先执行一次web search补充材料
         web_search_text = self._web_search_supplement(user_prompt=user_prompt, materials_data=materials_data)
@@ -422,61 +422,34 @@ class BlogGenerator:
         reducer_agent = self._create_agent("article_reducer", PROMPT_REDUCER)
         summaries = []
 
-        try:
-            # 首先尝试使用原始内容
-            for material in materials_data:
-                logger.info(f"Reducing content for {material['name']}...")
-                task_prompt = f"请缩减以下文章内容：\n\n{material['original_md']}"
-                input_items = [{"role": "user", "content": task_prompt}]
-                result = Runner.run_sync(reducer_agent, input_items)
-                if result and result.final_output:
-                    summaries.append(result.final_output)
+        # 对每所大学先缩减 original_md，然后并入其 report_md 作为对比材料的一部分
+        for material in materials_data:
+            logger.info(f"Reducing content for {material['name']}...")
+            task_prompt = f"请缩减以下文章内容：\n\n{material['original_md']}"
+            input_items = [{"role": "user", "content": task_prompt}]
+            result = Runner.run_sync(reducer_agent, input_items)
+            if result and result.final_output:
+                summaries.append(result.final_output)
 
-            combined_summaries = "\n\n---\n\n".join(summaries)
-            task_prompt = f"""
+            # 无论是否存在，都追加 report_md（可能为空字符串）
+            summaries.append(material.get('report_md', ''))
+
+        combined_summaries = "\n\n---\n\n".join(summaries)
+        task_prompt = f"""
 请根据以下多所大学的信息，撰写一篇综合性的日本留学的BLOG。
+用户的写作要求如下：
+{user_prompt}
+
+以下是多所大学的基础材料：
 {combined_summaries}
-
-另外，请参考用户的以下要求来组织文章：
-{user_prompt}
 """
-            compare_agent = self._create_agent("comparative_writer", system_prompt)
+        compare_agent = self._create_agent("comparative_writer", system_prompt)
+
+        try:
             return self._run_agent_and_parse_json(compare_agent, task_prompt)
-
         except Exception as e:
-            # 检查是否是OpenAI API速率限制错误
-            if "429" in str(e) and "tokens per min" in str(e):
-                logger.warning(f"OpenAI API速率限制错误，尝试使用基础分析报告替代长文本内容: {e}")
-
-                # 使用基础分析报告替代原始内容
-                summaries_report = []
-                for material in materials_data:
-                    if material.get('report_md'):
-                        logger.info(f"Using analysis report for {material['name']}...")
-                        summaries_report.append(material['report_md'])
-                    else:
-                        # 如果没有分析报告，使用原始内容的截断版本
-                        logger.info(f"No analysis report for {material['name']}, using truncated original content")
-                        summaries_report.append(material['original_md'][:2000] + "..." if len(material['original_md']) > 2000 else material['original_md'])
-
-                combined_summaries_report = "\n\n---\n\n".join(summaries_report)
-                task_prompt_report = f"""
-请根据以下多所大学的信息，撰写一篇综合性的日本留学的BLOG。
-{combined_summaries_report}
-
-另外，请参考用户的以下要求来组织文章：
-{user_prompt}
-"""
-
-                try:
-                    compare_agent = self._create_agent("comparative_writer", system_prompt)
-                    return self._run_agent_and_parse_json(compare_agent, task_prompt_report)
-                except Exception as e2:
-                    logger.error(f"使用基础分析报告后仍然失败: {e2}", exc_info=True)
-                    raise e2
-            else:
-                # 其他类型的错误，直接抛出
-                raise e
+            logger.error(f"Blog写作（对比模式）失败: {e}", exc_info=True)
+            raise e
 
     def _generate_user_prompt_mode(self, user_prompt: str, system_prompt: str) -> Dict:
         if not user_prompt:
