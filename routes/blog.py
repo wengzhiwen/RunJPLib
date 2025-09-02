@@ -266,7 +266,12 @@ def get_weighted_recommended_blogs_with_summary(count=3):
         logging.info("\n=== 最终选择结果 ===")
         result = []
         for i, blog in enumerate(selected_blogs, 1):
-            text_content = re.sub(r'<[^>]+>', '', blog.get('content_md', ''))
+            # 使用markdown库将markdown内容转换为纯文本
+            md_content = blog.get('content_md', '')
+            # 先转换为HTML，然后去除HTML标签得到纯文本
+            md = markdown.Markdown(extensions=['extra', 'tables', 'fenced_code', 'sane_lists', 'nl2br', 'smarty'])
+            html_content = md.convert(md_content)
+            text_content = re.sub(r'<[^>]+>', '', html_content)
             summary = text_content[:100].strip() + '...' if len(text_content) > 100 else text_content
             result.append({'title': blog['title'], 'url_title': blog['url_title'], 'summary': summary})
             logging.info(f"最终推荐 {i}: {blog['title']} ({blog['publication_date']})")
@@ -297,7 +302,12 @@ def get_random_blogs_with_summary(count=3):
 
         result = []
         for blog in random_blogs:
-            text_content = re.sub(r'<[^>]+>', '', blog.get('content_md', ''))
+            # 使用markdown库将markdown内容转换为纯文本
+            md_content = blog.get('content_md', '')
+            # 先转换为HTML，然后去除HTML标签得到纯文本
+            md = markdown.Markdown(extensions=['extra', 'tables', 'fenced_code', 'sane_lists', 'nl2br', 'smarty'])
+            html_content = md.convert(md_content)
+            text_content = re.sub(r'<[^>]+>', '', html_content)
             summary = text_content[:100].strip() + '...' if len(text_content) > 100 else text_content
             result.append({'title': blog['title'], 'url_title': blog['url_title'], 'summary': summary})
         logging.info(f"成功获取了 {len(result)} 篇随机博客。")

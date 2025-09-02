@@ -1,5 +1,42 @@
 # 变更日志 (CHANGELOG)
 
+## [2025-09-02] - 推荐阅读摘要优化：正确去除markdown标签
+
+### 🐛 Bug修复
+- **推荐阅读摘要显示markdown标签问题**: 修复了推荐阅读板块中显示内容含有markdown标签的问题。现在使用markdown库正确地将markdown内容转换为纯文本，确保摘要中不包含任何markdown语法标记。
+- **摘要生成逻辑优化**: 将原来简单的正则表达式 `re.sub(r'<[^>]+>', '', content)` 替换为完整的markdown转换流程：
+  1. 使用 `markdown.Markdown()` 将markdown内容转换为HTML
+  2. 使用正则表达式去除HTML标签得到纯文本
+  3. 生成干净的摘要内容
+
+### 🔧 技术实现
+- **修改文件**: `routes/blog.py` 中的两个函数：
+  - `get_weighted_recommended_blogs_with_summary()`: 时间权重推荐算法
+  - `get_random_blogs_with_summary()`: 随机推荐算法（备选方案）
+- **转换逻辑**: 
+  ```python
+  md = markdown.Markdown(extensions=['extra', 'tables', 'fenced_code', 'sane_lists', 'nl2br', 'smarty'])
+  html_content = md.convert(md_content)
+  text_content = re.sub(r'<[^>]+>', '', html_content)
+  ```
+- **测试验证**: 创建了 `tools/test_markdown_summary.py` 测试工具，验证转换效果
+
+### 📊 实际效果验证
+- **测试结果**: 通过测试工具验证，成功将包含各种markdown语法的内容转换为纯文本
+- **转换效果**: 
+  - `**粗体**` → `粗体`
+  - `[链接文本](url)` → `链接文本`
+  - `> 引用` → `引用`
+  - `# 标题` → `标题`
+  - 所有markdown语法标记都被正确去除
+
+### 📁 文件更改
+- `routes/blog.py`: 优化推荐阅读摘要生成逻辑
+- `tools/test_markdown_summary.py`: 新增测试工具
+- `docs/CHANGELOG.md`: 记录本次修复
+
+---
+
 ## [2025-09-02] - 推荐阅读算法优化：时间权重推荐算法升级
 
 ### ✨ 功能改进
