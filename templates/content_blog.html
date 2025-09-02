@@ -8,6 +8,28 @@
 
 {{ content | safe }}
 
+{% if recommended_blogs %}
+<section class="recommended-reading mt-5">
+    <h2>推荐阅读</h2>
+    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4 mb-5">
+        {% for blog in recommended_blogs %}
+        <div class="col">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h3 class="card-title">
+                        <a href="{{ url_for('blog_detail', title=blog.url_title) }}">
+                            {{ blog.title }}
+                        </a>
+                    </h3>
+                    <p class="card-text">{{ blog.summary }}</p>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
 {% if debug_file_path %}
 <div style="position: fixed; bottom: 0; left: 0; width: 100%; background-color: #ffc107; padding: 10px; border-top: 2px solid #e0a800; font-family: monospace; font-size: 12px; z-index: 9999;">
     <strong>[DEBUG]</strong> 此页面内容由文件系统加载: {{ debug_file_path }}

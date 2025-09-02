@@ -367,11 +367,17 @@ def blog_detail_route(url_title):
         recommended_blogs = get_weighted_recommended_blogs_with_summary(10)
         return render_template('404.html', mode='blog', blogs=all_blogs_for_sidebar, recommended_blogs=recommended_blogs), 404
 
+    # 获取推荐阅读数据，排除当前博客
+    recommended_blogs = get_weighted_recommended_blogs_with_summary(3)
+    # 过滤掉当前博客，避免推荐自己
+    recommended_blogs = [b for b in recommended_blogs if b['url_title'] != url_title]
+
     return render_template(
         'content_blog.html',
         mode='blog',
         blogs=all_blogs_for_sidebar,
         blog=blog,
         content=blog['content'],
+        recommended_blogs=recommended_blogs,
         debug_file_path=None  # 文件路径不再适用
     )
