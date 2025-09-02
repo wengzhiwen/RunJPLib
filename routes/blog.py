@@ -2,8 +2,10 @@
 博客路由模块 (MongoDB Version)
 """
 from datetime import datetime
+from datetime import timedelta
 from datetime import timezone
 import logging
+import random
 import re
 
 from cachetools import cached
@@ -124,9 +126,165 @@ def update_blog_html_in_db(db, blog_id, html_content, update_time):
         logging.error(f"后台更新博客 {blog_id} 的HTML时出错: {e}")
 
 
+def get_weighted_recommended_blogs_with_summary(count=3):
+    """
+    根据时间权重算法获取推荐博客，并生成摘要。
+    
+    算法逻辑：
+    1. 从最近3天的blog中选1条
+    2. 从最近7天的blog中选1条不重复的
+    3. 从剩下的blog中选不重复的补足3条
+    
+    如果某个时间段没有足够的blog，会从其他时间段补充。
+    """
+    logging.info(f"=== 开始时间权重推荐算法，目标获取 {count} 篇博客 ===")
+    db = get_db()
+    if db is None:
+        logging.error("无法连接到MongoDB")
+        return []
+
+    try:
+        # 获取当前时间
+        now = datetime.now()
+        logging.info(f"当前时间: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+
+        # 计算时间范围
+        three_days_ago = now - timedelta(days=3)
+        seven_days_ago = now - timedelta(days=7)
+        logging.info(f"时间范围: 最近3天({three_days_ago.strftime('%Y-%m-%d')}) ~ 最近7天({seven_days_ago.strftime('%Y-%m-%d')})")
+
+        # 获取所有博客，按日期降序排序
+        pipeline = [{"$sort": {"publication_date": -1}}, {"$project": {"title": 1, "url_title": 1, "content_md": 1, "publication_date": 1, "_id": 0}}]
+        all_blogs = list(db.blogs.aggregate(pipeline))
+
+        if not all_blogs:
+            logging.warning("没有找到任何博客")
+            return []
+
+        logging.info(f"数据库中共有 {len(all_blogs)} 篇博客")
+
+        # 按时间范围分组博客
+        recent_3_days = []
+        recent_7_days = []
+        older_blogs = []
+
+        for blog in all_blogs:
+            pub_date = blog.get('publication_date')
+            if isinstance(pub_date, str):
+                try:
+                    pub_date = datetime.strptime(pub_date, '%Y-%m-%d')
+                except ValueError:
+                    # 如果日期格式不正确，归类到较老的文章中
+                    older_blogs.append(blog)
+                    continue
+
+            # 使用日期部分进行比较，忽略时间部分
+            pub_date_only = pub_date.date()
+            three_days_ago_date = three_days_ago.date()
+            seven_days_ago_date = seven_days_ago.date()
+
+            if pub_date_only >= three_days_ago_date:
+                recent_3_days.append(blog)
+            elif pub_date_only >= seven_days_ago_date:
+                recent_7_days.append(blog)
+            else:
+                older_blogs.append(blog)
+
+        logging.debug("=== 博客分组结果 ===")
+        logging.debug(f"最近3天: {len(recent_3_days)} 篇")
+        if recent_3_days:
+            for i, blog in enumerate(recent_3_days[:3], 1):  # 只显示前3个
+                logging.debug(f"  {i}. {blog['title']} ({blog['publication_date']})")
+
+        logging.debug(f"最近7天: {len(recent_7_days)} 篇")
+        if recent_7_days:
+            for i, blog in enumerate(recent_7_days[:3], 1):  # 只显示前3个
+                logging.debug(f"  {i}. {blog['title']} ({blog['publication_date']})")
+
+        logging.debug(f"更早: {len(older_blogs)} 篇")
+        if older_blogs:
+            for i, blog in enumerate(older_blogs[:3], 1):  # 只显示前3个
+                logging.debug(f"  {i}. {blog['title']} ({blog['publication_date']})")
+
+                # 按算法选择博客
+        selected_blogs = []
+        used_url_titles = set()
+
+        # 步骤1: 从最近3天的blog中选2条
+        logging.debug("\n=== Step 1: 从最近3天的blog中选2条 ===")
+        if recent_3_days:
+            # 选择2条，但不超过可用的数量
+            select_count = min(2, len(recent_3_days))
+            selected_3_days = random.sample(recent_3_days, select_count)
+            for i, selected in enumerate(selected_3_days, 1):
+                selected_blogs.append(selected)
+                used_url_titles.add(selected['url_title'])
+                logging.debug(f"✅ 成功选择 {i}: {selected['title']} ({selected['publication_date']})")
+        else:
+            logging.debug("❌ 最近3天没有博客，跳过Step 1")
+
+        # 步骤2: 从最近7天的blog中选不重复的补足3条
+        logging.debug("\n=== Step 2: 从最近7天的blog中选不重复的补足3条 ===")
+        available_7_days = [blog for blog in recent_7_days if blog['url_title'] not in used_url_titles]
+        logging.debug(f"可选的7天博客数量: {len(available_7_days)} (已排除已选择的 {len(used_url_titles)} 篇)")
+
+        if available_7_days:
+            # 计算还需要多少篇才能达到3篇
+            needed_from_7_days = 3 - len(selected_blogs)
+            if needed_from_7_days > 0:
+                # 选择需要的数量，但不超过可用的数量
+                select_count = min(needed_from_7_days, len(available_7_days))
+                selected_7_days = random.sample(available_7_days, select_count)
+                for i, selected in enumerate(selected_7_days, 1):
+                    selected_blogs.append(selected)
+                    used_url_titles.add(selected['url_title'])
+                    logging.debug(f"✅ 成功选择: {selected['title']} ({selected['publication_date']})")
+        else:
+            logging.debug("❌ 最近7天没有可选的博客，跳过Step 2")
+
+        # 步骤3: 从剩下的blog中选不重复的补足3条
+        logging.debug(f"\n=== Step 3: 从剩下的blog中选不重复的补足{count}条 ===")
+        remaining_blogs = []
+        for blog in all_blogs:
+            if blog['url_title'] not in used_url_titles:
+                remaining_blogs.append(blog)
+
+        logging.debug(f"剩余可选博客数量: {len(remaining_blogs)}")
+        needed_count = count - len(selected_blogs)
+        logging.debug(f"还需要选择: {needed_count} 篇")
+
+        if needed_count > 0 and remaining_blogs:
+            # 随机选择需要的数量
+            additional_selection = random.sample(remaining_blogs, min(needed_count, len(remaining_blogs)))
+            selected_blogs.extend(additional_selection)
+            for i, blog in enumerate(additional_selection, 1):
+                logging.debug(f"✅ 补充选择 {i}: {blog['title']} ({blog['publication_date']})")
+        elif needed_count > 0:
+            logging.info("❌ 没有更多博客可选，无法补足目标数量")
+
+        # 生成结果
+        logging.info("\n=== 最终选择结果 ===")
+        result = []
+        for i, blog in enumerate(selected_blogs, 1):
+            text_content = re.sub(r'<[^>]+>', '', blog.get('content_md', ''))
+            summary = text_content[:100].strip() + '...' if len(text_content) > 100 else text_content
+            result.append({'title': blog['title'], 'url_title': blog['url_title'], 'summary': summary})
+            logging.info(f"最终推荐 {i}: {blog['title']} ({blog['publication_date']})")
+
+        logging.info(f"=== 算法执行完成，成功获取了 {len(result)} 篇推荐博客 ===")
+        return result
+
+    except Exception as e:
+        logging.error(f"获取推荐博客时出错: {e}")
+        # 如果出错，回退到随机选择
+        logging.info("回退到随机推荐算法")
+        return get_random_blogs_with_summary(count)
+
+
 def get_random_blogs_with_summary(count=3):
     """
     从MongoDB获取指定数量的随机博客，并生成摘要。
+    这是原有的随机推荐算法，作为备选方案。
     """
     logging.info(f"从MongoDB获取 {count} 篇随机博客（带摘要）...")
     db = get_db()
@@ -171,7 +329,7 @@ def blog_list_route():
     blog_content = get_blog_by_url_title(latest_blog_meta['url_title'])
     if not blog_content:
         logging.error(f"无法获取最新博客 '{latest_blog_meta['url_title']}' 的内容，渲染404页面。")
-        return render_template('404.html', mode='blog', blogs=all_blogs, recommended_blogs=get_random_blogs_with_summary(10)), 404
+        return render_template('404.html', mode='blog', blogs=all_blogs, recommended_blogs=get_weighted_recommended_blogs_with_summary(10)), 404
 
     return render_template(
         'content_blog.html',
@@ -196,7 +354,7 @@ def blog_detail_route(url_title):
 
     if blog is None:
         logging.warning(f"博客 '{url_title}' 未找到，渲染404页面。")
-        recommended_blogs = get_random_blogs_with_summary(10)
+        recommended_blogs = get_weighted_recommended_blogs_with_summary(10)
         return render_template('404.html', mode='blog', blogs=all_blogs_for_sidebar, recommended_blogs=recommended_blogs), 404
 
     return render_template(

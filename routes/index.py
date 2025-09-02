@@ -18,7 +18,7 @@ from utils.cache import TTLCache
 from utils.mongo_client import get_db
 
 from .blog import get_all_blogs as get_all_blogs_for_sitemap
-from .blog import get_random_blogs_with_summary
+from .blog import get_weighted_recommended_blogs_with_summary
 
 # --- 缓存定义 ---
 university_list_cache = TTLCache(maxsize=1, ttl=600)
@@ -217,7 +217,7 @@ def index_route():
     """首页路由"""
     universities = get_sorted_universities_for_index()
     categories = load_categories()
-    recommended_blogs = get_random_blogs_with_summary(3)
+    recommended_blogs = get_weighted_recommended_blogs_with_summary(3)
     latest_updates = get_latest_updates()
     return render_template("index.html",
                            universities=universities,
