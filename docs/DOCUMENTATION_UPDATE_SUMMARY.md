@@ -112,6 +112,10 @@
 - `templates/content_original.html` - 改进PDF加载和显示
 - `requirements.txt` - 更新psutil版本
 
+### 3. 数据库与路由文档同步
+- `routes/index.py` - 大学详情查询新增按 `university_name_zh` 回退逻辑
+- `docs/mongoDB_design.md` - 新增“Query Behavior for University Details”与中文名索引建议
+
 ### 2. 配置文件
 - `.env.example` - 添加混合搜索配置示例
 

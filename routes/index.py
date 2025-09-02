@@ -181,12 +181,12 @@ def get_university_details(name, deadline=None):
     if db is None:
         return None
 
-    query = {"university_name": name}
+    query_primary = {"university_name": name}
     if deadline:
         try:
             # 将 YYYY-MM-DD 格式的字符串转换为 datetime 对象
             dt = datetime.strptime(deadline, "%Y-%m-%d")
-            query["deadline"] = dt
+            query_primary["deadline"] = dt
         except (ValueError, TypeError):
             # 如果格式不正确或 deadline 不是字符串，则忽略该条件
             logging.warning(f"无效的 deadline 格式: '{deadline}'，查询时将忽略。")
@@ -195,15 +195,24 @@ def get_university_details(name, deadline=None):
     sort_order = [("deadline", -1)] if not deadline else None
 
     try:
-        doc = db.universities.find_one(query, sort=sort_order)
+        # 1) 先按 university_name 匹配
+        doc = db.universities.find_one(query_primary, sort=sort_order)
+        if not doc:
+            # 2) 未命中则按 university_name_zh 回退匹配
+            query_fallback = {"university_name_zh": name}
+            if deadline and isinstance(query_primary.get("deadline"), datetime):
+                query_fallback["deadline"] = query_primary["deadline"]
+            doc = db.universities.find_one(query_fallback, sort=sort_order)
+            if not doc:
+                logging.warning(f"在MongoDB中未找到大学: {query_primary} 或 {query_fallback}")
+
         if doc:
             deadline_val = doc.get('deadline')
+            uni_log_name = doc.get('university_name') or doc.get('university_name_zh') or name
             if deadline_val and isinstance(deadline_val, datetime):
-                logging.info(f"成功找到大学: {doc['university_name']} ({deadline_val.strftime('%Y-%m-%d')})")
+                logging.info(f"成功找到大学: {uni_log_name} ({deadline_val.strftime('%Y-%m-%d')})")
             else:
-                logging.info(f"成功找到大学: {doc['university_name']} (deadline: {deadline_val})")
-        else:
-            logging.warning(f"在MongoDB中未找到大学: {query}")
+                logging.info(f"成功找到大学: {uni_log_name} (deadline: {deadline_val})")
         return doc
     except Exception as e:
         logging.error(f"查询大学详情时出错: {e}", exc_info=True)

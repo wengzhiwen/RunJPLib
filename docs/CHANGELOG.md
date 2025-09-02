@@ -1,5 +1,21 @@
 # 变更日志 (CHANGELOG)
 
+## [2025-09-02] - 大学详情查询支持中文名回退匹配
+
+### ✨ 功能改进
+- 当按 `university_name`（日文名）查询未命中时，自动回退使用 `university_name_zh`（中文名）进行匹配；其余渲染与数据使用逻辑保持不变。
+
+### 🔧 技术实现
+- 修改 `routes/index.py` 的 `get_university_details()`：
+  - 优先按 `university_name` 查找；
+  - 未命中则按 `university_name_zh` 查找；
+  - `deadline` 过滤与排序行为在两种匹配方式下保持一致。
+
+### 📚 文档
+- 更新 `docs/mongoDB_design.md`：补充“Query Behavior for University Details”与针对中文名的索引建议。
+
+---
+
 ## [2025-09-02] - Blog生成器对比模式优化
 
 ### ✨ 功能改进

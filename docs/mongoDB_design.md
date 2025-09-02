@@ -87,6 +87,19 @@ socketTimeoutMS=30000   # Socket operation timeout (30 seconds)
 - `deadline`
 - A compound index on `[("university_name", 1), ("deadline", -1)]` for efficient querying of the latest information for a specific university.
 
+### Query Behavior for University Details
+
+- Primary match uses `university_name`.
+- If no document is found, the system falls back to match `university_name_zh` with identical logic for `deadline` filtering and sorting.
+- Downstream rendering and data usage remain unchanged regardless of which field matched.
+
+### Additional Index Recommendation
+
+To support the fallback lookup efficiently, add the following indexes:
+
+- `university_name_zh`
+- A compound index on `[("university_name_zh", 1), ("deadline", -1)]` for retrieving the latest record by Chinese name.
+
 ## Blog Post Collection
 
 - **Collection Name:** `blogs`
