@@ -71,6 +71,11 @@ def _save_blog_to_db(blog_data):
 
         result = db.blogs.insert_one(blog_data)
         logging.info(f"New blog post created with ID: {result.inserted_id} (async).")
+
+        # 清除推荐博客缓存，确保新博客能及时出现在推荐中
+        from routes.blog import clear_recommended_blogs_cache
+        clear_recommended_blogs_cache()
+
         return str(result.inserted_id)
     except Exception as e:
         logging.error(f"异步保存博客失败: {e}")
@@ -98,6 +103,10 @@ def _update_blog_in_db(object_id, update_data, blog_id):
 
         db.blogs.update_one({"_id": object_id}, update_data)
         logging.info(f"Blog post with ID {blog_id} was updated (async).")
+
+        # 清除推荐博客缓存，确保更新的博客能及时反映在推荐中
+        from routes.blog import clear_recommended_blogs_cache
+        clear_recommended_blogs_cache()
     except Exception as e:
         logging.error(f"异步更新博客失败: {e}")
 
@@ -282,7 +291,7 @@ def chat_logs_page():
     try:
         # 查询所有会话，按最后活动时间排序
         sessions = list(db.chat_sessions.find().sort("last_activity", -1))
-        
+
         # 转换数据格式以匹配模板期望
         formatted_sessions = []
         for session in sessions:
@@ -295,7 +304,7 @@ def chat_logs_page():
                 "university_name": session.get("university_name", "未知"),
                 "user_agent": session.get("user_agent", "")
             })
-        
+
         return render_template("chat_logs.html", sessions=formatted_sessions)
     except Exception as e:
         logging.error(f"获取聊天会话列表失败: {e}", exc_info=True)
@@ -315,10 +324,10 @@ def chat_log_detail(session_id):
         session = db.chat_sessions.find_one({"session_id": session_id})
         if not session:
             return render_template("chat_log_detail.html", error="会话不存在", logs=[])
-        
+
         # 获取会话中的消息
         messages = session.get("messages", [])
-        
+
         # 转换消息格式以匹配模板期望
         formatted_logs = []
         for msg in messages:
@@ -328,7 +337,7 @@ def chat_log_detail(session_id):
                 "response": msg.get("ai_response", ""),
                 "processing_time": msg.get("processing_time", 0)
             })
-        
+
         return render_template("chat_log_detail.html", logs=formatted_logs, session_id=session_id)
     except Exception as e:
         logging.error(f"获取会话 {session_id} 的聊天记录失败: {e}", exc_info=True)
@@ -804,6 +813,11 @@ def save_blog():
 
                 result = db.blogs.insert_one(new_blog)
                 logging.info(f"New blog post created with ID: {result.inserted_id} (sync).")
+
+                # 清除推荐博客缓存，确保新博客能及时出现在推荐中
+                from routes.blog import clear_recommended_blogs_cache
+                clear_recommended_blogs_cache()
+
                 return jsonify({"message": "文章保存成功", "blog_id": str(result.inserted_id)})
             except Exception as sync_e:
                 logging.error(f"同步保存博客失败: {sync_e}")
@@ -874,6 +888,10 @@ def edit_blog(blog_id):
 
                 db.blogs.update_one({"_id": object_id}, update_data)
                 logging.info(f"Blog post with ID {blog_id} was updated (sync).")
+
+                # 清除推荐博客缓存，确保更新的博客能及时反映在推荐中
+                from routes.blog import clear_recommended_blogs_cache
+                clear_recommended_blogs_cache()
             except Exception as e:
                 logging.error(f"同步更新博客失败: {e}")
                 return render_template(

@@ -9,13 +9,18 @@ import random
 import re
 
 from cachetools import cached
+from cachetools import TTLCache
 from flask import render_template
 import markdown
 
 from utils.analytics import log_access
 from utils.cache import blog_list_cache
+from utils.cache import clear_blog_list_cache
 from utils.mongo_client import get_db
 from utils.thread_pool_manager import thread_pool_manager
+
+# --- 缓存定义 ---
+recommended_blogs_cache = TTLCache(maxsize=1, ttl=1800)  # 30分钟缓存，避免频繁重新计算
 
 # --- 基于MongoDB的博客功能函数 ---
 
@@ -126,18 +131,19 @@ def update_blog_html_in_db(db, blog_id, html_content, update_time):
         logging.error(f"后台更新博客 {blog_id} 的HTML时出错: {e}")
 
 
+@cached(recommended_blogs_cache)
 def get_weighted_recommended_blogs_with_summary(count=3):
     """
     根据时间权重算法获取推荐博客，并生成摘要。
     
     算法逻辑：
-    1. 从最近3天的blog中选1条
-    2. 从最近7天的blog中选1条不重复的
+    1. 从最近3天的blog中选2条
+    2. 从最近7天的blog中选不重复的补足3条
     3. 从剩下的blog中选不重复的补足3条
     
     如果某个时间段没有足够的blog，会从其他时间段补充。
     """
-    logging.info(f"=== 开始时间权重推荐算法，目标获取 {count} 篇博客 ===")
+    logging.info(f"缓存未命中或过期，开始时间权重推荐算法，目标获取 {count} 篇博客 ===")
     db = get_db()
     if db is None:
         logging.error("无法连接到MongoDB")
@@ -206,7 +212,7 @@ def get_weighted_recommended_blogs_with_summary(count=3):
             for i, blog in enumerate(older_blogs[:3], 1):  # 只显示前3个
                 logging.debug(f"  {i}. {blog['title']} ({blog['publication_date']})")
 
-                # 按算法选择博客
+        # 按算法选择博客
         selected_blogs = []
         used_url_titles = set()
 
@@ -315,6 +321,15 @@ def get_random_blogs_with_summary(count=3):
     except Exception as e:
         logging.error(f"获取随机博客时出错: {e}")
         return []
+
+
+def clear_recommended_blogs_cache():
+    """
+    清除推荐博客缓存，用于在博客更新后刷新推荐内容
+    """
+    global recommended_blogs_cache
+    recommended_blogs_cache.clear()
+    logging.info("已清除推荐博客缓存")
 
 
 # --- 博客路由 ---
