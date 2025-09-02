@@ -34,7 +34,7 @@ class BatchOCRTool:
             raise ValueError("OPENAI_API_KEY 环境变量未设置")
 
         # 从环境变量读取模型名称
-        self.model_name = os.getenv("OCR_MODEL_NAME", "gpt-4o-mini")
+        self.model_name = os.getenv("OPENAI_OCR_MODEL", "gpt-4o-mini")
         self.client = OpenAI()
 
         # 批处理配置

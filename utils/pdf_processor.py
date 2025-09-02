@@ -74,7 +74,7 @@ class Config:
             self.ocr_dpi = 150
 
         # 优先从环境变量读取OCR模型名称
-        self.ocr_model_name = os.getenv("OCR_MODEL_NAME", "gpt-4o-mini")
+        self.ocr_model_name = os.getenv("OPENAI_OCR_MODEL", "gpt-4o-mini")
 
         # 翻译配置
         try:

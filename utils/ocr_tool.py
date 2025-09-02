@@ -24,7 +24,7 @@ class OCRTool:
             raise ValueError("OPENAI_API_KEY 环境变量未设置")
 
         # 从环境变量读取模型名称
-        self.model_name = os.getenv("OCR_MODEL_NAME", "gpt-4o-mini")
+        self.model_name = os.getenv("OPENAI_OCR_MODEL", "gpt-4o-mini")
 
     def _perform_ocr(self, image_path):
         """使用OpenAI Vision模型进行OCR"""
