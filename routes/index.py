@@ -176,7 +176,7 @@ def get_university_details(name, deadline=None):
     """
     从MongoDB获取大学的详细信息。
     """
-    logging.info(f"从MongoDB获取大学详情: name='{name}', deadline='{deadline}'")
+    logging.debug(f"从MongoDB获取大学详情: name='{name}', deadline='{deadline}'")
     db = get_db()
     if db is None:
         return None

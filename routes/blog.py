@@ -266,10 +266,10 @@ def get_weighted_recommended_blogs_with_summary(count=3):
             for i, blog in enumerate(additional_selection, 1):
                 logging.debug(f"✅ 补充选择 {i}: {blog['title']} ({blog['publication_date']})")
         elif needed_count > 0:
-            logging.info("❌ 没有更多博客可选，无法补足目标数量")
+            logging.warning("❌ 没有更多博客可选，无法补足目标数量")
 
         # 生成结果
-        logging.info("\n=== 最终选择结果 ===")
+        logging.debug("\n=== 最终选择结果 ===")
         result = []
         for i, blog in enumerate(selected_blogs, 1):
             # 使用markdown库将markdown内容转换为纯文本
@@ -280,7 +280,7 @@ def get_weighted_recommended_blogs_with_summary(count=3):
             text_content = re.sub(r'<[^>]+>', '', html_content)
             summary = text_content[:100].strip() + '...' if len(text_content) > 100 else text_content
             result.append({'title': blog['title'], 'url_title': blog['url_title'], 'summary': summary})
-            logging.info(f"最终推荐 {i}: {blog['title']} ({blog['publication_date']})")
+            logging.debug(f"最终推荐 {i}: {blog['title']} ({blog['publication_date']})")
 
         logging.info(f"=== 算法执行完成，成功获取了 {len(result)} 篇推荐博客 ===")
         return result
@@ -297,7 +297,7 @@ def get_random_blogs_with_summary(count=3):
     从MongoDB获取指定数量的随机博客，并生成摘要。
     这是原有的随机推荐算法，作为备选方案。
     """
-    logging.info(f"从MongoDB获取 {count} 篇随机博客（带摘要）...")
+    logging.debug(f"从MongoDB获取 {count} 篇随机博客（带摘要）...")
     db = get_db()
     if db is None:
         return []
