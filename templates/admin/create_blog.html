@@ -54,18 +54,18 @@
 
     <!-- Generated Content -->
     <hr>
-    <h2 class="mt-4">生成结果</h2>
+    <h2 class="mt-4">文章编辑</h2>
     <div class="mb-3">
         <label for="blog-title" class="form-label"><strong>文章标题</strong></label>
-        <input type="text" class="form-control" id="blog-title" placeholder="AI生成的文章标题将显示在这里">
+        <input type="text" class="form-control" id="blog-title" placeholder="请输入文章标题，或使用上方生成后再编辑">
     </div>
     <div class="mb-3">
         <label for="blog-content" class="form-label"><strong>文章内容 (Markdown)</strong></label>
-        <textarea class="form-control" id="blog-content" rows="20" placeholder="AI生成的Markdown内容将显示在这里，您可以直接编辑。"></textarea>
+        <textarea class="form-control" id="blog-content" rows="20" placeholder="可直接在此输入Markdown内容，或使用上方生成后再编辑"></textarea>
     </div>
 
     <!-- Save Button -->
-    <button id="save-btn" class="btn btn-success w-100" disabled>保存文章</button>
+    <button id="save-btn" class="btn btn-success w-100">保存文章</button>
 </div>
 {% endblock %}
 
@@ -218,12 +218,13 @@ document.addEventListener('DOMContentLoaded', function () {
         }, 300);
     });
 
-    // Generate button logic
+    // Generate button逻辑
     generateBtn.addEventListener('click', function () {
         this.disabled = true;
         this.textContent = '正在生成中...';
         blogTitleInput.value = '';
         blogContentTextarea.value = '';
+        // 生成开始时先禁用保存按钮
         saveBtn.disabled = true;
 
         const selectedMode = document.querySelector('input[name="generationMode"]:checked').value;
@@ -248,9 +249,7 @@ document.addEventListener('DOMContentLoaded', function () {
         .then(data => {
             blogTitleInput.value = data.title || '';
             blogContentTextarea.value = data.content || '';
-            if (data.title && data.content) {
-                saveBtn.disabled = false;
-            }
+            updateSaveButtonState();
         })
         .catch(error => {
             alert('生成失败: ' + error.message);
@@ -262,7 +261,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    // Save button logic
+    // Save button逻辑
     saveBtn.addEventListener('click', function () {
         const title = blogTitleInput.value.trim();
         const content = blogContentTextarea.value.trim();
@@ -302,6 +301,15 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
+    // 当用户手动输入标题或内容时，自动切换保存按钮可用状态
+    function updateSaveButtonState() {
+        const hasTitle = blogTitleInput.value.trim().length > 0;
+        const hasContent = blogContentTextarea.value.trim().length > 0;
+        saveBtn.disabled = !(hasTitle && hasContent);
+    }
+    blogTitleInput.addEventListener('input', updateSaveButtonState);
+    blogContentTextarea.addEventListener('input', updateSaveButtonState);
+
     function addSelectedUniversity(university) {
         if (!selectedUniversities.some(u => u.id === university.id)) {
             selectedUniversities.push(university);
@@ -338,6 +346,8 @@ document.addEventListener('DOMContentLoaded', function () {
     // --- Initial Setup ---
     updateUIForMode('expand');
     renderSelectedUniversities();
+    // 初始根据输入状态设置保存按钮（默认无内容时禁用）
+    updateSaveButtonState();
 });
 </script>
 {% endblock %}
