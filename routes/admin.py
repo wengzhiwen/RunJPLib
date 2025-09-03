@@ -30,6 +30,7 @@ from utils.mongo_client import get_db
 from utils.mongo_client import get_mongo_client
 from utils.task_manager import task_manager
 from utils.thread_pool_manager import thread_pool_manager
+from utils.llama_index_integration import LlamaIndexIntegration
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin", template_folder="../templates/admin")
 
@@ -603,6 +604,16 @@ def delete_university(item_id):
     if db is None:
         return jsonify({"error": "数据库连接失败"}), 500
 
+    # First, delete the vector index
+    try:
+        llama_index_integration = LlamaIndexIntegration()
+        if not llama_index_integration.delete_university_index(item_id):
+            # Log a warning but don't block the deletion of the MongoDB record
+            logging.warning(f"Could not delete vector index for university {item_id}. It may need to be cleaned up manually.")
+    except Exception as e:
+        logging.error(f"An error occurred while deleting vector index for university {item_id}: {e}", exc_info=True)
+
+    # Then, delete the MongoDB record
     db.universities.delete_one({"_id": ObjectId(item_id)})
     return jsonify({"message": "删除成功"})
 

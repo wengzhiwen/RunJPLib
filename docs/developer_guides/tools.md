@@ -28,11 +28,6 @@
 
 ### 3. AI 对话索引状态检查 (`check_index_status.py`)
 - **用途**: 这是一个调试工具，用于检查特定大学在 MongoDB 中的最新数据时间戳，是否与 LlamaIndex/ChromaDB 中向量索引的时间戳一致。当遇到 AI 回答内容不是最新的情况时，可以用此工具来定位问题。
-- **使用方法**:
-  ```bash
-  # 检查“京都工芸繊維大学”的索引状态
-  python tools/check_index_status.py "京都工芸繊維大学"
-  ```
 
 ## 数据迁移与处理工具
 
