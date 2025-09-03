@@ -25,12 +25,13 @@ from flask_jwt_extended import verify_jwt_in_request
 from werkzeug.utils import secure_filename
 
 from utils.blog_generator import BlogGenerator
+from utils.cache import clear_blog_list_cache
 from utils.chat_logging import chat_logger
+from utils.llama_index_integration import LlamaIndexIntegration
 from utils.mongo_client import get_db
 from utils.mongo_client import get_mongo_client
 from utils.task_manager import task_manager
 from utils.thread_pool_manager import thread_pool_manager
-from utils.llama_index_integration import LlamaIndexIntegration
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin", template_folder="../templates/admin")
 
@@ -76,6 +77,7 @@ def _save_blog_to_db(blog_data):
         # 清除推荐博客缓存，确保新博客能及时出现在推荐中
         from routes.blog import clear_recommended_blogs_cache
         clear_recommended_blogs_cache()
+        clear_blog_list_cache()
 
         return str(result.inserted_id)
     except Exception as e:
@@ -108,6 +110,7 @@ def _update_blog_in_db(object_id, update_data, blog_id):
         # 清除推荐博客缓存，确保更新的博客能及时反映在推荐中
         from routes.blog import clear_recommended_blogs_cache
         clear_recommended_blogs_cache()
+        clear_blog_list_cache()
     except Exception as e:
         logging.error(f"异步更新博客失败: {e}")
 
@@ -636,7 +639,7 @@ def get_blogs():
     if db is None:
         return jsonify({"error": "数据库连接失败"}), 500
 
-    cursor = db.blogs.find({}).sort("publication_date", -1)
+    cursor = db.blogs.find({}).sort("created_at", -1)
     blogs = []
     for b in cursor:
         b["_id"] = str(b["_id"])
@@ -648,10 +651,20 @@ def get_blogs():
             if md_last_updated and md_last_updated > html_last_updated:
                 html_status = "待更新"
         b["html_status"] = html_status
-        if md_last_updated:
+
+        # 处理公开状态
+        is_public = b.get("is_public")
+        if is_public is False:
+            b["public_status"] = "私密"
+        else:
+            b["public_status"] = "公开"  # 默认为公开
+
+        if md_last_updated and isinstance(md_last_updated, datetime):
             b["md_last_updated"] = md_last_updated.strftime("%Y-%m-%d %H:%M:%S")
-        if html_last_updated:
+        if html_last_updated and isinstance(html_last_updated, datetime):
             b["html_last_updated"] = html_last_updated.strftime("%Y-%m-%d %H:%M:%S")
+
+        # 在API响应中移除大的字段
         b.pop("content_md", None)
         b.pop("content_html", None)
         blogs.append(b)
@@ -683,11 +696,91 @@ def clear_blogs():
 # --- 博客创建工具 ---
 
 
+def _generate_and_save_blog_async(mode, university_ids, user_prompt, system_prompt):
+    """
+    异步生成博客内容并保存到数据库。
+    这是一个将在后台线程中执行的函数。
+    """
+    logging.info(f"开始异步生成博客: mode={mode}, university_ids={university_ids}")
+    try:
+        generator = BlogGenerator()
+        result = generator.generate_blog_content(mode, university_ids, user_prompt, system_prompt)
+
+        if not result or 'title' not in result or 'content_md' not in result:
+            logging.error("博客生成失败或返回格式不正确。")
+            return
+
+        title = result['title'].strip()
+        content_md = result['content_md'].strip()
+        if not title or not content_md:
+            logging.error("生成的内容中缺少标题或正文。")
+            return
+
+        db = get_db()
+        if db is None:
+            logging.error("无法连接到数据库，无法保存生成的博客。")
+            return
+
+        # 创建URL友好标题
+        url_title = title.lower().replace(" ", "-").replace("/", "-")
+        url_title = "".join(c for c in url_title if c.isalnum() or c == "-")
+        # 防止URL标题重复
+        if db.blogs.find_one({"url_title": url_title}):
+            url_title = f"{url_title}-{uuid.uuid4().hex[:6]}"
+
+        new_blog = {
+            "title": title,
+            "url_title": url_title,
+            "publication_date": datetime.now().strftime("%Y-%m-%d"),
+            "created_at": datetime.now(),
+            "md_last_updated": datetime.now(),
+            "html_last_updated": None,
+            "content_md": content_md,
+            "content_html": None,
+            "is_public": False,  # 默认不公开
+            "generation_details": {
+                "mode": mode,
+                "university_ids": university_ids,
+                "user_prompt": user_prompt,
+                "system_prompt": system_prompt,
+                "generated_at": datetime.now()
+            }
+        }
+
+        # 直接在这里保存，不再使用_save_blog_to_db以避免循环导入和逻辑混淆
+        result = db.blogs.insert_one(new_blog)
+        logging.info(f"异步生成并保存了新的博客，ID: {result.inserted_id}")
+
+        # 清除缓存
+        from routes.blog import clear_recommended_blogs_cache
+        clear_recommended_blogs_cache()
+
+    except Exception as e:
+        logging.error(f"异步生成博客任务失败: {e}", exc_info=True)
+
+
 @admin_bp.route("/blog/create")
 @admin_required
 def create_blog_page():
-    """渲染博客创建页面"""
-    return render_template("create_blog.html")
+    """渲染博客创建页面，并处理用于'再生成'的查询参数"""
+    # 从查询参数获取用于再生成的数据
+    generation_data = {
+        "mode": request.args.get("mode", "expand"),
+        "university_ids": request.args.getlist("university_ids"),
+        "user_prompt": request.args.get("user_prompt", ""),
+        "system_prompt": request.args.get("system_prompt", "")
+    }
+    # 如果存在大学ID，需要获取大学名称以在模板中显示
+    if generation_data["university_ids"]:
+        db = get_db()
+        if db is not None:
+            try:
+                university_docs = db.universities.find({"_id": {"$in": [ObjectId(uid) for uid in generation_data["university_ids"]]}}, {"university_name": 1})
+                generation_data["universities"] = [{"_id": str(doc["_id"]), "university_name": doc["university_name"]} for doc in university_docs]
+            except Exception as e:
+                logging.error(f"为'再生成'查询大学名称失败: {e}")
+
+    return render_template("create_blog.html", generation_data=generation_data)
 
 
 @admin_bp.route("/api/universities/search", methods=["GET"])
@@ -733,8 +826,7 @@ def search_universities():
 @admin_required
 def generate_blog():
     """
-    使用AI生成博客内容。
-    需要包含'university_ids', 'user_prompt', 'system_prompt'的JSON。
+    接收博客生成请求，并将其作为后台任务异步执行。
     """
     data = request.get_json()
     if not data:
@@ -743,7 +835,7 @@ def generate_blog():
     university_ids = data.get("university_ids", [])
     user_prompt = data.get("user_prompt", "")
     system_prompt = data.get("system_prompt", "")
-    mode = data.get("mode", "expand")  # 默认为expand模式
+    mode = data.get("mode", "expand")
 
     if not system_prompt:
         return jsonify({"error": "系统提示词不能为空"}), 400
@@ -756,16 +848,19 @@ def generate_blog():
     if mode == "user_prompt_only" and not user_prompt:
         return jsonify({"error": "该模式需要填写用户提示词"}), 400
 
-    try:
-        generator = BlogGenerator()
-        result = generator.generate_blog_content(mode, university_ids, user_prompt, system_prompt)
-        if result:
-            return jsonify(result)
-        else:
-            return jsonify({"error": "生成文章失败"}), 500
-    except Exception as e:
-        logging.error(f"[Admin API] Blog generation failed: {e}", exc_info=True)
-        return jsonify({"error": "服务器内部错误"}), 500
+    # 提交到后台线程池执行
+    success = thread_pool_manager.submit_admin_task(_generate_and_save_blog_async,
+                                                    mode=mode,
+                                                    university_ids=university_ids,
+                                                    user_prompt=user_prompt,
+                                                    system_prompt=system_prompt)
+
+    if success:
+        logging.info("博客生成任务已成功提交到后台。")
+        return jsonify({"message": "博客生成任务已开始，请稍后在博客管理页面查看结果。"})
+    else:
+        logging.error("无法提交博客生成任务到线程池，可能线程池已满。")
+        return jsonify({"error": "无法开始生成任务，服务器繁忙，请稍后再试。"}), 503
 
 
 @admin_bp.route("/api/blog/save", methods=["POST"])
@@ -804,6 +899,7 @@ def save_blog():
             "html_last_updated": None,
             "content_md": content_md,
             "content_html": None,
+            "is_public": True,  # 手动创建的博客默认为公开
         }
 
         # 尝试异步保存博客
@@ -828,6 +924,7 @@ def save_blog():
                 # 清除推荐博客缓存，确保新博客能及时出现在推荐中
                 from routes.blog import clear_recommended_blogs_cache
                 clear_recommended_blogs_cache()
+                clear_blog_list_cache()
 
                 return jsonify({"message": "文章保存成功", "blog_id": str(result.inserted_id)})
             except Exception as sync_e:
@@ -862,6 +959,9 @@ def edit_blog(blog_id):
     if request.method == "POST":
         title = request.form.get("title", "").strip()
         content_md = request.form.get("content_md", "").strip()
+        # 新增：获取is_public状态，来自表单的值是字符串'true'或'false'
+        is_public_str = request.form.get("is_public", "true")
+        is_public = is_public_str.lower() == 'true'
 
         if not title or not content_md:
             blog = db.blogs.find_one({"_id": object_id})
@@ -877,6 +977,7 @@ def edit_blog(blog_id):
                 "url_title": url_title,
                 "content_md": content_md,
                 "md_last_updated": datetime.now(),
+                "is_public": is_public,  # 更新is_public字段
             }
         }
 
@@ -903,6 +1004,7 @@ def edit_blog(blog_id):
                 # 清除推荐博客缓存，确保更新的博客能及时反映在推荐中
                 from routes.blog import clear_recommended_blogs_cache
                 clear_recommended_blogs_cache()
+                clear_blog_list_cache()
             except Exception as e:
                 logging.error(f"同步更新博客失败: {e}")
                 return render_template(

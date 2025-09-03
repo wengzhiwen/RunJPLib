@@ -28,21 +28,23 @@ recommended_blogs_cache = TTLCache(maxsize=1, ttl=1800)  # 30分钟缓存，避�
 @cached(blog_list_cache)
 def get_all_blogs():
     """
-    从MongoDB获取所有博客的列表，用于侧边栏。
+    从MongoDB获取所有公开博客的列表，用于侧边栏。
     此函数的结果会被缓存5分钟。
     只获取必要字段以提高效率，并按日期降序排序。
     """
-    logging.info("缓存未命中或已过期，正在从MongoDB重新加载所有博客列表...")
+    logging.info("缓存未命中或已过期，正在从MongoDB重新加载所有公开博客列表...")
     db = get_db()
     if db is None:
         logging.error("无法连接到MongoDB")
         return []
 
     try:
-        blogs_cursor = db.blogs.find({}, {"title": 1, "url_title": 1, "publication_date": 1, "_id": 0}).sort("publication_date", -1)
+        # 只查找is_public不为false的博客
+        query = {"is_public": {"$ne": False}}
+        blogs_cursor = db.blogs.find(query, {"title": 1, "url_title": 1, "publication_date": 1, "_id": 0}).sort("publication_date", -1)
 
         blog_list = list(blogs_cursor)
-        logging.info(f"成功从MongoDB加载了 {len(blog_list)} 篇博客。")
+        logging.info(f"成功从MongoDB加载了 {len(blog_list)} 篇公开博客。")
         # 为了模板兼容性，将 publication_date 重命名为 date
         for blog in blog_list:
             blog['date'] = blog.get('publication_date')
@@ -54,7 +56,7 @@ def get_all_blogs():
 
 def get_blog_by_url_title(url_title):
     """
-    根据URL友好的标题从MongoDB获取单篇博客的完整内容。
+    根据URL友好的标题从MongoDB获取单篇公开博客的完整内容。
     实现了 Lazy Rebuild 机制来处理Markdown到HTML的转换。
     """
     logging.info(f"从MongoDB获取博客: {url_title}")
@@ -64,9 +66,11 @@ def get_blog_by_url_title(url_title):
         return None
 
     try:
-        blog_doc = db.blogs.find_one({"url_title": url_title})
+        # 只查找is_public不为false的博客
+        query = {"url_title": url_title, "is_public": {"$ne": False}}
+        blog_doc = db.blogs.find_one(query)
         if not blog_doc:
-            logging.warning(f"在MongoDB中未找到 url_title 为 '{url_title}' 的博客。")
+            logging.warning(f"在MongoDB中未找到公开的、url_title 为 '{url_title}' 的博客。")
             return None
 
         html_content = blog_doc.get('content_html')
@@ -159,15 +163,33 @@ def get_weighted_recommended_blogs_with_summary(count=3):
         seven_days_ago = now - timedelta(days=7)
         logging.info(f"时间范围: 最近3天({three_days_ago.strftime('%Y-%m-%d')}) ~ 最近7天({seven_days_ago.strftime('%Y-%m-%d')})")
 
-        # 获取所有博客，按日期降序排序
-        pipeline = [{"$sort": {"publication_date": -1}}, {"$project": {"title": 1, "url_title": 1, "content_md": 1, "publication_date": 1, "_id": 0}}]
+        # 获取所有公开博客，按日期降序排序
+        pipeline = [{
+            "$match": {
+                "is_public": {
+                    "$ne": False
+                }
+            }
+        }, {
+            "$sort": {
+                "publication_date": -1
+            }
+        }, {
+            "$project": {
+                "title": 1,
+                "url_title": 1,
+                "content_md": 1,
+                "publication_date": 1,
+                "_id": 0
+            }
+        }]
         all_blogs = list(db.blogs.aggregate(pipeline))
 
         if not all_blogs:
-            logging.warning("没有找到任何博客")
+            logging.warning("没有找到任何公开的博客")
             return []
 
-        logging.info(f"数据库中共有 {len(all_blogs)} 篇博客")
+        logging.info(f"数据库中共有 {len(all_blogs)} 篇公开博客")
 
         # 按时间范围分组博客
         recent_3_days = []
@@ -294,16 +316,33 @@ def get_weighted_recommended_blogs_with_summary(count=3):
 
 def get_random_blogs_with_summary(count=3):
     """
-    从MongoDB获取指定数量的随机博客，并生成摘要。
+    从MongoDB获取指定数量的随机公开博客，并生成摘要。
     这是原有的随机推荐算法，作为备选方案。
     """
-    logging.debug(f"从MongoDB获取 {count} 篇随机博客（带摘要）...")
+    logging.debug(f"从MongoDB获取 {count} 篇随机公开博客（带摘要）...")
     db = get_db()
     if db is None:
         return []
 
     try:
-        pipeline = [{"$sample": {"size": count}}, {"$project": {"title": 1, "url_title": 1, "content_md": 1, "_id": 0}}]
+        pipeline = [{
+            "$match": {
+                "is_public": {
+                    "$ne": False
+                }
+            }
+        }, {
+            "$sample": {
+                "size": count
+            }
+        }, {
+            "$project": {
+                "title": 1,
+                "url_title": 1,
+                "content_md": 1,
+                "_id": 0
+            }
+        }]
         random_blogs = list(db.blogs.aggregate(pipeline))
 
         result = []

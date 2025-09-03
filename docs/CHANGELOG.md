@@ -1,3 +1,28 @@
+## [2025-09-03] - 博客生成异步化与可见性控制
+
+### 🚀 新功能
+- **异步博客生成**: 解决了原先AI生成博客时因耗时过长导致的524超时错误。现在提交生成请求后，后端会立即响应，并在后台线程池中执行生成任务。
+- **博客可见性控制**:
+  - 新增 `is_public` 字段，管理员可在编辑页面控制单篇博客是否对公众显示。
+  - AI生成的新博客默认为“禁止对外显示”，需要手动开启。
+  - 手动创建的博客默认为“允许对外显示”。
+- **快速再生成**: 在编辑页面，为AI生成的博客提供了“再生成”按钮。点击后会使用原始的生成参数（模式、大学、提示词）在新标签页打开创建页面，方便快速迭代。
+
+### 🔧 技术实现
+- **后台任务**: 在 `routes/admin.py` 中，`generate_blog` 路由现在通过 `thread_pool_manager` 提交一个异步任务 `_generate_and_save_blog_async` 来执行实际的生成和数据库写入操作。
+- **数据模型扩展**: `blogs` 集合新增 `is_public` (Boolean) 和 `generation_details` (Object) 字段。
+- **前端页面改造**:
+  - `templates/admin/create_blog.html`: 移除了生成后的编辑区，改为提交任务后显示提示信息，并支持通过URL参数预填充表单以实现“再生成”功能。
+  - `templates/admin/edit_blog.html`: 新增了“是否对外显示”的开关，并根据 `generation_details` 字段条件性显示“再生成”按钮。
+- **查询兼容性**: 修改了 `routes/blog.py` 中所有面向公众的查询（`get_all_blogs`, `get_blog_by_url_title` 等），增加了 `{"is_public": {"$ne": false}}` 过滤条件，确保私有博客不会对外展示，同时兼容无该字段的老数据。
+
+### ✅ 影响
+- **解决超时**: 彻底解决了生产环境中的524超时问题。
+- **提升体验**: 管理员无需等待漫长的生成过程，可以立即进行其他操作。
+- **内容审核流程**: 新增的可见性控制为“先生成、后审核、再发布”的内容流程提供了支持。
+
+---
+
 # 变更日志 (CHANGELOG)
 
 ## [2025-09-02] - 文档重组
@@ -763,15 +788,6 @@
 ### 📚 文档
 - **文档同步**: 更新了 `docs/admin_panel.md` 和 `docs/thread_pool_architecture.md` 文档，以反映新的线程池命名。
 - **更新变更日志**: 在 `CHANGELOG.md` 中记录了此次重命名。
-
-### 📁 文件更改
-- `utils/thread_pool_manager.py`: 核心线程池实现更新。
-- `utils/analytics.py`: 更新了任务提交方法调用。
-- `routes/blog.py`: 更新了任务提交方法调用。
-- `templates/admin/dashboard.html`: 更新了前端显示和交互逻辑。
-- `docs/admin_panel.md`: 文档更新。
-- `docs/thread_pool_architecture.md`: 文档更新。
-- `docs/CHANGELOG.md`: 本次更新。
 
 ## [2025-08-29] - 新增大学中文名支持
 

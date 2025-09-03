@@ -46,13 +46,22 @@
   "md_last_updated": "DateTime", // Markdown 原文最后更新时间
   "html_last_updated": "DateTime", // HTML 缓存最后生成时间
   "content_md": "String", // Markdown 原文
-  "content_html": "String" // 缓存的 HTML 内容
+  "content_html": "String", // 缓存的 HTML 内容
+  "is_public": "Boolean", // 是否对公众可见。默认为 true，AI 生成的为 false
+  "generation_details": { // (可选) 如果由 AI 生成，则包含此对象
+    "mode": "String", // 生成模式 (expand, compare, etc.)
+    "university_ids": ["ObjectID", ...],
+    "user_prompt": "String",
+    "system_prompt": "String",
+    "generated_at": "DateTime"
+  }
 }
 ```
 
 **索引策略**:
 - `url_title` (唯一): 高效地通过 URL 查找文章。
 - `publication_date` (降序): 用于按发布日期快速排序，获取最新文章。
+- `is_public`: 用于在前端查询中快速筛选出公开的文章。
 
 ### 3. `access_logs` - 访问日志
 - **描述**: 记录对大学信息页和博客页的公开访问。
