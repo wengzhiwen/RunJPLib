@@ -37,6 +37,11 @@ class LlamaIndexIntegration:
         # 配置LlamaIndex全局设置
         LlamaSettings.embed_model = self.embedding_model
 
+        # 配置LlamaIndex缓存目录
+        cache_dir = os.getenv("LLAMA_INDEX_CACHE_DIR", "./llama_index_cache")
+        LlamaSettings.cache_dir = cache_dir
+        logger.debug(f"LlamaIndex缓存目录设置为: {cache_dir}")
+
         # 初始化ChromaDB客户端
         chroma_path = os.getenv("CHROMA_DB_PATH", "./chroma_db")
         self.chroma_client = chromadb.PersistentClient(path=chroma_path, settings=Settings(anonymized_telemetry=False, allow_reset=True))
@@ -66,8 +71,8 @@ class LlamaIndexIntegration:
 
         try:
             logger.info(f"=== 开始为大学 {university_name} 创建或更新索引 ===")
-            logger.info(f"大学ID: {university_id}")
-            logger.info(f"最后修改时间: {last_modified_iso}")
+            logger.debug(f"大学ID: {university_id}")
+            logger.debug(f"最后修改时间: {last_modified_iso}")
 
             if progress_callback:
                 progress_callback("开始处理文档", 10)
@@ -84,30 +89,25 @@ class LlamaIndexIntegration:
             for i, doc in enumerate(documents):
                 text_length = len(doc.text)
                 total_text_length += text_length
-                logger.info(f"文档 {i+1}: {doc.metadata.get('content_type', 'unknown')} - {text_length} 字符")
-                logger.info(f"  元数据: {doc.metadata}")
+                logger.debug(f"文档 {i+1}: {doc.metadata.get('content_type', 'unknown')} - {text_length} 字符")
+                logger.debug(f"  元数据: {doc.metadata}")
 
-            logger.info(f"总文档数: {len(documents)}, 总文本长度: {total_text_length} 字符")
+            logger.debug(f"总文档数: {len(documents)}, 总文本长度: {total_text_length} 字符")
 
             if progress_callback:
                 progress_callback("准备向量存储", 30)
 
-            # 步骤2: 准备ChromaDB集合
-            logger.info("--- 步骤2: 准备ChromaDB集合 ---")
+            # 步骤2: 清理旧索引并准备新集合
+            logger.info("--- 步骤2: 清理旧索引并准备新集合 ---")
+            self.delete_university_index(university_id)
+            
             collection_name = f"university_{university_id}"
-            logger.info(f"集合名称: {collection_name}")
-
-            # 确保清除旧索引
-            try:
-                self.chroma_client.delete_collection(name=collection_name)
-                logger.info(f"已删除旧的索引集合: {collection_name}")
-            except Exception:
-                logger.info(f"集合 {collection_name} 不存在或已删除")
+            logger.debug(f"集合名称: {collection_name}")
 
             # 使用 get_or_create_collection 原子化地创建集合并设置元数据
             collection_metadata = {"university_name": university_name, "source_last_modified": last_modified_iso}
             chroma_collection = self.chroma_client.get_or_create_collection(name=collection_name, metadata=collection_metadata)
-            logger.info(f"已创建新的索引集合，元数据: {collection_metadata}")
+            logger.debug(f"已创建新的索引集合，元数据: {collection_metadata}")
 
             if progress_callback:
                 progress_callback("创建向量存储", 50)
@@ -115,33 +115,33 @@ class LlamaIndexIntegration:
             # 步骤3: 创建向量存储和存储上下文
             logger.info("--- 步骤3: 创建向量存储和存储上下文 ---")
             vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
-            logger.info("成功创建ChromaVectorStore")
+            logger.debug("成功创建ChromaVectorStore")
 
             # 创建存储上下文 - 这是关键！
             storage_context = StorageContext.from_defaults(vector_store=vector_store)
-            logger.info("成功创建StorageContext")
+            logger.debug("成功创建StorageContext")
 
             if progress_callback:
                 progress_callback("生成向量嵌入", 70)
 
             # 步骤4: 生成向量嵌入和创建索引
             logger.info("--- 步骤4: 生成向量嵌入和创建索引 ---")
-            logger.info(f"使用文本分割器: {self.text_splitter}")
-            logger.info(f"文本分割器配置: chunk_size={self.text_splitter.chunk_size}, chunk_overlap={self.text_splitter.chunk_overlap}")
+            logger.debug(f"使用文本分割器: {self.text_splitter}")
+            logger.debug(f"文本分割器配置: chunk_size={self.text_splitter.chunk_size}, chunk_overlap={self.text_splitter.chunk_overlap}")
 
             # 记录文本分割前的状态
-            logger.info("开始文本分割和向量化...")
-            logger.info(f"预计分割后节点数: 约 {total_text_length // self.text_splitter.chunk_size + len(documents)} 个")
+            logger.debug("开始文本分割和向量化...")
+            logger.debug(f"预计分割后节点数: 约 {total_text_length // self.text_splitter.chunk_size + len(documents)} 个")
 
             try:
                 index = VectorStoreIndex.from_documents(documents, storage_context=storage_context, transformations=[self.text_splitter])
-                logger.info("VectorStoreIndex.from_documents调用成功")
+                logger.debug("VectorStoreIndex.from_documents调用成功")
 
                 # 强制持久化到向量存储 - 确保数据写入ChromaDB
-                logger.info("强制同步向量存储到ChromaDB...")
+                logger.debug("强制同步向量存储到ChromaDB...")
                 if hasattr(index, '_vector_store') and hasattr(index._vector_store, '_collection'):
                     # 触发向量存储的同步操作（如果有的话）
-                    logger.info("触发向量存储同步...")
+                    logger.debug("触发向量存储同步...")
 
                 # 验证索引是否包含节点
                 if hasattr(index, 'docstore') and hasattr(index.docstore, 'docs'):
@@ -154,7 +154,7 @@ class LlamaIndexIntegration:
                         content_type = node.metadata.get('content_type', 'unknown')
                         node_type_count[content_type] = node_type_count.get(content_type, 0) + 1
 
-                    logger.info(f"节点类型分布: {node_type_count}")
+                    logger.debug(f"节点类型分布: {node_type_count}")
 
                     # 验证ChromaDB中的实际存储
                     try:
@@ -163,39 +163,39 @@ class LlamaIndexIntegration:
                         time.sleep(1)
 
                         collection_count = chroma_collection.count()
-                        logger.info(f"ChromaDB集合中的实际文档数: {collection_count}")
+                        logger.debug(f"ChromaDB集合中的实际文档数: {collection_count}")
 
                         if collection_count > 0:
-                            logger.info("✅ ChromaDB存储验证成功")
+                            logger.debug("✅ ChromaDB存储验证成功")
                         else:
                             logger.error("❌ ChromaDB存储验证失败：集合为空")
 
                             # 尝试获取更多诊断信息
-                            logger.info("=== ChromaDB诊断信息 ===")
+                            logger.debug("=== ChromaDB诊断信息 ===")
                             try:
                                 # 检查集合元数据
                                 collection_metadata = chroma_collection.metadata
-                                logger.info(f"集合元数据: {collection_metadata}")
+                                logger.debug(f"集合元数据: {collection_metadata}")
 
                                 # 尝试获取集合名称
-                                logger.info(f"集合名称: {chroma_collection.name}")
+                                logger.debug(f"集合名称: {chroma_collection.name}")
 
                                 # 尝试列出所有集合
                                 all_collections = self.chroma_client.list_collections()
-                                logger.info(f"所有集合: {[col.name for col in all_collections]}")
+                                logger.debug(f"所有集合: {[col.name for col in all_collections]}")
 
                                 # 尝试直接查询集合
                                 try:
                                     # 尝试获取一个样本文档
                                     sample_result = chroma_collection.get(limit=1)
-                                    logger.info(f"样本查询结果: {sample_result}")
+                                    logger.debug(f"样本查询结果: {sample_result}")
                                 except Exception as e:
                                     logger.error(f"样本查询失败: {e}")
 
                             except Exception as e:
                                 logger.error(f"ChromaDB诊断失败: {e}")
 
-                            logger.info("=== 诊断信息结束 ===")
+                            logger.debug("=== 诊断信息结束 ===")
 
                     except Exception as e:
                         logger.error(f"ChromaDB验证失败: {e}")
@@ -217,20 +217,20 @@ class LlamaIndexIntegration:
             # 步骤5: 缓存索引并验证
             logger.info("--- 步骤5: 缓存索引并验证 ---")
             self.index_cache[university_id] = index
-            logger.info(f"索引已缓存到内存，缓存键: {university_id}")
+            logger.debug(f"索引已缓存到内存，缓存键: {university_id}")
 
             # 验证索引是否可用
             try:
-                logger.info("验证索引是否可用...")
+                logger.debug("验证索引是否可用...")
                 index.as_query_engine(similarity_top_k=1, response_mode="no_text")
-                logger.info("✅ 索引查询引擎创建成功，索引可用")
+                logger.debug("✅ 索引查询引擎创建成功，索引可用")
             except Exception as e:
                 logger.error(f"❌ 索引验证失败: {e}")
                 raise
 
             logger.info(f"=== 成功为大学 {university_name} 创建索引 ===")
-            logger.info(f"源文档版本: {last_modified_iso}")
-            logger.info(f"索引ID: {university_id}")
+            logger.debug(f"源文档版本: {last_modified_iso}")
+            logger.debug(f"索引ID: {university_id}")
 
             return university_id
 
@@ -322,7 +322,8 @@ class LlamaIndexIntegration:
 
     def delete_university_index(self, university_id: str) -> bool:
         """
-        删除大学索引
+        删除指定大学的索引（包括ChromaDB和内存缓存）。
+        这是一个集中的、可重用的函数。
 
         Args:
             university_id: 大学ID
@@ -332,14 +333,14 @@ class LlamaIndexIntegration:
         """
         try:
             collection_name = f"university_{university_id}"
-            self.chroma_client.delete_collection(collection_name)
+            self.chroma_client.delete_collection(name=collection_name)
             if university_id in self.index_cache:
                 del self.index_cache[university_id]
             logger.info(f"成功删除大学 {university_id} 的索引")
             return True
-
         except Exception as e:
-            logger.error(f"删除大学 {university_id} 索引时出错: {e}", exc_info=True)
+            # 如果集合不存在，也视为成功（幂等性）
+            logger.warning(f"删除大学 {university_id} 索引时出错（可能已不存在）: {e}")
             return False
 
     def list_indexed_universities(self) -> List[str]:
@@ -433,16 +434,3 @@ class LlamaIndexIntegration:
         except Exception as e:
             logger.error(f"获取大学 {university_id} 索引统计时出错: {e}")
             return None
-
-    def cleanup_old_indexes(self, keep_days: int = 30) -> int:
-        """
-        清理旧的索引
-
-        Args:
-            keep_days: 保留天数（暂未使用，预留参数）
-
-        Returns:
-            删除的索引数量
-        """
-        logger.info(f"清理旧索引功能暂未实现，keep_days参数: {keep_days}")
-        return 0
