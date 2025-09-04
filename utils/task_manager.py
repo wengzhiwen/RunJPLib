@@ -353,8 +353,8 @@ class TaskManager:
                 task_logger.error(f"Task {task_id} not found, cannot restart.")
                 return False
 
-            # 只有完成或失败的任务才能重启
-            if task["status"] not in ["completed", "failed"]:
+            # 只有完成、失败或中断的任务才能重启
+            if task["status"] not in ["completed", "failed", "interrupted"]:
                 task_logger.error(f"Task {task_id} is not in a restartable state: {task['status']}")
                 return False
 
