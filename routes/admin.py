@@ -1330,7 +1330,9 @@ def get_pdf_tasks():
                 # 检查卡在“处理中”状态的任务
                 if task.get("status") == "processing":
                     pid = task.get("pid")
-                    if pid and not is_pid_running(pid):
+                    # 如果任务是“处理中”状态，但没有PID（是旧的卡住的任务），
+                    # 或者有PID但进程已不存在，都标记为“已中断”
+                    if not pid or not is_pid_running(pid):
                         # 进程不存在，说明任务已中断
                         task["status"] = "interrupted"
                         db.processing_tasks.update_one({"_id": ObjectId(task["_id"])}, {
