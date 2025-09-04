@@ -19,14 +19,14 @@ from gridfs import GridFS
 from pdf2image import convert_from_path
 
 from utils.analysis_tool import AnalysisTool
-from utils.logging_config import setup_logger
+from utils.batch_ocr_tool import BatchOCRTool
+from utils.logging_config import setup_task_logger
 from utils.mongo_client import get_db
 from utils.mongo_client import get_mongo_client
 from utils.ocr_tool import OCRTool
 from utils.translate_tool import TranslateTool
-from utils.batch_ocr_tool import BatchOCRTool
 
-logger = setup_logger(logger_name="PDFProcessor", log_level="INFO")
+task_logger = setup_task_logger("TaskManager")
 
 
 class Config:
@@ -123,6 +123,7 @@ class PDFProcessor:
         pdf_file_path: str,
         restart_from_step: str = None,
         processing_mode: str = "normal",
+        task_manager_instance=None,
     ):
         """
         初始化PDF处理器
@@ -133,6 +134,7 @@ class PDFProcessor:
             pdf_file_path: PDF文件路径
             restart_from_step: 从哪个步骤开始重启（可选）
             processing_mode: 处理模式 ("normal" | "batch")
+            task_manager_instance: TaskManager的实例，用于回调
         """
         self.task_id = task_id
         self.university_name = university_name
@@ -140,6 +142,7 @@ class PDFProcessor:
         self.restart_from_step = restart_from_step
         self.processing_mode = processing_mode
         self.config = Config()
+        self.task_manager_instance = task_manager_instance
 
         # 创建任务专用的工作目录
         self.task_dir = self.config.temp_dir / f"task_{task_id}"
@@ -163,7 +166,7 @@ class PDFProcessor:
         try:
             client = get_mongo_client()
             if client is None:
-                logger.error("无法连接到数据库")
+                task_logger.error(f"[{self.task_id}] Cannot connect to DB to update status.")
                 return
 
             db = client.RunJPLib
@@ -192,9 +195,9 @@ class PDFProcessor:
                     **update_data,
                 }),
             )
-            logger.info(f"任务 {self.task_id} 状态已更新: {status}")
+            task_logger.info(f"[{self.task_id}] Task status updated: {status}, step: {current_step}")
         except Exception as e:
-            logger.error(f"更新任务状态失败: {e}")
+            task_logger.error(f"[{self.task_id}] Failed to update task status: {e}")
 
     def _log_message(self, message: str, level: str = "INFO"):
         """记录日志消息"""
@@ -208,15 +211,16 @@ class PDFProcessor:
                 db = client.RunJPLib
                 db.processing_tasks.update_one({"_id": ObjectId(self.task_id)}, {"$push": {"logs": log_entry}})
         except Exception as e:
-            logger.error(f"写入任务日志失败: {e}")
+            task_logger.error(f"[{self.task_id}] Failed to write log to DB: {e}")
 
         # 同时写入系统日志
+        full_message = f"[{self.task_id}] {message}"
         if level == "ERROR":
-            logger.error(message)
+            task_logger.error(full_message)
         elif level == "WARNING":
-            logger.warning(message)
+            task_logger.warning(full_message)
         else:
-            logger.info(message)
+            task_logger.info(full_message)
 
     def _load_previous_results(self):
         """从之前的文件中加载处理结果（用于重启时的数据恢复）"""
@@ -235,24 +239,24 @@ class PDFProcessor:
                 self.previous_results["report_md_content"] = f.read()
 
         if self.previous_results:
-            self._log_message(f"已加载 {len(self.previous_results)} 个之前的处理结果")
+            self._log_message(f"Loaded {len(self.previous_results)} previous results for restart.")
 
     def process_step_01_pdf2img(self, work: Work) -> bool:
         """步骤1: PDF转图片"""
         try:
-            self._log_message("开始PDF转图片...")
+            self._log_message("Starting PDF to image conversion...")
             self._update_task_status("processing", "01_pdf2img", 10)
 
             pdf_path = Path(self.pdf_file_path)
             if not pdf_path.exists():
-                raise FileNotFoundError(f"PDF文件不存在: {pdf_path}")
+                raise FileNotFoundError(f"PDF file not found: {pdf_path}")
 
             # 创建图片输出目录
             images_dir = self.task_dir / "images"
             images_dir.mkdir(exist_ok=True)
 
             # 转换PDF为图片
-            self._log_message(f"正在转换PDF文件: {pdf_path}")
+            self._log_message(f"Converting PDF file: {pdf_path}")
             images = convert_from_path(str(pdf_path), dpi=self.config.ocr_dpi)
 
             image_paths = []
@@ -260,7 +264,7 @@ class PDFProcessor:
                 image_path = images_dir / f"page_{i:03d}.png"
                 image.save(str(image_path), "PNG")
                 image_paths.append(str(image_path))
-                self._log_message(f"已保存页面 {i}: {image_path.name}")
+                self._log_message(f"Saved page {i}: {image_path.name}")
 
             # 保存图片路径列表到实例数据
             if not hasattr(self, "step_data"):
@@ -268,11 +272,11 @@ class PDFProcessor:
             self.step_data["image_paths"] = image_paths
             self.step_data["total_pages"] = len(image_paths)
 
-            self._log_message(f"PDF转图片完成，共 {len(image_paths)} 页")
+            self._log_message(f"PDF to image conversion complete. Total pages: {len(image_paths)}")
             return True
 
         except Exception as e:
-            error_msg = f"PDF转图片失败: {str(e)}"
+            error_msg = f"PDF to image conversion failed: {str(e)}"
             self._log_message(error_msg, "ERROR")
             return False
 
@@ -286,7 +290,7 @@ class PDFProcessor:
     def _process_normal_ocr(self) -> bool:
         """普通OCR处理模式"""
         try:
-            self._log_message("开始OCR识别（普通模式）...")
+            self._log_message("Starting OCR (normal mode)...")
             self._update_task_status("processing", "02_ocr", 30)
 
             # 初始化OCR工具
@@ -296,7 +300,7 @@ class PDFProcessor:
             # 获取图片路径
             image_paths = self._get_image_paths()
             if not image_paths:
-                raise ValueError("没有找到图片文件")
+                raise ValueError("No image files found for OCR")
 
             # 创建OCR输出目录
             ocr_dir = self.task_dir / "ocr"
@@ -304,7 +308,7 @@ class PDFProcessor:
 
             markdown_contents = []
             for i, image_path in enumerate(image_paths, 1):
-                self._log_message(f"正在OCR识别第 {i}/{len(image_paths)} 页...")
+                self._log_message(f"OCR processing page {i}/{len(image_paths)}...")
 
                 try:
                     md_content = self.ocr_tool.img2md(image_path)
@@ -316,33 +320,33 @@ class PDFProcessor:
                         with open(page_md_file, "w", encoding="utf-8") as f:
                             f.write(md_content)
 
-                        self._log_message(f"第 {i} 页OCR完成")
+                        self._log_message(f"Page {i} OCR completed.")
                     else:
-                        self._log_message(f"第 {i} 页为空白页，已跳过")
+                        self._log_message(f"Page {i} is blank, skipping.")
 
                 except Exception as e:
-                    self._log_message(f"第 {i} 页OCR失败: {str(e)}", "WARNING")
+                    self._log_message(f"Page {i} OCR failed: {str(e)}", "WARNING")
                     continue
 
             if not markdown_contents:
-                raise ValueError("所有页面OCR都失败了")
+                raise ValueError("All pages failed OCR processing")
 
             # 合并所有OCR结果
             combined_markdown = "\n\n".join(markdown_contents)
             self._save_ocr_results(combined_markdown)
 
-            self._log_message(f"OCR识别完成，共处理 {len(markdown_contents)} 页有效内容")
+            self._log_message(f"OCR (normal mode) complete. Processed {len(markdown_contents)} non-blank pages.")
             return True
 
         except Exception as e:
-            error_msg = f"OCR识别失败: {str(e)}"
+            error_msg = f"OCR failed: {str(e)}"
             self._log_message(error_msg, "ERROR")
             return False
 
     def _process_batch_ocr(self) -> bool:
         """批量OCR处理模式"""
         try:
-            self._log_message("开始OCR识别（批量模式）...")
+            self._log_message("Starting OCR (batch mode)...")
             self._update_task_status("processing", "02_ocr", 30)
 
             # 初始化批量OCR工具
@@ -354,7 +358,7 @@ class PDFProcessor:
             # 获取图片路径
             image_paths = self._get_image_paths()
             if not image_paths:
-                raise ValueError("没有找到图片文件")
+                raise ValueError("No image files found for batch OCR")
 
             # 保存图片路径列表到实例数据（确保数据一致性）
             if not hasattr(self, "step_data"):
@@ -367,36 +371,36 @@ class PDFProcessor:
 
             if "error" not in batch_status and batch_status.get("total_batches", 0) > 0:
                 # 已有批次，检查状态
-                self._log_message(f"发现已提交的批次，总数: {batch_status['total_batches']}")
+                self._log_message(f"Found existing batch submission. Total batches: {batch_status['total_batches']}")
                 if not batch_status.get("all_completed", False):
                     # 还没完成，继续等待
-                    self._log_message("批次尚未完成，继续等待...")
+                    self._log_message("Batch not yet complete, entering wait loop...")
                     self._update_task_status("processing", "02_ocr_batch_waiting", 35)
                     return self._wait_for_batch_completion()
                 else:
                     # 已完成，获取结果
-                    self._log_message("批次已完成，获取结果...")
+                    self._log_message("Batch already complete, retrieving results...")
                     return self._retrieve_and_save_batch_results()
             else:
                 # 没有批次，提交新的批次
-                self._log_message(f"提交批量OCR处理，共 {len(image_paths)} 页")
+                self._log_message(f"Submitting new batch OCR job for {len(image_paths)} pages.")
                 try:
                     batch_ids = self.batch_ocr_tool.submit_batch_ocr(image_paths, self.task_id)
-                    self._log_message(f"已提交 {len(batch_ids)} 个批次: {batch_ids}")
+                    self._log_message(f"Submitted {len(batch_ids)} batches: {batch_ids}")
                     self._update_task_status("processing", "02_ocr_batch_submitted", 32)
 
                     # 开始等待完成
                     return self._wait_for_batch_completion()
 
                 except Exception as e:
-                    self._log_message(f"提交批量OCR失败，回退到普通模式: {e}", "WARNING")
+                    self._log_message(f"Batch OCR submission failed, falling back to normal mode: {e}", "WARNING")
                     return self._process_normal_ocr()
 
         except Exception as e:
-            error_msg = f"批量OCR处理失败: {str(e)}"
+            error_msg = f"Batch OCR processing failed: {str(e)}"
             self._log_message(error_msg, "ERROR")
             # 回退到普通模式
-            self._log_message("回退到普通OCR模式", "WARNING")
+            self._log_message("Falling back to normal OCR mode.", "WARNING")
             return self._process_normal_ocr()
 
     def _wait_for_batch_completion(self) -> bool:
@@ -405,11 +409,15 @@ class PDFProcessor:
         check_interval = 5 * 60  # 每5分钟检查一次
         start_time = time.time()
 
+        # 首次进入等待时，通知 TaskManager 可以启动下一个任务
+        if self.task_manager_instance:
+            self.task_manager_instance.notify_task_is_waiting(self.task_id)
+
         while time.time() - start_time < max_wait_time:
             batch_status = self.batch_ocr_tool.check_batch_status(self.task_id)
 
             if "error" in batch_status:
-                self._log_message(f"检查批次状态失败: {batch_status['error']}", "ERROR")
+                self._log_message(f"Failed to check batch status: {batch_status['error']}", "ERROR")
                 return False
 
             completed = batch_status.get("completed_batches", 0)
@@ -417,10 +425,10 @@ class PDFProcessor:
             failed = batch_status.get("failed_batches", 0)
             processing = batch_status.get("processing_batches", 0)
 
-            self._log_message(f"批次状态: {completed}/{total} 完成, {failed} 失败, {processing} 处理中")
+            self._log_message(f"Batch status: {completed}/{total} complete, {failed} failed, {processing} in progress.")
 
             if batch_status.get("all_completed", False):
-                self._log_message("所有批次已完成！")
+                self._log_message("All batches completed!")
                 return self._retrieve_and_save_batch_results()
 
             # 更新进度
@@ -429,21 +437,21 @@ class PDFProcessor:
                 self._update_task_status("processing", "02_ocr_batch_waiting", progress)
 
             # 等待下次检查
-            self._log_message(f"等待 {check_interval//60} 分钟后再次检查...")
+            self._log_message(f"Waiting for {check_interval//60} minutes before next check...")
             time.sleep(check_interval)
 
         # 超时
-        self._log_message("批次处理超时，回退到普通模式", "WARNING")
+        self._log_message("Batch processing timed out, falling back to normal mode.", "WARNING")
         return self._process_normal_ocr()
 
     def _retrieve_and_save_batch_results(self) -> bool:
         """获取并保存批次结果"""
         try:
-            self._log_message("获取批次处理结果...")
+            self._log_message("Retrieving batch OCR results...")
             page_results = self.batch_ocr_tool.retrieve_batch_results(self.task_id, self.ocr_tool)
 
             if not page_results:
-                raise ValueError("批次处理未返回任何结果")
+                raise ValueError("Batch processing returned no results")
 
             # 创建OCR输出目录
             ocr_dir = self.task_dir / "ocr"
@@ -462,7 +470,7 @@ class PDFProcessor:
                         f.write(md_content)
 
             if not markdown_contents:
-                raise ValueError("所有页面批次处理都失败了")
+                raise ValueError("All pages failed batch OCR processing")
 
             # 合并所有OCR结果
             combined_markdown = "\n\n".join(markdown_contents)
@@ -471,11 +479,11 @@ class PDFProcessor:
             # 清理批次数据
             self.batch_ocr_tool.cleanup_batch_data(self.task_id)
 
-            self._log_message(f"批量OCR识别完成，共处理 {len(markdown_contents)} 页有效内容")
+            self._log_message(f"Batch OCR complete. Processed {len(markdown_contents)} non-blank pages.")
             return True
 
         except Exception as e:
-            error_msg = f"获取批次结果失败: {str(e)}"
+            error_msg = f"Failed to retrieve batch results: {str(e)}"
             self._log_message(error_msg, "ERROR")
             return False
 
@@ -509,7 +517,7 @@ class PDFProcessor:
     def process_step_03_translate(self, work: Work) -> bool:
         """步骤3: 翻译"""
         try:
-            self._log_message("开始翻译...")
+            self._log_message("Starting translation...")
             self._update_task_status("processing", "03_translate", 50)
 
             # 初始化翻译工具
@@ -531,10 +539,10 @@ class PDFProcessor:
                     original_md_content = ""
 
             if not original_md_content:
-                raise ValueError("没有找到原始MD内容")
+                raise ValueError("No original markdown content found for translation")
 
             # 执行翻译
-            self._log_message("正在翻译日语内容为中文...")
+            self._log_message("Translating Japanese content to Chinese...")
             translated_content = self.translate_tool.md2zh(original_md_content)
 
             # 保存翻译结果
@@ -548,18 +556,18 @@ class PDFProcessor:
             self.step_data["translated_md_path"] = str(translated_md_file)
             self.step_data["translated_md_content"] = translated_content
 
-            self._log_message("翻译完成")
+            self._log_message("Translation complete.")
             return True
 
         except Exception as e:
-            error_msg = f"翻译失败: {str(e)}"
+            error_msg = f"Translation failed: {str(e)}"
             self._log_message(error_msg, "ERROR")
             return False
 
     def process_step_04_analysis(self, work: Work) -> bool:
         """步骤4: 分析"""
         try:
-            self._log_message("开始分析...")
+            self._log_message("Starting analysis...")
             self._update_task_status("processing", "04_analysis", 70)
 
             # 初始化分析工具
@@ -584,10 +592,10 @@ class PDFProcessor:
                     translated_md_content = ""
 
             if not translated_md_content:
-                raise ValueError("没有找到翻译后的MD内容")
+                raise ValueError("No translated markdown content found for analysis")
 
             # 执行分析
-            self._log_message("正在分析招生信息...")
+            self._log_message("Analyzing admission information...")
             analysis_report = self.analysis_tool.md2report(translated_md_content)
 
             # 保存分析报告
@@ -598,11 +606,11 @@ class PDFProcessor:
             self.step_data["report_md_path"] = str(report_md_file)
             self.step_data["report_md_content"] = analysis_report
 
-            self._log_message("分析完成")
+            self._log_message("Analysis complete.")
             return True
 
         except Exception as e:
-            error_msg = f"分析失败: {str(e)}"
+            error_msg = f"Analysis failed: {str(e)}"
             self._log_message(error_msg, "ERROR")
             self.step_data["error"] = error_msg
             return False
@@ -623,24 +631,24 @@ class PDFProcessor:
                         university_name_zh = line_stripped.split(":", 1)[1].strip()
 
                     if university_name_zh:
-                        self._log_message(f"从分析报告中提取到大学中文名称: {university_name_zh}")
+                        self._log_message(f"Extracted Chinese university name from report: {university_name_zh}")
                         return university_name_zh
 
-            self._log_message("未在分析报告中找到大学中文名称", "WARNING")
+            self._log_message("Could not find Chinese university name in the report.", "WARNING")
             return None
         except Exception as e:
-            self._log_message(f"提取大学中文名称时出错: {e}", "ERROR")
+            self._log_message(f"Error extracting Chinese university name: {e}", "ERROR")
             return None
 
     def process_step_05_output(self, work: Work) -> bool:
         """步骤5: 输出到MongoDB"""
         try:
-            self._log_message("开始输出到数据库...")
+            self._log_message("Starting output to database...")
             self._update_task_status("processing", "05_output", 90)
 
             db = get_db()
             if db is None:
-                raise ValueError("无法连接到数据库")
+                raise ValueError("Cannot connect to the database")
 
             # 获取所有处理结果
             original_md = self.step_data.get("original_md_content", "")
@@ -657,14 +665,14 @@ class PDFProcessor:
                     report_md = self.previous_results.get("report_md_content", "")
 
             if not all([original_md, translated_md, report_md]):
-                raise ValueError("处理结果不完整")
+                raise ValueError("Processing results are incomplete")
 
             # 从分析报告中提取大学中文全称
             university_name_zh = self._extract_university_name_zh(report_md)
             if not university_name_zh:
                 # 如果没有提取到，使用原始大学名称作为备选
                 university_name_zh = self.university_name
-                self._log_message(f"使用原始大学名称作为中文名称: {university_name_zh}")
+                self._log_message(f"Using original university name as Chinese name: {university_name_zh}")
 
             # 将PDF文件保存到GridFS
             fs = GridFS(db)
@@ -704,11 +712,11 @@ class PDFProcessor:
             self.step_data["university_id"] = str(university_id)
             self.step_data["pdf_file_id"] = str(pdf_file_id)
 
-            self._log_message(f"成功保存到数据库，大学ID: {university_id}")
+            self._log_message(f"Successfully saved to database. University ID: {university_id}")
             return True
 
         except Exception as e:
-            error_msg = f"输出到数据库失败: {str(e)}"
+            error_msg = f"Output to database failed: {str(e)}"
             self._log_message(error_msg, "ERROR")
             self.step_data["error"] = error_msg
             return False
@@ -716,7 +724,7 @@ class PDFProcessor:
     def run_processing(self) -> bool:
         """运行完整的处理流程，使用Buffalo管理工作流程"""
         try:
-            self._log_message("开始处理PDF文件...")
+            self._log_message("Starting PDF processing workflow...")
             self._update_task_status("processing", "initializing", 5)
 
             # 初始化Buffalo工作流程
@@ -730,9 +738,9 @@ class PDFProcessor:
             project = buffalo.create_project(project_name)
 
             if not project:
-                raise ValueError("无法创建Buffalo项目")
+                raise ValueError("Failed to create Buffalo project")
 
-            self._log_message(f"Buffalo项目已创建: {project_name}")
+            self._log_message(f"Buffalo project created: {project_name}")
 
             # 设置处理函数映射
             function_map = {
@@ -745,7 +753,7 @@ class PDFProcessor:
 
             # 如果指定了重启步骤，设置之前的步骤为已完成
             if self.restart_from_step:
-                self._log_message(f"从步骤 {self.restart_from_step} 开始重启任务")
+                self._log_message(f"Restarting task from step: {self.restart_from_step}")
                 self._load_previous_results()
                 self._setup_restart_from_step(buffalo, project, self.restart_from_step)
 
@@ -757,11 +765,11 @@ class PDFProcessor:
 
                 if not work:
                     # 工作流程完成
-                    self._log_message("所有步骤执行完成")
+                    self._log_message("All workflow steps completed.")
                     break
 
                 step_name = work.name
-                self._log_message(f"Buffalo获取到任务: {step_name}")
+                self._log_message(f"Buffalo: Starting work step: {step_name}")
 
                 # 更新任务状态
                 progress = self._get_progress_for_step(step_name)
@@ -776,23 +784,23 @@ class PDFProcessor:
                         if step_success:
                             buffalo.update_work_status(project_name, work, "done")
                             buffalo.save_project(project, project_name)
-                            self._log_message(f"步骤 {step_name} 执行成功")
+                            self._log_message(f"Step {step_name} executed successfully.")
                         else:
                             buffalo.update_work_status(project_name, work, "failed")
                             buffalo.save_project(project, project_name)
-                            self._log_message(f"步骤 {step_name} 执行失败", "ERROR")
+                            self._log_message(f"Step {step_name} failed.", "ERROR")
                             success = False
                             break
 
                     except Exception as e:
                         buffalo.update_work_status(project_name, work, "failed")
                         buffalo.save_project(project, project_name)
-                        error_msg = f"步骤 {step_name} 执行异常: {str(e)}"
+                        error_msg = f"Exception during step {step_name}: {str(e)}"
                         self._log_message(error_msg, "ERROR")
                         success = False
                         break
                 else:
-                    error_msg = f"未知的步骤: {step_name}"
+                    error_msg = f"Unknown step name: {step_name}"
                     self._log_message(error_msg, "ERROR")
                     buffalo.update_work_status(project_name, work, "failed")
                     buffalo.save_project(project, project_name)
@@ -800,18 +808,18 @@ class PDFProcessor:
                     break
 
             if success:
-                self._log_message("PDF处理完成！")
+                self._log_message("PDF processing workflow completed successfully!")
                 self._update_task_status("completed", "finished", 100)
                 self._cleanup_temp_files()
                 return True
             else:
-                error_msg = "工作流程执行失败"
+                error_msg = "Workflow execution failed."
                 self._log_message(error_msg, "ERROR")
                 self._update_task_status("failed", "error", 0, error_msg)
                 return False
 
         except Exception as e:
-            error_msg = f"处理过程中发生错误: {str(e)}"
+            error_msg = f"An unexpected error occurred during processing: {str(e)}"
             self._log_message(error_msg, "ERROR")
             self._update_task_status("failed", "error", 0, error_msg)
             return False
@@ -826,15 +834,15 @@ class PDFProcessor:
                 for prev_work in project.works:
                     if prev_work.index < work.index:
                         buffalo.update_work_status(project_name, prev_work, "done")
-                        self._log_message(f"步骤 {prev_work.name} 标记为已完成")
+                        self._log_message(f"Marking step {prev_work.name} as done for restart.")
                     elif prev_work.index >= work.index:
                         buffalo.update_work_status(project_name, prev_work, "not_started")
-                        self._log_message(f"步骤 {prev_work.name} 重置为未开始")
+                        self._log_message(f"Resetting step {prev_work.name} to not_started for restart.")
                 break
 
         # 保存项目状态
         buffalo.save_project(project, project_name)
-        self._log_message("重启设置已保存")
+        self._log_message("Restart setup complete.")
 
     def _get_progress_for_step(self, step_name: str) -> int:
         """根据步骤名称获取对应的进度百分比"""
@@ -848,13 +856,18 @@ class PDFProcessor:
         return progress_map.get(step_name, 0)
 
     def _cleanup_temp_files(self):
-        """清理临时文件"""
+        """清理临时文件，增加安全校验"""
         try:
-            if self.task_dir.exists():
+            # 安全校验：确保要删除的是当前任务的专属目录
+            if self.task_dir.exists() and self.task_dir.name == f"task_{self.task_id}":
                 shutil.rmtree(self.task_dir)
-                self._log_message("临时文件已清理")
+                self._log_message("Temporary files cleaned up successfully.")
+            elif self.task_dir.exists():
+                # 如果目录存在但名称与任务ID不匹配，记录严重错误并跳过删除
+                error_msg = f"SAFETY HALT: Cleanup skipped. Directory name '{self.task_dir.name}' does not match task ID '{self.task_id}'."
+                self._log_message(error_msg, "ERROR")
         except Exception as e:
-            self._log_message(f"清理临时文件失败: {str(e)}", "WARNING")
+            self._log_message(f"Failed to clean up temporary files: {str(e)}", "WARNING")
 
 
 def run_pdf_processor(
@@ -863,6 +876,7 @@ def run_pdf_processor(
     pdf_file_path: str,
     restart_from_step: str = None,
     processing_mode: str = "normal",
+    task_manager_instance=None,
 ) -> bool:
     """
     运行PDF处理器的入口函数
@@ -873,9 +887,17 @@ def run_pdf_processor(
         pdf_file_path: PDF文件路径
         restart_from_step: 从哪个步骤开始重启（可选）
         processing_mode: 处理模式 ("normal" | "batch")
+        task_manager_instance: TaskManager的实例，用于回调
 
     返回:
         bool: 处理是否成功
     """
-    processor = PDFProcessor(task_id, university_name, pdf_file_path, restart_from_step, processing_mode)
+    processor = PDFProcessor(
+        task_id,
+        university_name,
+        pdf_file_path,
+        restart_from_step,
+        processing_mode,
+        task_manager_instance,
+    )
     return processor.run_processing()

@@ -3,17 +3,18 @@
 """
 from datetime import datetime
 from datetime import timedelta
+import os
 import threading
 import time
 from typing import Dict, List, Optional
 
 from bson.objectid import ObjectId
 
-from utils.logging_config import setup_logger
+from utils.logging_config import setup_task_logger
 from utils.mongo_client import get_db
 from utils.pdf_processor import run_pdf_processor
 
-logger = setup_logger(logger_name="TaskManager", log_level="INFO")
+task_logger = setup_task_logger("TaskManager")
 
 
 class TaskManager:
@@ -21,26 +22,43 @@ class TaskManager:
     _instance = None
     _lock = threading.Lock()
 
+    # 将并发数和初始化标志提升为类变量，以避免多线程初始化时的竞争条件
+    _initialized = False
+    try:
+        max_concurrent_tasks = int(os.getenv("PDF_MAX_CONCURRENT_TASKS", 1))
+    except (ValueError, TypeError):
+        max_concurrent_tasks = 1
+
     def __new__(cls):
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super(TaskManager, cls).__new__(cls)
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super(TaskManager, cls).__new__(cls)
         return cls._instance
 
     def __init__(self):
-        if hasattr(self, '_initialized'):
-            return
+        with self._lock:
+            if self._initialized:
+                return
 
-        self._initialized = True
-        self.running_tasks: Dict[str, threading.Thread] = {}
-        self.task_queue: List[str] = []
-        self.max_concurrent_tasks = 1  # 暂时只允许一个任务并发执行
-        self.cleanup_thread = None
-        self.queue_processor_thread = None
-        self.start_cleanup_service()
-        self.start_queue_processor()
-        self.recover_pending_tasks()
+            self.running_tasks: Dict[str, threading.Thread] = {}
+            self.task_queue: List[str] = []
+            task_logger.info(f"Task Manager initialized. Max concurrent tasks set to: {self.max_concurrent_tasks}")
+
+            self.cleanup_thread = None
+            self.queue_processor_thread = None
+            self.start_cleanup_service()
+            self.start_queue_processor()
+            self.recover_pending_tasks()
+            
+            self.__class__._initialized = True
+
+    def notify_task_is_waiting(self, task_id: str):
+        """
+        由工作线程调用，通知管理器一个任务已进入等待状态。
+        这会触发一次队列检查，以决定是否可以启动新任务。
+        """
+        task_logger.info(f"Notification received: Task {task_id} is waiting. Checking queue...")
+        self.process_queue()
 
     def start_cleanup_service(self):
         """启动清理服务，定期清理过期任务"""
@@ -51,13 +69,13 @@ class TaskManager:
                     self.cleanup_old_tasks()
                     time.sleep(3600)  # 每小时检查一次
                 except Exception as e:
-                    logger.error(f"清理服务错误: {e}")
+                    task_logger.error(f"Cleanup service error: {e}")
                     time.sleep(300)  # 错误时5分钟后重试
 
         if not self.cleanup_thread or not self.cleanup_thread.is_alive():
-            self.cleanup_thread = threading.Thread(target=cleanup_worker, daemon=True)
+            self.cleanup_thread = threading.Thread(target=cleanup_worker, daemon=True, name="CleanupThread")
             self.cleanup_thread.start()
-            logger.info("任务清理服务已启动")
+            task_logger.info("Task cleanup service started.")
 
     def cleanup_old_tasks(self):
         """清理7天前的任务记录"""
@@ -72,17 +90,17 @@ class TaskManager:
             result = db.processing_tasks.delete_many({"created_at": {"$lt": cutoff_date}, "status": {"$in": ["completed", "failed"]}})
 
             if result.deleted_count > 0:
-                logger.info(f"已清理 {result.deleted_count} 个过期任务")
+                task_logger.info(f"Cleaned up {result.deleted_count} old tasks.")
 
         except Exception as e:
-            logger.error(f"清理过期任务失败: {e}")
+            task_logger.error(f"Failed to clean up old tasks: {e}")
 
     def recover_pending_tasks(self):
         """恢复数据库中的待处理任务到队列中"""
         try:
             db = get_db()
             if db is None:
-                logger.warning("无法连接到数据库，跳过任务恢复")
+                task_logger.warning("Cannot connect to DB, skipping task recovery.")
                 return
 
             # 查找所有待处理的任务，按创建时间排序
@@ -96,13 +114,13 @@ class TaskManager:
                     recovered_count += 1
 
             if recovered_count > 0:
-                logger.info(f"已恢复 {recovered_count} 个待处理任务到队列中")
+                task_logger.info(f"Recovered {recovered_count} pending tasks to the queue.")
                 self.process_queue()
             else:
-                logger.info("没有待恢复的任务")
+                task_logger.info("No pending tasks to recover.")
 
         except Exception as e:
-            logger.error(f"恢复待处理任务失败: {e}")
+            task_logger.error(f"Failed to recover pending tasks: {e}")
 
     def start_queue_processor(self):
         """启动队列处理服务，定期检查和处理队列"""
@@ -127,16 +145,16 @@ class TaskManager:
 
                 except Exception as e:
                     consecutive_errors += 1
-                    logger.error(f"队列处理服务错误: {e}")
+                    task_logger.error(f"Queue processor service error: {e}")
 
                     # 指数退避策略
                     sleep_time = min(30 * (2**consecutive_errors), 600)  # 最大10分钟
                     time.sleep(sleep_time)
 
         if not self.queue_processor_thread or not self.queue_processor_thread.is_alive():
-            self.queue_processor_thread = threading.Thread(target=queue_processor_worker, daemon=True)
+            self.queue_processor_thread = threading.Thread(target=queue_processor_worker, daemon=True, name="QueueProcessorThread")
             self.queue_processor_thread.start()
-            logger.info("任务队列处理服务已启动")
+            task_logger.info("Task queue processor service started.")
 
     def create_task(self, university_name: str, pdf_file_path: str, original_filename: str, processing_mode: str = "normal") -> Optional[str]:
         """
@@ -154,7 +172,7 @@ class TaskManager:
         try:
             db = get_db()
             if db is None:
-                logger.error("无法连接到数据库")
+                task_logger.error("Cannot connect to DB, failed to create task.")
                 return None
 
             # 创建任务文档
@@ -175,41 +193,57 @@ class TaskManager:
             result = db.processing_tasks.insert_one(task_doc)
             task_id = str(result.inserted_id)
 
-            logger.info(f"任务已创建: {task_id} - {university_name}")
+            task_logger.info(f"Task created: {task_id} for {university_name}, mode: {processing_mode}.")
 
             # 将任务添加到队列
             self.task_queue.append(task_id)
+            task_logger.info(f"Task {task_id} added to queue. Queue size: {len(self.task_queue)}.")
             self.process_queue()
 
             return task_id
 
         except Exception as e:
-            logger.error(f"创建任务失败: {e}")
+            task_logger.error(f"Failed to create task: {e}")
             return None
 
     def process_queue(self):
         """处理任务队列"""
-        # 清理已完成的线程
-        finished_tasks = [task_id for task_id, thread in self.running_tasks.items() if not thread.is_alive()]
-        for task_id in finished_tasks:
-            del self.running_tasks[task_id]
+        with self._lock:
+            # 清理已完成的线程
+            finished_tasks = [task_id for task_id, thread in self.running_tasks.items() if not thread.is_alive()]
+            for task_id in finished_tasks:
+                task_logger.info(f"Task {task_id} thread finished. Removing from running tasks.")
+                del self.running_tasks[task_id]
 
-        # 检查是否可以启动新任务
-        if (len(self.running_tasks) < self.max_concurrent_tasks and self.task_queue):
-            task_id = self.task_queue.pop(0)
-            self._start_task(task_id)
+            # 检查是否可以启动新任务
+            available_slots = self.max_concurrent_tasks - len(self.running_tasks)
+            if available_slots <= 0:
+                task_logger.info(f"No available slots. Running tasks: {len(self.running_tasks)}, Max: {self.max_concurrent_tasks}.")
+                return
+
+            if not self.task_queue:
+                task_logger.info("Queue is empty. No new tasks to start.")
+                return
+
+            task_logger.info(f"Available slots: {available_slots}. Queue size: {len(self.task_queue)}. Attempting to start new task(s).")
+
+            # 启动新任务
+            num_to_start = min(available_slots, len(self.task_queue))
+            for _ in range(num_to_start):
+                task_id = self.task_queue.pop(0)
+                self._start_task(task_id)
 
     def _start_task(self, task_id: str):
         """启动单个任务"""
         try:
             db = get_db()
             if db is None:
-                logger.error("无法连接到数据库")
+                task_logger.error(f"Cannot connect to DB, unable to start task {task_id}.")
                 return
             task = db.processing_tasks.find_one({"_id": ObjectId(task_id)})
 
             if not task:
-                logger.error(f"任务不存在: {task_id}")
+                task_logger.error(f"Task {task_id} not found in DB.")
                 return
 
             # 更新任务状态为处理中
@@ -218,46 +252,48 @@ class TaskManager:
             # 创建处理线程
             def process_worker():
                 try:
-                    logger.info(f"开始处理任务: {task_id}")
+                    task_logger.info(f"Worker starts processing task: {task_id}")
                     restart_from_step = task.get("restart_from_step")
                     processing_mode = task.get("processing_mode", "normal")
                     success = run_pdf_processor(task_id=task_id,
                                                 university_name=task["university_name"],
                                                 pdf_file_path=task["pdf_file_path"],
                                                 restart_from_step=restart_from_step,
-                                                processing_mode=processing_mode)
+                                                processing_mode=processing_mode,
+                                                task_manager_instance=self)
 
                     if success:
-                        logger.info(f"任务处理成功: {task_id}")
+                        task_logger.info(f"Task processing completed successfully: {task_id}")
                     else:
-                        logger.error(f"任务处理失败: {task_id}")
+                        task_logger.error(f"Task processing failed: {task_id}")
 
                 except Exception as e:
-                    logger.error(f"任务处理异常: {task_id} - {e}")
+                    task_logger.error(f"Exception in task worker {task_id}: {e}", exc_info=True)
                     # 更新任务状态为失败
                     try:
-                        db = get_db()
-                        if db:
-                            db.processing_tasks.update_one({"_id": ObjectId(task_id)},
-                                                           {"$set": {
-                                                               "status": "failed",
-                                                               "error_message": str(e),
-                                                               "updated_at": datetime.utcnow()
-                                                           }})
+                        db_conn = get_db()
+                        if db_conn:
+                            db_conn.processing_tasks.update_one({"_id": ObjectId(task_id)},
+                                                                {"$set": {
+                                                                    "status": "failed",
+                                                                    "error_message": str(e),
+                                                                    "updated_at": datetime.utcnow()
+                                                                }})
                     except Exception as update_e:
-                        logger.error(f"更新任务状态失败: {update_e}")
+                        task_logger.error(f"Failed to update task status to 'failed' for {task_id}: {update_e}")
                 finally:
-                    # 处理队列中的下一个任务
+                    # 任务完成后，再次触发队列处理
+                    task_logger.info(f"Task {task_id} finished. Triggering queue processing.")
                     self.process_queue()
 
-            thread = threading.Thread(target=process_worker, daemon=True)
+            thread = threading.Thread(target=process_worker, daemon=True, name=f"TaskThread-{task_id}")
+            self.running_tasks[task_id] = thread
             thread.start()
 
-            self.running_tasks[task_id] = thread
-            logger.info(f"任务线程已启动: {task_id}")
+            task_logger.info(f"Task {task_id} started in a new thread. Running tasks: {len(self.running_tasks)}.")
 
         except Exception as e:
-            logger.error(f"启动任务失败: {task_id} - {e}")
+            task_logger.error(f"Failed to start task {task_id}: {e}", exc_info=True)
 
     def get_task_status(self, task_id: str) -> Optional[dict]:
         """获取任务状态"""
@@ -273,7 +309,7 @@ class TaskManager:
             return None
 
         except Exception as e:
-            logger.error(f"获取任务状态失败: {e}")
+            task_logger.error(f"Failed to get task status for {task_id}: {e}")
             return None
 
     def get_all_tasks(self, limit: int = 50) -> List[dict]:
@@ -295,7 +331,7 @@ class TaskManager:
             return tasks
 
         except Exception as e:
-            logger.error(f"获取任务列表失败: {e}")
+            task_logger.error(f"Failed to get all tasks: {e}")
             return []
 
     def restart_task_from_step(self, task_id: str, step_name: str) -> bool:
@@ -303,23 +339,23 @@ class TaskManager:
         try:
             db = get_db()
             if db is None:
-                logger.error("无法连接到数据库")
+                task_logger.error("Cannot connect to DB, failed to restart task.")
                 return False
             task = db.processing_tasks.find_one({"_id": ObjectId(task_id)})
 
             if not task:
-                logger.error(f"任务不存在: {task_id}")
+                task_logger.error(f"Task {task_id} not found, cannot restart.")
                 return False
 
             # 只有完成或失败的任务才能重启
             if task["status"] not in ["completed", "failed"]:
-                logger.error(f"任务状态不允许重启: {task['status']}")
+                task_logger.error(f"Task {task_id} is not in a restartable state: {task['status']}")
                 return False
 
             # 验证步骤名称
             valid_steps = ["01_pdf2img", "02_ocr", "03_translate", "04_analysis", "05_output"]
             if step_name not in valid_steps:
-                logger.error(f"无效的步骤名称: {step_name}")
+                task_logger.error(f"Invalid restart step name: {step_name}")
                 return False
 
             # 更新任务状态，设置重启步骤
@@ -336,7 +372,7 @@ class TaskManager:
                     "logs": {
                         "timestamp": datetime.utcnow(),
                         "level": "INFO",
-                        "message": f"任务被设置为从步骤 {step_name} 重启"
+                        "message": f"Task scheduled to restart from step: {step_name}"
                     }
                 }
             })
@@ -345,11 +381,11 @@ class TaskManager:
             self.task_queue.append(task_id)
             self.process_queue()
 
-            logger.info(f"任务 {task_id} 已设置为从步骤 {step_name} 重启")
+            task_logger.info(f"Task {task_id} has been scheduled to restart from step {step_name}.")
             return True
 
         except Exception as e:
-            logger.error(f"重启任务失败: {task_id} - {e}")
+            task_logger.error(f"Failed to restart task {task_id}: {e}")
             return False
 
     def start_pending_task(self, task_id: str) -> bool:
@@ -357,21 +393,21 @@ class TaskManager:
         try:
             db = get_db()
             if db is None:
-                logger.error("无法连接到数据库")
+                task_logger.error("Cannot connect to DB, failed to start pending task.")
                 return False
             task = db.processing_tasks.find_one({"_id": ObjectId(task_id)})
 
             if not task:
-                logger.error(f"任务不存在: {task_id}")
+                task_logger.error(f"Task {task_id} not found, cannot start.")
                 return False
 
             # 只有待处理的任务才能手动启动
             if task["status"] != "pending":
-                logger.error(f"任务状态不允许启动: {task['status']}")
+                task_logger.error(f"Task {task_id} is not in pending state: {task['status']}")
                 return False
 
             if task_id in self.task_queue:
-                logger.info(f"任务已在队列中: {task_id}")
+                task_logger.info(f"Task {task_id} is already in the queue.")
                 return True
 
             # 将任务添加到队列
@@ -384,7 +420,7 @@ class TaskManager:
                     "logs": {
                         "timestamp": datetime.utcnow(),
                         "level": "INFO",
-                        "message": "任务被手动添加到处理队列"
+                        "message": "Task manually added to the processing queue"
                     }
                 },
                 "$set": {
@@ -392,17 +428,17 @@ class TaskManager:
                 }
             })
 
-            logger.info(f"任务 {task_id} 已手动添加到处理队列")
+            task_logger.info(f"Task {task_id} has been manually added to the queue.")
             return True
 
         except Exception as e:
-            logger.error(f"手动启动任务失败: {task_id} - {e}")
+            task_logger.error(f"Failed to manually start task {task_id}: {e}")
             return False
 
     def cancel_task(self, task_id: str) -> bool:
         """取消任务（暂不实现）"""
         # 根据需求文档，暂不提供中断任务的功能
-        logger.warning(f"任务取消功能暂未实现: {task_id}")
+        task_logger.warning(f"Task cancellation is not implemented. Request for task {task_id} ignored.")
         return False
 
     def get_queue_status(self) -> dict:

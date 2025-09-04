@@ -1,56 +1,83 @@
-import datetime
+"""
+日志配置 - 为应用程序提供统一的日志记录设置
+"""
 import logging
 import os
+from datetime import datetime
+from logging.handlers import TimedRotatingFileHandler
 
 
-def setup_logger(logger_name="app", log_dir="log", log_level="INFO") -> logging.Logger:
+def setup_logger(logger_name="AppLogger", log_level="INFO", log_file="app.log"):
     """
-    设置通用日志记录器
-
-    参数:
-        logger_name (str): 日志记录器名称
-        log_dir (str): 日志文件保存目录
-        log_level (str): 日志级别，默认为INFO
-
-    返回:
-        logging.Logger: 配置好的日志记录器
+    配置并返回一个通用的、按天轮换的日志记录器。
     """
-    app_logger = logging.getLogger(logger_name)
-    level = os.getenv("LOG_LEVEL", log_level)
-    app_logger.setLevel(level)
+    log_directory = "log"
+    os.makedirs(log_directory, exist_ok=True)
+    log_filepath = os.path.join(log_directory, log_file)
 
-    # 关键修复：清除已存在的handlers，确保每次都使用正确的配置
-    if app_logger.hasHandlers():
-        app_logger.handlers.clear()
+    logger = logging.getLogger(logger_name)
+    # 从环境变量中获取日志级别，如果未设置则使用默认值
+    effective_log_level = os.getenv("LOG_LEVEL", log_level).upper()
+    logger.setLevel(effective_log_level)
 
-    formatter = logging.Formatter(fmt="%(asctime)s [%(levelname)s] %(name)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+    # 防止重复添加处理器
+    if not logger.handlers:
+        # 设置一个按天轮换的文件处理器
+        handler = TimedRotatingFileHandler(log_filepath, when="midnight", interval=1, backupCount=7, encoding="utf-8")
+        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
 
-    os.makedirs(log_dir, exist_ok=True)
-    log_file = os.path.join(log_dir, f"{logger_name}_{datetime.datetime.now().strftime('%Y%m%d')}.log")
+        # 添加一个控制台处理器，方便在开发时查看日志
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
 
-    file_handler = logging.FileHandler(log_file, mode='a', encoding='utf-8')
-    file_handler.setFormatter(formatter)
+    return logger
 
+
+def setup_task_logger(logger_name="TaskManager", log_level="INFO"):
+    """
+    为特定任务（如PDF处理）配置一个专用的、按天分割的日志记录器。
+    """
+    log_directory = "log"
+    os.makedirs(log_directory, exist_ok=True)
+
+    date_str = datetime.now().strftime("%Y%m%d")
+    log_filename = os.path.join(log_directory, f"{logger_name}_{date_str}.log")
+
+    logger = logging.getLogger(logger_name)
+    effective_log_level = os.getenv("LOG_LEVEL", log_level).upper()
+    logger.setLevel(effective_log_level)
+
+    # 为确保日志句柄的正确性（特别是日期变化时），总是先清空旧的
+    if logger.hasHandlers():
+        logger.handlers.clear()
+
+    # 添加文件处理器
+    handler = logging.FileHandler(log_filename, encoding="utf-8")
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(threadName)s - %(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+    # 添加控制台处理器
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
 
-    app_logger.addHandler(file_handler)
-    app_logger.addHandler(console_handler)
-    app_logger.propagate = False
+    # 禁止将日志消息传播到父记录器
+    logger.propagate = False
 
-    return app_logger
+    return logger
 
 
 def setup_retrieval_logger() -> logging.Logger:
     """
     设置专门用于记录检索操作的日志记录器
-
-    返回:
-        logging.Logger: 配置好的检索日志记录器
     """
     logger_name = "retrieval"
     log_dir = "log"
-    log_file_path = os.path.join(log_dir, f"{logger_name}_{datetime.datetime.now().strftime('%Y%m%d')}.log")
+    log_file_path = os.path.join(log_dir, f"{logger_name}_{datetime.now().strftime('%Y%m%d')}.log")
 
     retrieval_logger = logging.getLogger(logger_name)
     retrieval_logger.setLevel(logging.INFO)
