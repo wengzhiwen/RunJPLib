@@ -1,5 +1,6 @@
 from datetime import datetime
 from datetime import timedelta
+import errno
 from functools import wraps
 import json
 import logging
@@ -1295,6 +1296,26 @@ def upload_pdf():
         return jsonify({"error": "服务器内部错误"}), 500
 
 
+def is_pid_running(pid: int) -> bool:
+    """检查给定PID的进程是否仍在运行。"""
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    try:
+        # 发送信号0不会影响进程，但可以检查其是否存在
+        os.kill(pid, 0)
+    except OSError as err:
+        if err.errno == errno.ESRCH:
+            # 进程不存在
+            return False
+        elif err.errno == errno.EPERM:
+            # 没有权限，但意味着进程存在
+            return True
+        else:
+            # 其他操作系统错误
+            raise
+    return True
+
+
 @admin_bp.route("/api/pdf/tasks", methods=["GET"])
 @admin_required
 def get_pdf_tasks():
@@ -1302,13 +1323,30 @@ def get_pdf_tasks():
     try:
         limit = request.args.get("limit", 50, type=int)
         tasks = task_manager.get_all_tasks(limit=limit)
+        db = get_db()
 
-        # 格式化时间
-        for task in tasks:
-            if "created_at" in task:
-                task["created_at_str"] = task["created_at"].strftime("%Y-%m-%d %H:%M:%S")
-            if "updated_at" in task:
-                task["updated_at_str"] = task["updated_at"].strftime("%Y-%m-%d %H:%M:%S")
+        if db:
+            for task in tasks:
+                # 检查卡在“处理中”状态的任务
+                if task.get("status") == "processing":
+                    pid = task.get("pid")
+                    if pid and not is_pid_running(pid):
+                        # 进程不存在，说明任务已中断
+                        task["status"] = "interrupted"
+                        db.processing_tasks.update_one({"_id": ObjectId(task["_id"])}, {
+                            "$set": {
+                                "status": "interrupted",
+                                "updated_at": datetime.utcnow(),
+                                "error_message": "Task process was interrupted due to service restart or crash."
+                            }
+                        })
+                        logging.warning(f"Task {task['_id']} was marked as interrupted because its process (PID: {pid}) is no longer running.")
+
+                # 格式化时间
+                if "created_at" in task and isinstance(task["created_at"], datetime):
+                    task["created_at_str"] = task["created_at"].strftime("%Y-%m-%d %H:%M:%S")
+                if "updated_at" in task and isinstance(task["updated_at"], datetime):
+                    task["updated_at_str"] = task["updated_at"].strftime("%Y-%m-%d %H:%M:%S")
 
         return jsonify(tasks)
 

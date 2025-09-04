@@ -25,7 +25,7 @@ class TaskManager:
 
     # 将初始化标志提升为类变量，以避免多线程初始化时的竞争条件
     _initialized = False
-    
+
     max_concurrent_tasks = 1  # 默认值
 
     def __new__(cls):
@@ -252,8 +252,8 @@ class TaskManager:
                 task_logger.error(f"Task {task_id} not found in DB.")
                 return
 
-            # 更新任务状态为处理中
-            db.processing_tasks.update_one({"_id": ObjectId(task_id)}, {"$set": {"status": "processing", "updated_at": datetime.utcnow()}})
+            # 更新任务状态为处理中，并记录当前进程ID
+            db.processing_tasks.update_one({"_id": ObjectId(task_id)}, {"$set": {"status": "processing", "updated_at": datetime.utcnow(), "pid": os.getpid()}})
 
             # 创建处理线程
             def process_worker():

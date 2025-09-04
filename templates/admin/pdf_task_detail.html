@@ -63,6 +63,8 @@
                         <span class="badge bg-success fs-6">已完成</span>
                     {% elif task.status == 'failed' %}
                         <span class="badge bg-danger fs-6">失败</span>
+                    {% elif task.status == 'interrupted' %}
+                        <span class="badge bg-danger fs-6">已中断</span>
                     {% else %}
                         <span class="badge bg-secondary fs-6">未知</span>
                     {% endif %}
@@ -72,7 +74,7 @@
                     <div class="progress">
                         <div class="progress-bar 
                             {% if task.status == 'completed' %}bg-success
-                            {% elif task.status == 'failed' %}bg-danger
+                            {% elif task.status == 'failed' or task.status == 'interrupted' %}bg-danger
                             {% elif task.status == 'processing' %}bg-primary
                             {% else %}bg-secondary{% endif %}" 
                              role="progressbar" 
@@ -89,7 +91,7 @@
                 <p id="current-step"><strong>当前步骤:</strong> {{ task.current_step }}</p>
                 {% endif %}
                 
-                {% if task.status in ['completed', 'failed'] %}
+                {% if task.status in ['completed', 'failed', 'interrupted'] %}
                 <div class="mt-3">
                     <div class="dropdown">
                         <button class="btn btn-warning btn-sm dropdown-toggle" type="button" id="restartDropdown" data-bs-toggle="dropdown" aria-expanded="false">

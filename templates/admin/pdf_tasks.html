@@ -196,7 +196,8 @@ function getStatusBadge(status) {
         'pending': '<span class="badge bg-secondary">等待中</span>',
         'processing': '<span class="badge bg-primary">处理中</span>',
         'completed': '<span class="badge bg-success">已完成</span>',
-        'failed': '<span class="badge bg-danger">失败</span>'
+        'failed': '<span class="badge bg-danger">失败</span>',
+        'interrupted': '<span class="badge bg-danger">已中断</span>'
     };
     return badges[status] || '<span class="badge bg-secondary">未知</span>';
 }
@@ -206,7 +207,8 @@ function getProgressBarClass(status) {
         'pending': 'bg-secondary',
         'processing': 'bg-primary',
         'completed': 'bg-success',
-        'failed': 'bg-danger'
+        'failed': 'bg-danger',
+        'interrupted': 'bg-danger'
     };
     return classes[status] || 'bg-secondary';
 }
