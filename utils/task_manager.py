@@ -9,6 +9,7 @@ import time
 from typing import Dict, List, Optional
 
 from bson.objectid import ObjectId
+import dotenv
 
 from utils.logging_config import setup_task_logger
 from utils.mongo_client import get_db
@@ -22,12 +23,10 @@ class TaskManager:
     _instance = None
     _lock = threading.Lock()
 
-    # 将并发数和初始化标志提升为类变量，以避免多线程初始化时的竞争条件
+    # 将初始化标志提升为类变量，以避免多线程初始化时的竞争条件
     _initialized = False
-    try:
-        max_concurrent_tasks = int(os.getenv("PDF_MAX_CONCURRENT_TASKS", 1))
-    except (ValueError, TypeError):
-        max_concurrent_tasks = 1
+    
+    max_concurrent_tasks = 1  # 默认值
 
     def __new__(cls):
         with cls._lock:
@@ -40,6 +39,13 @@ class TaskManager:
             if self._initialized:
                 return
 
+            # 在实例初始化时加载环境变量
+            try:
+                dotenv.load_dotenv()
+                self.max_concurrent_tasks = int(os.getenv("PDF_MAX_CONCURRENT_TASKS", 1))
+            except (ValueError, TypeError):
+                self.max_concurrent_tasks = 1
+
             self.running_tasks: Dict[str, threading.Thread] = {}
             self.task_queue: List[str] = []
             task_logger.info(f"Task Manager initialized. Max concurrent tasks set to: {self.max_concurrent_tasks}")
@@ -49,7 +55,7 @@ class TaskManager:
             self.start_cleanup_service()
             self.start_queue_processor()
             self.recover_pending_tasks()
-            
+
             self.__class__._initialized = True
 
     def notify_task_is_waiting(self, task_id: str):
