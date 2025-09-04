@@ -1325,7 +1325,7 @@ def get_pdf_tasks():
         tasks = task_manager.get_all_tasks(limit=limit)
         db = get_db()
 
-        if db:
+        if db is not None:
             for task in tasks:
                 # 检查卡在“处理中”状态的任务
                 if task.get("status") == "processing":
