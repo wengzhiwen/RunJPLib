@@ -1,8 +1,3 @@
-"""
-大学聊天API路由处理器
-为特定大学提供聊天API服务
-"""
-
 from datetime import datetime
 import logging
 import time
@@ -11,18 +6,18 @@ from flask import jsonify
 from flask import request
 
 from routes.index import get_university_details
+from routes.university_chat import chat_bp
+from routes.university_chat.security import get_client_ip
 from utils.chat_logging import chat_logger
 from utils.chat_manager import ChatManager
 from utils.chat_security import add_security_headers
 from utils.chat_security import get_csrf_token_for_session
 from utils.chat_security import public_chat_api_protection
-from utils.university_document_manager import UniversityDocumentManager
 
 logger = logging.getLogger(__name__)
 
 # 全局实例（懒加载）
 chat_manager = None
-doc_manager = None
 
 
 def get_chat_manager():
@@ -38,93 +33,131 @@ def get_chat_manager():
     return chat_manager
 
 
-def get_doc_manager():
-    """获取文档管理器实例（懒加载）"""
-    global doc_manager
-    if doc_manager is None:
-        doc_manager = UniversityDocumentManager()
-        logger.info("大学文档管理器初始化成功")
-    return doc_manager
+def _get_university_context(university_name: str, deadline: str = None, session_id: str = None):
+    """获取大学上下文信息"""
+    university_id = None
+
+    # 如果有session_id，尝试从会话中恢复大学信息
+    if session_id:
+        session_detail = chat_logger.get_chat_session_detail(session_id)
+        if session_detail:
+            university_id = session_detail.get("university_id")
+            if session_detail.get("university_name"):
+                university_name = session_detail.get("university_name")
+
+    # 如果未能从会话恢复，则按大学名称查询
+    if not university_id:
+        university_doc = get_university_details(university_name, deadline)
+        if not university_doc:
+            return None, None
+        university_id = str(university_doc["_id"])
+
+    return university_id, university_name
 
 
-def get_client_ip():
-    """获取客户端IP地址"""
-    # 优先使用X-Forwarded-For（考虑代理）
-    x_forwarded_for = request.headers.get("X-Forwarded-For")
-    if x_forwarded_for:
-        return x_forwarded_for.split(",")[0].strip()
-
-    # 使用X-Real-IP
-    x_real_ip = request.headers.get("X-Real-IP")
-    if x_real_ip:
-        return x_real_ip
-
-    # 最后使用remote_addr
-    return request.remote_addr or "unknown"
-
-
-def handle_university_chat_api(university_name: str, endpoint: str, deadline: str = None):
-    """
-    处理大学聊天API请求
-
-    Args:
-        university_name: 大学名称
-        endpoint: API端点
-        deadline: 截止日期（可选）
-
-    Returns:
-        Flask Response
-    """
+@chat_bp.route('/<university_name>/create-session', methods=['POST'])
+@chat_bp.route('/<university_name>/<deadline>/create-session', methods=['POST'])
+@public_chat_api_protection(max_requests=5, time_window=60)
+def create_chat_session_route(university_name, deadline=None):
+    """创建或恢复聊天会话"""
     try:
         user_ip = get_client_ip()
+        university_id, university_name = _get_university_context(university_name, deadline)
 
-        # 对非创建会话的端点，若提供了 session_id，则通过会话恢复上下文，避免必须依赖 university_name
-        data = None
-        university_id = None
-        if endpoint in {"send-message", "get-history", "clear-session", "delete-session"}:
-            try:
-                data = request.get_json() or {}
-            except Exception:
-                data = {}
-            session_id = data.get("session_id") if isinstance(data, dict) else None
-            if session_id:
-                session_detail = chat_logger.get_chat_session_detail(session_id)
-                if not session_detail:
-                    return jsonify({"success": False, "error": "会话不存在"}), 404
-                university_id = session_detail.get("university_id")
-                # 覆盖名称为会话里记录的名称（若有）
-                if session_detail.get("university_name"):
-                    university_name = session_detail.get("university_name")
-
-        # 若未能由会话恢复到 university 上下文，则按大学名称查询
         if not university_id:
-            university_doc = get_university_details(university_name, deadline)
-            if not university_doc:
-                return jsonify({"success": False, "error": "未找到指定的大学信息"}), 404
-            university_id = str(university_doc["_id"])
+            return jsonify({"success": False, "error": "未找到指定的大学信息"}), 404
 
-        # 路由到具体的API处理函数
-        if endpoint == "create-session":
-            return create_chat_session(university_id, university_name, user_ip)
-        elif endpoint == "send-message":
-            return send_chat_message(university_id, university_name, user_ip)
-        elif endpoint == "get-history":
-            return get_chat_history(university_id, university_name, user_ip)
-        elif endpoint == "clear-session":
-            return clear_chat_session(university_id, university_name, user_ip)
-        elif endpoint == "delete-session":
-            return delete_chat_session(university_id, university_name, user_ip)
-        elif endpoint == "health":
-            return health_check()
-        else:
-            return jsonify({"success": False, "error": "API端点不存在"}), 404
-
+        return create_chat_session(university_id, university_name, user_ip)
     except Exception as e:
-        logger.error(f"处理大学聊天API时出错: {e}", exc_info=True)
+        logger.error(f"处理创建会话请求时出错: {e}", exc_info=True)
         return jsonify({"success": False, "error": "服务暂时不可用"}), 500
 
 
-@public_chat_api_protection(max_requests=5, time_window=60)
+@chat_bp.route('/<university_name>/send-message', methods=['POST'])
+@chat_bp.route('/<university_name>/<deadline>/send-message', methods=['POST'])
+@public_chat_api_protection(max_requests=15, time_window=60)
+def send_chat_message_route(university_name, deadline=None):
+    """发送聊天消息"""
+    try:
+        user_ip = get_client_ip()
+        university_id, university_name = _get_university_context(university_name, deadline)
+
+        if not university_id:
+            return jsonify({"success": False, "error": "未找到指定的大学信息"}), 404
+
+        return send_chat_message(university_id, university_name, user_ip)
+    except Exception as e:
+        logger.error(f"处理发送消息请求时出错: {e}", exc_info=True)
+        return jsonify({"success": False, "error": "服务暂时不可用"}), 500
+
+
+@chat_bp.route('/<university_name>/get-history', methods=['GET'])
+@chat_bp.route('/<university_name>/<deadline>/get-history', methods=['GET'])
+@public_chat_api_protection(max_requests=10, time_window=60)
+def get_chat_history_route(university_name, deadline=None):
+    """获取聊天历史"""
+    try:
+        user_ip = get_client_ip()
+        university_id, university_name = _get_university_context(university_name, deadline)
+
+        if not university_id:
+            return jsonify({"success": False, "error": "未找到指定的大学信息"}), 404
+
+        return get_chat_history(university_id, university_name, user_ip)
+    except Exception as e:
+        logger.error(f"处理获取历史请求时出错: {e}", exc_info=True)
+        return jsonify({"success": False, "error": "服务暂时不可用"}), 500
+
+
+@chat_bp.route('/<university_name>/clear-session', methods=['POST'])
+@chat_bp.route('/<university_name>/<deadline>/clear-session', methods=['POST'])
+@public_chat_api_protection(max_requests=10, time_window=60)
+def clear_chat_session_route(university_name, deadline=None):
+    """清空会话历史"""
+    try:
+        user_ip = get_client_ip()
+        university_id, university_name = _get_university_context(university_name, deadline)
+
+        if not university_id:
+            return jsonify({"success": False, "error": "未找到指定的大学信息"}), 404
+
+        return clear_chat_session(university_id, university_name, user_ip)
+    except Exception as e:
+        logger.error(f"处理清空会话请求时出错: {e}", exc_info=True)
+        return jsonify({"success": False, "error": "服务暂时不可用"}), 500
+
+
+@chat_bp.route('/<university_name>/delete-session', methods=['POST'])
+@chat_bp.route('/<university_name>/<deadline>/delete-session', methods=['POST'])
+@public_chat_api_protection(max_requests=10, time_window=60)
+def delete_chat_session_route(university_name, deadline=None):
+    """删除会话"""
+    try:
+        user_ip = get_client_ip()
+        university_id, university_name = _get_university_context(university_name, deadline)
+
+        if not university_id:
+            return jsonify({"success": False, "error": "未找到指定的大学信息"}), 404
+
+        return delete_chat_session(university_id, university_name, user_ip)
+    except Exception as e:
+        logger.error(f"处理删除会话请求时出错: {e}", exc_info=True)
+        return jsonify({"success": False, "error": "服务暂时不可用"}), 500
+
+
+@chat_bp.route('/<university_name>/health', methods=['GET'])
+@chat_bp.route('/<university_name>/<deadline>/health', methods=['GET'])
+@public_chat_api_protection(max_requests=60, time_window=60)
+def health_check_route(university_name, deadline=None):
+    """健康检查API"""
+    _ = university_name, deadline  # 避免未使用参数警告
+    try:
+        return health_check()
+    except Exception as e:
+        logger.error(f"处理健康检查请求时出错: {e}", exc_info=True)
+        return jsonify({"success": False, "error": "服务暂时不可用"}), 500
+
+
 def create_chat_session(university_id: str, university_name: str, user_ip: str):
     """创建或恢复聊天会话"""
     try:
@@ -184,13 +217,20 @@ def create_chat_session(university_id: str, university_name: str, user_ip: str):
         response_data = {
             "success": True,
             "session": {
-                "session_id": session.session_id,
-                "university_name": university_name,
-                "csrf_token": csrf_token,
-                "created_at": session.created_at.isoformat(),
-                "last_activity": (session.last_activity.isoformat() if hasattr(session, "last_activity") and session.last_activity else session.created_at.isoformat()),
-                "is_restored": is_restored,
-                "message_count": len(session.messages) if session.messages else 0,
+                "session_id":
+                session.session_id,
+                "university_name":
+                university_name,
+                "csrf_token":
+                csrf_token,
+                "created_at":
+                session.created_at.isoformat(),
+                "last_activity":
+                (session.last_activity.isoformat() if hasattr(session, "last_activity") and session.last_activity else session.created_at.isoformat()),
+                "is_restored":
+                is_restored,
+                "message_count":
+                len(session.messages) if session.messages else 0,
             },
             "notice": notice,
         }
@@ -203,7 +243,6 @@ def create_chat_session(university_id: str, university_name: str, user_ip: str):
         return jsonify({"success": False, "error": "服务暂时不可用"}), 500
 
 
-@public_chat_api_protection(max_requests=15, time_window=60)
 def send_chat_message(university_id: str, university_name: str, user_ip: str):
     """发送聊天消息"""
     # university_id, university_name 由路由传递，用于上下文识别，在记录函数中使用
@@ -300,7 +339,6 @@ def send_chat_message(university_id: str, university_name: str, user_ip: str):
         )
 
 
-@public_chat_api_protection(max_requests=10, time_window=60)
 def get_chat_history(university_id: str, university_name: str, user_ip: str):  # university_name used for logging context
     """获取聊天历史"""
     _ = university_name  # 避免未使用参数警告
@@ -377,7 +415,6 @@ def get_chat_history(university_id: str, university_name: str, user_ip: str):  #
         return jsonify({"success": False, "error": "服务暂时不可用"}), 500
 
 
-@public_chat_api_protection(max_requests=10, time_window=60)
 def clear_chat_session(university_id: str, university_name: str, user_ip: str):
     """清空会话历史（管理端/前台共用）"""
     _ = university_id, university_name, user_ip
@@ -399,7 +436,6 @@ def clear_chat_session(university_id: str, university_name: str, user_ip: str):
         return jsonify({"success": False, "error": "服务暂时不可用"}), 500
 
 
-@public_chat_api_protection(max_requests=10, time_window=60)
 def delete_chat_session(university_id: str, university_name: str, user_ip: str):
     """删除会话（管理端/前台共用）"""
     _ = university_id, university_name, user_ip
@@ -421,7 +457,6 @@ def delete_chat_session(university_id: str, university_name: str, user_ip: str):
         return jsonify({"success": False, "error": "服务暂时不可用"}), 500
 
 
-@public_chat_api_protection(max_requests=60, time_window=60)
 def health_check():  # university_id, university_name unused but required by router
     """健康检查API"""
     try:

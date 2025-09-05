@@ -17,8 +17,8 @@ from utils.analytics import log_access
 from utils.cache import TTLCache
 from utils.mongo_client import get_db
 
-from .blog import get_all_blogs as get_all_blogs_for_sitemap
-from .blog import get_weighted_recommended_blogs_with_summary
+from .blog.views import get_all_blogs as get_all_blogs_for_sitemap
+from .blog.views import get_weighted_recommended_blogs_with_summary
 
 # --- 缓存定义 ---
 university_list_cache = TTLCache(maxsize=1, ttl=600)
