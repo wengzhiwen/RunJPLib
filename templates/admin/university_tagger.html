@@ -1,0 +1,104 @@
+{% extends "admin/layout.html" %}
+
+{% block title %}University Tagger - Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mt-4">大学标签工具 (University Tagger)</h1>
+    <p class="text-muted">手动触发后台任务，为所有大学数据批量打上标签。该过程将使用LLM进行分析，可能需要较长时间。</p>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fas fa-cogs me-1"></i>
+            控制面板
+        </div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('admin.university_tagger_page') }}">
+                {% if task and (task.status == 'processing' or task.status == 'pending') %}
+                    <button type="submit" class="btn btn-primary" disabled>
+                        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                        任务运行中...
+                    </button>
+                    <small class="ms-3 text-muted">当前有任务正在运行或等待中，请等待其完成后再触发新的任务。</small>
+                {% else %}
+                    <button type="submit" class="btn btn-primary">开始刷新大学标签</button>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+
+    {% if task %}
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fas fa-history me-1"></i>
+            最新任务详情 (ID: {{ task._id }})
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <p><strong>任务名称:</strong> {{ task.task_name }}</p>
+                    <p><strong>创建时间:</strong> {{ task.created_at_str }} UTC</p>
+                    <p><strong>最后更新:</strong> {{ task.updated_at_str }} UTC</p>
+                </div>
+                <div class="col-md-6">
+                    <p><strong>状态:</strong> 
+                        {% if task.status == 'completed' %}
+                            <span class="badge bg-success">已完成</span>
+                        {% elif task.status == 'processing' %}
+                            <span class="badge bg-info">处理中</span>
+                        {% elif task.status == 'pending' %}
+                            <span class="badge bg-secondary">等待中</span>
+                        {% elif task.status == 'failed' %}
+                            <span class="badge bg-danger">失败</span>
+                        {% else %}
+                            <span class="badge bg-warning">{{ task.status }}</span>
+                        {% endif %}
+                    </p>
+                    {% if task.status == 'failed' and task.error_message %}
+                        <p class="text-danger"><strong>错误信息:</strong> {{ task.error_message }}</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if task.status == 'completed' and task.result_summary %}
+            <hr>
+            <h5>结果摘要</h5>
+            <div class="row">
+                <div class="col-md-4">
+                    <p><strong>已更新大学数量:</strong> {{ task.result_summary.updated_universities }} / {{ task.result_summary.total_universities_processed }}</p>
+                </div>
+                <div class="col-md-8">
+                    <h6>标签分布:</h6>
+                    <ul>
+                        {% for tag, count in task.result_summary.tag_distribution.items() %}
+                            <li><strong>{{ tag }}:</strong> {{ count }} 所大学</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+            {% endif %}
+
+            <hr>
+            <h5>详细日志</h5>
+            <pre class="bg-light p-3 rounded" style="max-height: 400px; overflow-y: auto;">{% for log in task.logs %}[{{ log.timestamp_str }}] [{{ log.level }}] {{ log.message }}
+{% endfor %}</pre>
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-info" role="alert">
+        系统中还没有大学标签任务的运行记录。
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // 如果任务正在运行，设置一个定时器来刷新页面
+    {% if task and (task.status == 'processing' or task.status == 'pending') %}
+    setTimeout(function() {
+        window.location.reload();
+    }, 30000); // 30秒刷新一次
+    {% endif %}
+</script>
+{% endblock %}

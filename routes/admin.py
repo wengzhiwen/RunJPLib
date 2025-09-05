@@ -1053,6 +1053,45 @@ def pdf_task_detail_page(task_id):
     return render_template("pdf_task_detail.html", task=task)
 
 
+# --- 大学标签工具页面 ---
+@admin_bp.route("/university-tagger", methods=["GET", "POST"])
+@admin_required
+def university_tagger_page():
+    """大学标签工具页面，用于手动触发和查看结果"""
+    db = get_db()
+    if db is None:
+        return render_template("university_tagger.html", error="数据库连接失败")
+
+    if request.method == "POST":
+        # 查找是否已经有正在运行或待处理的标签任务
+        existing_task = db.processing_tasks.find_one({"task_type": "TAG_UNIVERSITIES", "status": {"$in": ["pending", "processing"]}})
+        if existing_task:
+            logging.warning("University tagging task is already running or pending.")
+        else:
+            task_name = f"University Tagging - Triggered manually at {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC"
+            task_manager.create_task(task_type="TAG_UNIVERSITIES", task_name=task_name)
+            logging.info("New university tagging task created.")
+        return redirect(url_for("admin.university_tagger_page"))
+
+    # GET请求：查找最新的一次标签任务
+    latest_task = db.processing_tasks.find_one({"task_type": "TAG_UNIVERSITIES"}, sort=[("created_at", -1)])
+
+    if latest_task:
+        # 格式化时间戳以便显示
+        if latest_task.get("created_at"):
+            latest_task["created_at_str"] = latest_task["created_at"].strftime("%Y-%m-%d %H:%M:%S")
+        if latest_task.get("updated_at"):
+            latest_task["updated_at_str"] = latest_task["updated_at"].strftime("%Y-%m-%d %H:%M:%S")
+
+        # 将日志中的时间戳也格式化
+        if "logs" in latest_task:
+            for log in latest_task["logs"]:
+                if "timestamp" in log:
+                    log["timestamp_str"] = log["timestamp"].strftime("%H:%M:%S.%f")[:-3]
+
+    return render_template("university_tagger.html", task=latest_task)
+
+
 # --- 分析：最近24小时独立IP ---
 @admin_bp.route("/analytics/unique_ips")
 @admin_required

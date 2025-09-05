@@ -1,12 +1,12 @@
 """
-任务管理器 - 管理PDF处理任务的异步执行
+任务管理器 - 管理异步执行的后台任务
 """
 from datetime import datetime
 from datetime import timedelta
 import os
 import threading
 import time
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from bson.objectid import ObjectId
 import dotenv
@@ -14,6 +14,7 @@ import dotenv
 from utils.logging_config import setup_task_logger
 from utils.mongo_client import get_db
 from utils.pdf_processor import run_pdf_processor
+from utils.university_tagger import UniversityTagger
 
 task_logger = setup_task_logger("TaskManager")
 
@@ -162,15 +163,14 @@ class TaskManager:
             self.queue_processor_thread.start()
             task_logger.info("Task queue processor service started.")
 
-    def create_task(self, university_name: str, pdf_file_path: str, original_filename: str, processing_mode: str = "normal") -> Optional[str]:
+    def create_task(self, task_type: str, task_name: str, params: Dict[str, Any] = None) -> Optional[str]:
         """
-        创建新的处理任务
+        创建新的后台任务
         
         参数:
-            university_name: 大学名称
-            pdf_file_path: PDF文件路径
-            original_filename: 原始文件名
-            processing_mode: 处理模式 ("normal" | "batch")
+            task_type: 任务类型 (e.g., "TAG_UNIVERSITIES", "PDF_PROCESSING")
+            task_name: 任务的显示名称
+            params: 任务需要的参数字典
             
         返回:
             任务ID字符串，失败时返回None
@@ -183,10 +183,9 @@ class TaskManager:
 
             # 创建任务文档
             task_doc = {
-                "university_name": university_name,
-                "original_filename": original_filename,
-                "pdf_file_path": pdf_file_path,
-                "processing_mode": processing_mode,  # 处理模式: normal, batch
+                "task_type": task_type,
+                "task_name": task_name,
+                "params": params or {},
                 "status": "pending",  # 任务状态: pending, processing, completed, failed
                 "current_step": "",
                 "progress": 0,
@@ -199,7 +198,7 @@ class TaskManager:
             result = db.processing_tasks.insert_one(task_doc)
             task_id = str(result.inserted_id)
 
-            task_logger.info(f"Task created: {task_id} for {university_name}, mode: {processing_mode}.")
+            task_logger.info(f"Task created: {task_id} of type '{task_type}'.")
 
             # 将任务添加到队列
             self.task_queue.append(task_id)
@@ -211,6 +210,19 @@ class TaskManager:
         except Exception as e:
             task_logger.error(f"Failed to create task: {e}")
             return None
+
+    def create_pdf_processing_task(self, university_name: str, pdf_file_path: str, original_filename: str, processing_mode: str = "normal") -> Optional[str]:
+        """
+        为PDF处理创建一个特定的任务 (兼容旧接口)
+        """
+        params = {
+            "university_name": university_name,
+            "pdf_file_path": pdf_file_path,
+            "original_filename": original_filename,
+            "processing_mode": processing_mode
+        }
+        task_name = f"PDF Processing for {original_filename}"
+        return self.create_task(task_type="PDF_PROCESSING", task_name=task_name, params=params)
 
     def process_queue(self):
         """处理任务队列"""
@@ -259,19 +271,37 @@ class TaskManager:
             def process_worker():
                 try:
                     task_logger.info(f"Worker starts processing task: {task_id}")
-                    restart_from_step = task.get("restart_from_step")
-                    processing_mode = task.get("processing_mode", "normal")
-                    success = run_pdf_processor(task_id=task_id,
-                                                university_name=task["university_name"],
-                                                pdf_file_path=task["pdf_file_path"],
-                                                restart_from_step=restart_from_step,
-                                                processing_mode=processing_mode,
-                                                task_manager_instance=self)
+                    task_type = task.get("task_type")
+
+                    success = False
+                    if task_type == "PDF_PROCESSING":
+                        params = task.get("params", {})
+                        restart_from_step = task.get("restart_from_step")
+                        success = run_pdf_processor(task_id=task_id,
+                                                    university_name=params.get("university_name"),
+                                                    pdf_file_path=params.get("pdf_file_path"),
+                                                    restart_from_step=restart_from_step,
+                                                    processing_mode=params.get("processing_mode", "normal"),
+                                                    task_manager_instance=self)
+                    elif task_type == "TAG_UNIVERSITIES":
+                        tagger = UniversityTagger(task_id=task_id)
+                        tagger.run_tagging_process()
+                        # 对于这类任务，我们假设它内部处理了成功/失败状态的记录
+                        # 这里简单地认为执行即成功，具体错误由tagger内部log记录
+                        success = True
+                    else:
+                        task_logger.error(f"Unknown task type '{task_type}' for task {task_id}. Aborting.")
+                        raise ValueError(f"Unknown task type: {task_type}")
 
                     if success:
                         task_logger.info(f"Task processing completed successfully: {task_id}")
+                        # For tagger, it logs its own completion. For others, we update here.
+                        if task_type != "TAG_UNIVERSITIES":
+                            db.processing_tasks.update_one({"_id": ObjectId(task_id)}, {"$set": {"status": "completed", "updated_at": datetime.utcnow()}})
                     else:
                         task_logger.error(f"Task processing failed: {task_id}")
+                        # Ensure status is marked as failed if not already
+                        db.processing_tasks.update_one({"_id": ObjectId(task_id)}, {"$set": {"status": "failed", "updated_at": datetime.utcnow()}})
 
                 except Exception as e:
                     task_logger.error(f"Exception in task worker {task_id}: {e}", exc_info=True)
