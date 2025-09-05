@@ -1,17 +1,21 @@
 """
 处理首页和大学相关路由的模块 (纯MongoDB版本)
 """
+from collections import defaultdict
 import csv
+from datetime import datetime
 import logging
 import os
-from collections import defaultdict
-from datetime import datetime
 
-import markdown
 from cachetools import cached
-from flask import abort, make_response, render_template
+from flask import abort
+from flask import make_response
+from flask import render_template
+import markdown
 
-from utils import TTLCache, get_db, log_access
+from utils.core.database import get_db
+from utils.system.analytics import log_access
+from utils.tools.cache import TTLCache
 
 from .blog.views import get_all_blogs as get_all_blogs_for_sitemap
 from .blog.views import get_weighted_recommended_blogs_with_summary

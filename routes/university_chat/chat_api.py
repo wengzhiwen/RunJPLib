@@ -1,19 +1,18 @@
+from datetime import datetime
 import logging
 import time
-from datetime import datetime
 
-from flask import jsonify, request
+from flask import jsonify
+from flask import request
 
+from routes.blueprints import chat_bp
 from routes.index import get_university_details
-from routes.university_chat import chat_bp
 from routes.university_chat.security import get_client_ip
-from utils import (
-    ChatManager,
-    add_security_headers,
-    chat_logger,
-    get_csrf_token_for_session,
-    public_chat_api_protection,
-)
+from utils.chat.logging import chat_logger
+from utils.chat.manager import ChatManager
+from utils.chat.security import add_security_headers
+from utils.chat.security import get_csrf_token_for_session
+from utils.chat.security import public_chat_api_protection
 
 logger = logging.getLogger(__name__)
 

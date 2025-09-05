@@ -2,7 +2,9 @@ import base64
 import os
 import time
 
-from agents import Agent, Runner, TResponseInputItem
+from agents import Agent
+from agents import Runner
+from agents import TResponseInputItem
 
 from ..core.logging import setup_logger
 

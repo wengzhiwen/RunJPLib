@@ -5,9 +5,10 @@
 
 请在使用前务必备份您的数据库！
 """
+from datetime import datetime
 import os
 import sys
-from datetime import datetime
+
 import dotenv
 
 dotenv.load_dotenv()

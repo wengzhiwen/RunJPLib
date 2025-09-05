@@ -1,19 +1,20 @@
 """
 任务管理器 - 管理异步执行的后台任务
 """
+from datetime import datetime
+from datetime import timedelta
 import os
 import threading
 import time
-from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-import dotenv
 from bson.objectid import ObjectId
+import dotenv
 
 from ..core.database import get_db
 from ..core.logging import setup_task_logger
 from ..document.pdf_processor import run_pdf_processor
-from ..university.tagger import UniversityClassifier as UniversityTagger
+from ..university.tagger import UniversityClassifier
 
 task_logger = setup_task_logger("TaskManager")
 
@@ -283,7 +284,7 @@ class TaskManager:
                                                     processing_mode=params.get("processing_mode", "normal"),
                                                     task_manager_instance=self)
                     elif task_type == "TAG_UNIVERSITIES":
-                        tagger = UniversityTagger(task_id=task_id)
+                        tagger = UniversityClassifier(task_id=task_id)
                         tagger.run_tagging_process()
                         # 对于这类任务，我们假设它内部处理了成功/失败状态的记录
                         # 这里简单地认为执行即成功，具体错误由tagger内部log记录

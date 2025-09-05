@@ -1,15 +1,16 @@
+from datetime import datetime
+import logging
 import os
 import sys
-import logging
+
 import dotenv
-from datetime import datetime
 
 # 将项目根目录添加到Python路径的最前面，以优先导入项目内的模块
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, project_root)
 
-from utils.mongo_client import get_db
-from utils.llama_index_integration import LlamaIndexIntegration
+from utils.core.database import get_db
+from utils.university.search import VectorSearchEngine
 
 dotenv.load_dotenv()
 
@@ -52,7 +53,7 @@ def check_university_status(university_name: str):
     # 2. 检查 LlamaIndex (ChromaDB)
     logging.info("\n[步骤 2/2] 正在查询 LlamaIndex/ChromaDB...")
     try:
-        llama_integration = LlamaIndexIntegration()
+        llama_integration = VectorSearchEngine()
         index_metadata = llama_integration.get_index_metadata(university_id)
 
         if not index_metadata:

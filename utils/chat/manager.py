@@ -4,19 +4,20 @@
 """
 
 import csv
+from datetime import datetime
+from datetime import timedelta
 import json
 import logging
 import os
-import uuid
-from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
+import uuid
 
 from openai import OpenAI
 
 from ..core.logging import setup_retrieval_logger
-from ..university.manager import UniversityRepository as UniversityDocumentManager
-from ..university.search import VectorSearchEngine as LlamaIndexIntegration
-from .search_strategy import HybridSearchEngine as EnhancedSearchStrategy
+from ..university.manager import UniversityRepository
+from ..university.search import VectorSearchEngine
+from .search_strategy import HybridSearchEngine
 
 logger = logging.getLogger(__name__)
 
@@ -355,7 +356,7 @@ class ChatManager:
         """检查索引是否需要更新，如果需要则触发重建。"""
         # 确保LlamaIndex已初始化
         if self.llama_index is None:
-            self.llama_index = LlamaIndexIntegration()
+            self.llama_index = VectorSearchEngine()
 
         university_id = str(university_doc["_id"])
         university_name = university_doc.get("university_name", "未知大学")
@@ -412,7 +413,7 @@ class ChatManager:
         try:
             # 懒加载文档管理器
             if self.doc_manager is None:
-                self.doc_manager = UniversityDocumentManager()
+                self.doc_manager = UniversityRepository()
 
             # 获取大学信息
             university_doc = self.doc_manager.get_university_by_id(university_id)
@@ -496,7 +497,7 @@ class ChatManager:
             # 检查并更新索引（确保索引是最新的）
             try:
                 if self.doc_manager is None:
-                    self.doc_manager = UniversityDocumentManager()
+                    self.doc_manager = UniversityRepository()
                 university_doc = self.doc_manager.get_university_by_id(university_id)
                 if university_doc:
                     self._check_and_update_index(university_doc)
@@ -559,11 +560,11 @@ class ChatManager:
 
             # 确保LlamaIndex已初始化
             if self.llama_index is None:
-                self.llama_index = LlamaIndexIntegration()
+                self.llama_index = VectorSearchEngine()
 
             # 初始化混合搜索策略（懒加载）
             if self.enhanced_searcher is None:
-                self.enhanced_searcher = EnhancedSearchStrategy(self.llama_index, self.client)
+                self.enhanced_searcher = HybridSearchEngine(self.llama_index, self.client)
 
             # 使用LLM进行智能查询扩展和安全检查
             query_analysis = self._expand_query_with_llm(user_message, session.university_name, session.university_name_zh)

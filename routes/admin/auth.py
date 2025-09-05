@@ -1,17 +1,18 @@
+from functools import wraps
 import logging
 import os
-from functools import wraps
 
-from flask import jsonify, redirect, request, url_for
-from flask_jwt_extended import (
-    create_access_token,
-    get_jwt_identity,
-    set_access_cookies,
-    unset_jwt_cookies,
-    verify_jwt_in_request,
-)
+from flask import jsonify
+from flask import redirect
+from flask import request
+from flask import url_for
+from flask_jwt_extended import create_access_token
+from flask_jwt_extended import get_jwt_identity
+from flask_jwt_extended import set_access_cookies
+from flask_jwt_extended import unset_jwt_cookies
+from flask_jwt_extended import verify_jwt_in_request
 
-from . import admin_bp
+from ..blueprints import admin_bp
 
 
 def admin_required(fn):

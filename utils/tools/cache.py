@@ -1,7 +1,7 @@
 """
 应用级缓存管理模块
 """
-from cachetools import TTLCache, cached
+from cachetools import TTLCache
 
 # 为博客列表创建一个TTL（Time To Live）缓存
 # maxsize=1: 因为我们总是缓存同一个对象（完整的博客列表）

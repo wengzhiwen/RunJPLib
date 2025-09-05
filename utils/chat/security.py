@@ -2,17 +2,18 @@
 聊天系统安全模块
 提供API保护、防外站调用、速率限制等功能
 """
+from functools import wraps
 import hmac
 import logging
 import os
 import secrets
 import time
-from functools import wraps
 from urllib.parse import urlparse
 
-import dotenv
 from cachetools import TTLCache
-from flask import jsonify, request
+import dotenv
+from flask import jsonify
+from flask import request
 
 logger = logging.getLogger(__name__)
 

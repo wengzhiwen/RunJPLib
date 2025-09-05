@@ -1,16 +1,17 @@
+from datetime import datetime
+from datetime import timedelta
 import hashlib
 import json
 import logging
 import os
+from pathlib import Path
 import shutil
 import tempfile
-from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Dict, Optional
 
-import requests
 from geoip2.database import Reader
 from geoip2.errors import AddressNotFoundError
+import requests
 
 
 class GeoLocationResolver:

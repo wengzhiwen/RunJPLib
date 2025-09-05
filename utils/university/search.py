@@ -2,15 +2,16 @@
 LlamaIndex集成器
 负责处理文档向量化和检索
 """
-import os
 from datetime import datetime
+import os
 from typing import Callable, Dict, List, Optional
 
 import chromadb
 from chromadb.config import Settings
 from llama_index.core import Document
 from llama_index.core import Settings as LlamaSettings
-from llama_index.core import StorageContext, VectorStoreIndex
+from llama_index.core import StorageContext
+from llama_index.core import VectorStoreIndex
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.vector_stores.chroma import ChromaVectorStore

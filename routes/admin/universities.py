@@ -1,13 +1,19 @@
-import logging
 from datetime import datetime
+import logging
 
 from bson.objectid import ObjectId
-from flask import jsonify, redirect, render_template, request, url_for
+from flask import jsonify
+from flask import redirect
+from flask import render_template
+from flask import request
+from flask import url_for
 
 from routes.admin.auth import admin_required
-from utils import LlamaIndexIntegration, get_db, thread_pool_manager
+from utils.core.database import get_db
+from utils.system.thread_pool import thread_pool_manager
+from utils.university.search import VectorSearchEngine
 
-from . import admin_bp
+from ..blueprints import admin_bp
 
 
 def _update_university_in_db(object_id, update_data, university_id):
@@ -334,7 +340,7 @@ def delete_university(item_id):
 
     # First, delete the vector index
     try:
-        llama_index_integration = LlamaIndexIntegration()
+        llama_index_integration = VectorSearchEngine()
         if not llama_index_integration.delete_university_index(item_id):
             # Log a warning but don't block the deletion of the MongoDB record
             logging.warning(f"Could not delete vector index for university {item_id}. It may need to be cleaned up manually.")

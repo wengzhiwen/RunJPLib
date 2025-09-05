@@ -10,7 +10,7 @@ from agents import Agent
 from agents import Runner
 from pymongo.collection import Collection
 
-from utils.mongo_client import get_db
+from utils.core.database import get_db
 
 
 def translate_names_batch(names: list[str]) -> dict[str, str]:

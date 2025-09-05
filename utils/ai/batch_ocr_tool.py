@@ -6,15 +6,15 @@ import base64
 import json
 import math
 import os
+from pathlib import Path
 import tempfile
 import time
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 from ..core.database import get_db
 from ..core.logging import setup_logger
 
-logger = setup_logger(logger_name="BatchOCRTool", log_level="INFO")
+logger = setup_logger(logger_name="BatchOcrProcessor", log_level="INFO")
 
 try:
     from openai import OpenAI

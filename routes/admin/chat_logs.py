@@ -6,13 +6,13 @@ from flask import render_template
 from flask import request
 
 from routes.admin.auth import admin_required
-from utils import add_security_headers
-from utils import chat_logger
-from utils import ChatManager
-from utils import get_csrf_token_for_session
-from utils import get_db
+from utils.chat.logging import chat_logger
+from utils.chat.manager import ChatManager
+from utils.chat.security import add_security_headers
+from utils.chat.security import get_csrf_token_for_session
+from utils.core.database import get_db
 
-from . import admin_bp
+from ..blueprints import admin_bp
 
 
 @admin_bp.route('/chat', methods=['GET'])

@@ -1,7 +1,8 @@
 import os
 import time
 
-from agents import Agent, Runner
+from agents import Agent
+from agents import Runner
 
 from ..core.logging import setup_logger
 

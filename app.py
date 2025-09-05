@@ -11,24 +11,34 @@ from bson.objectid import ObjectId
 from dotenv import load_dotenv
 from flask import abort
 from flask import Flask
-from flask import jsonify
 from flask import make_response
-from flask import redirect
-from flask import request
 from flask import send_from_directory
 from flask_jwt_extended import JWTManager
 from gridfs import GridFS
 from werkzeug.routing import BaseConverter
 
-from routes.admin import admin_bp
 from routes.blog.views import blog_detail_route
 from routes.blog.views import blog_list_route
+from routes.blueprints import admin_bp
+from routes.blueprints import chat_bp
 from routes.index import index_route
 from routes.index import sitemap_route
 from routes.index import university_route
-from routes.university_chat import chat_bp
-from utils import ensure_indexes
-from utils import get_db
+
+# 导入路由模块以注册所有路由 - Flask最佳实践
+import routes.admin.analytics
+import routes.admin.auth
+import routes.admin.blogs
+import routes.admin.chat_logs
+import routes.admin.dashboard
+import routes.admin.pdf_processor
+import routes.admin.universities
+import routes.blog.cache
+import routes.blog.views
+import routes.university_chat.chat_api
+import routes.university_chat.security
+from utils.core.database import ensure_indexes
+from utils.core.database import get_db
 
 load_dotenv()
 

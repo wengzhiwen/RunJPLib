@@ -3,15 +3,17 @@
 该模块改编自参考脚本 `blog_writer.py` 的逻辑，
 支持多种生成模式和内容格式化。
 """
+from datetime import datetime
 import json
 import os
-from datetime import datetime
 from typing import Dict, List, Optional
 
-import nest_asyncio
-from agents import Agent, Runner, trace
+from agents import Agent
+from agents import Runner
+from agents import trace
 from bson.objectid import ObjectId
 from dotenv import load_dotenv
+import nest_asyncio
 
 from ..core.database import get_mongo_client
 from ..core.logging import setup_logger
@@ -210,7 +212,7 @@ class ContentGenerator:
         # 设置环境变量禁用重试，避免429错误时的自动重试
         os.environ["OPENAI_MAX_RETRIES"] = "0"
 
-        logger.info(f"完成BlogGenerator的初始化，模型: {self.model}，网络搜索: {self.web_search_enabled}")
+        logger.info(f"完成ContentGenerator的初始化，模型: {self.model}，网络搜索: {self.web_search_enabled}")
         if self.web_search_enabled:
             logger.info(f"网络搜索启用，模型: {self.web_search_model}")
 

@@ -3,14 +3,12 @@
 增强搜索策略：混合向量搜索和优化的关键词搜索
 内存优化版本，适用于内存受限的服务器环境
 """
+from concurrent.futures import ThreadPoolExecutor
 import gc
-import os
 import re
 import threading
 import time
-import weakref
-from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List
 
 import psutil
 

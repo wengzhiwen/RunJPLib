@@ -1,10 +1,10 @@
 """
 线程池管理器 - 管理不同类型的后台任务
 """
+from concurrent.futures import ThreadPoolExecutor
 import os
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict
 
 from ..core.logging import setup_logger

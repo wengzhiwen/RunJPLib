@@ -1,5 +1,6 @@
 import os
 
+
 def check_env_vars():
     """
     Checks if all environment variables from env.sample are present in .env.
@@ -28,6 +29,7 @@ def check_env_vars():
 
     except FileNotFoundError as e:
         print(f"Error: {e}. Make sure 'env.sample' is in the root directory.")
+
 
 if __name__ == "__main__":
     check_env_vars()

@@ -3,25 +3,27 @@ PDF处理器 - 大学招生信息处理器的核心类
 基于Buffalo工作流程管理器来处理PDF文件
 """
 
-import os
-import shutil
-import time
-import uuid
 from datetime import datetime
 from datetime import time as datetime_time
 from pathlib import Path
+import shutil
+import time
+import uuid
 
 from bson.objectid import ObjectId
-from buffalo import Buffalo, Project, Work
+from buffalo import Buffalo
+from buffalo import Project
+from buffalo import Work
 from gridfs import GridFS
 from pdf2image import convert_from_path
 
-from ..ai.analysis_tool import DocumentAnalyzer as AnalysisTool
-from ..ai.batch_ocr_tool import BatchOcrProcessor as BatchOCRTool
-from ..ai.ocr_tool import ImageOcrProcessor as OCRTool
-from ..ai.translate_tool import DocumentTranslator as TranslateTool
+from ..ai.analysis_tool import DocumentAnalyzer
+from ..ai.batch_ocr_tool import BatchOcrProcessor
+from ..ai.ocr_tool import ImageOcrProcessor
+from ..ai.translate_tool import DocumentTranslator
 from ..core.config import Config
-from ..core.database import get_db, get_mongo_client
+from ..core.database import get_db
+from ..core.database import get_mongo_client
 from ..core.logging import setup_task_logger
 
 task_logger = setup_task_logger("TaskManager")
@@ -209,7 +211,7 @@ class PDFProcessor:
 
             # 初始化OCR工具
             if not self.ocr_tool:
-                self.ocr_tool = OCRTool()
+                self.ocr_tool = ImageOcrProcessor()
 
             # 获取图片路径
             image_paths = self._get_image_paths()
@@ -265,9 +267,9 @@ class PDFProcessor:
 
             # 初始化批量OCR工具
             if not self.batch_ocr_tool:
-                self.batch_ocr_tool = BatchOCRTool()
+                self.batch_ocr_tool = BatchOcrProcessor()
             if not self.ocr_tool:
-                self.ocr_tool = OCRTool()
+                self.ocr_tool = ImageOcrProcessor()
 
             # 获取图片路径
             image_paths = self._get_image_paths()
@@ -436,7 +438,7 @@ class PDFProcessor:
 
             # 初始化翻译工具
             if not self.translate_tool:
-                self.translate_tool = TranslateTool(self.config.translate_terms)
+                self.translate_tool = DocumentTranslator(self.config.translate_terms)
 
             # 获取OCR结果内容
             if hasattr(self, "step_data") and "original_md_content" in self.step_data:
@@ -486,7 +488,7 @@ class PDFProcessor:
 
             # 初始化分析工具
             if not self.analysis_tool:
-                self.analysis_tool = AnalysisTool(
+                self.analysis_tool = DocumentAnalyzer(
                     self.config.analysis_questions,
                     self.config.translate_terms,
                 )

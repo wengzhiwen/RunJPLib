@@ -1,10 +1,10 @@
 """
 日志配置 - 为应用程序提供统一的日志记录设置
 """
-import logging
-import os
 from datetime import datetime
+import logging
 from logging.handlers import TimedRotatingFileHandler
+import os
 
 
 def setup_logger(logger_name="AppLogger", log_level="INFO", log_file="app.log"):
@@ -77,7 +77,8 @@ def setup_retrieval_logger() -> logging.Logger:
     """
     logger_name = "retrieval"
     log_dir = "log"
-    log_file_path = os.path.join(log_dir, f"{logger_name}_{datetime.now().strftime('%Y%m%d')}.log")
+    date_str = datetime.now().strftime('%Y%m%d')
+    log_file_path = os.path.join(log_dir, f"{logger_name}_{date_str}.log")
 
     retrieval_logger = logging.getLogger(logger_name)
     retrieval_logger.setLevel(logging.INFO)
