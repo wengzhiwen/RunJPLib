@@ -36,6 +36,17 @@ from utils.thread_pool_manager import thread_pool_manager
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin", template_folder="../templates/admin")
 
+
+@admin_bp.route('/chat', methods=['GET'])
+def admin_chat_page():
+    """管理端AI对话测试页面（迁移后保留页面路由）"""
+    # 延迟应用装饰器，避免在 admin_required 定义之前引用
+    def _render():
+        return render_template('admin/chat.html')
+
+    protected = admin_required(_render)
+    return protected()
+
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 # --- 后台管理数据库操作辅助函数 ---

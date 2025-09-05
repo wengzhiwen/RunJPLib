@@ -135,9 +135,14 @@
 <script>
 // 全局变量
 let selectedUniversityId = null;
+let selectedUniversityName = null;
 let currentSessionId = null;
+let currentCsrfToken = null;
 let searchTimeout = null;
 let loadingEventSource = null;
+let isComposing = false;
+let lastSearchQuery = '';
+let activeSearchController = null;
 
 // DOM 元素
 const universitySearchInput = document.getElementById('universitySearch');
@@ -203,25 +208,51 @@ function formatDateTime(dateString) {
 
 // 搜索大学
 function searchUniversities(query) {
-    if (!query.trim()) {
+    const q = (query || '').trim();
+    if (isComposing) return;
+    if (q.length < 2) {
         searchResults.style.display = 'none';
         return;
     }
-    
+    if (q === lastSearchQuery) return;
+
     showStatus('搜索大学中...');
-    
-    fetch(`/admin/chat/api/universities/search?q=${encodeURIComponent(query)}&limit=10`)
+
+    try { if (activeSearchController) activeSearchController.abort(); } catch (_) {}
+    activeSearchController = new AbortController();
+
+    fetch(`/admin/api/universities/search?q=${encodeURIComponent(q)}&limit=10`, { signal: activeSearchController.signal })
         .then(response => response.json())
         .then(data => {
             hideStatus();
-            if (data.success) {
-                displaySearchResults(data.universities);
+            lastSearchQuery = q;
+            // 兼容两种返回格式：
+            // 1) 旧格式 { success: true, universities: [...] }
+            // 2) Admin搜索数组格式 [ { _id, university_name } ]
+            if (Array.isArray(data)) {
+                const normalized = data.map(item => ({
+                    id: item._id,
+                    name: item.university_name,
+                    name_zh: item.university_name_zh || '',
+                    deadline: item.deadline || '',
+                    is_premium: item.is_premium || false,
+                }));
+                displaySearchResults(normalized);
+            } else if (data && data.success) {
+                displaySearchResults((data.universities || []).map(item => ({
+                    id: item.id || item._id,
+                    name: item.name || item.university_name,
+                    name_zh: item.name_zh || item.university_name_zh || '',
+                    deadline: item.deadline || '',
+                    is_premium: !!item.is_premium,
+                })));
             } else {
-                showError(data.error || '搜索失败');
+                showError((data && data.error) || '搜索失败');
             }
         })
         .catch(error => {
             hideStatus();
+            if (error && error.name === 'AbortError') return;
             showError('网络错误：' + error.message);
         });
 }
@@ -263,6 +294,7 @@ function displaySearchResults(universities) {
 // 选择大学
 function selectUniversity(university) {
     selectedUniversityId = university.id;
+    selectedUniversityName = university.name;
     
     selectedUniversityDiv.innerHTML = `
         <div class="alert alert-success mb-0">
@@ -281,6 +313,7 @@ function selectUniversity(university) {
 // 清除选择
 function clearSelection() {
     selectedUniversityId = null;
+    selectedUniversityName = null;
     selectedUniversityDiv.innerHTML = '<span class="text-muted">未选择</span>';
     startChatBtn.style.display = 'none';
 }
@@ -309,10 +342,13 @@ function createChatSession() {
     fetch('/admin/chat/api/create-session', {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'X-Role-Token': 'admin'
         },
         body: JSON.stringify({
-            university_id: selectedUniversityId
+            university_id: selectedUniversityId,
+            university_name: selectedUniversityName || '',
+            role_token: 'admin'
         })
     })
     .then(response => response.json())
@@ -320,6 +356,7 @@ function createChatSession() {
         hideStatus();
         if (data.success) {
             currentSessionId = data.session.session_id;
+            currentCsrfToken = data.session.csrf_token || null;
             
             // 更新界面
             chatTitle.textContent = `与${data.session.university_name}的AI助手对话`;
@@ -415,11 +452,16 @@ function sendMessage() {
     fetch('/admin/chat/api/send-message', {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'X-Role-Token': 'admin',
+            'X-Session-ID': currentSessionId || '',
+            'X-CSRF-Token': currentCsrfToken || ''
         },
         body: JSON.stringify({
             session_id: currentSessionId,
-            message: message
+            message: message,
+            role_token: 'admin',
+            csrf_token: currentCsrfToken || ''
         })
     })
     .then(response => response.json())
@@ -489,8 +531,15 @@ function clearChat() {
     
     if (!confirm('确定要清空对话历史吗？')) return;
     
-    fetch(`/admin/chat/api/session/${currentSessionId}/clear`, {
-        method: 'POST'
+    fetch(`/admin/chat/api/clear-session`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Role-Token': 'admin',
+            'X-Session-ID': currentSessionId || '',
+            'X-CSRF-Token': currentCsrfToken || ''
+        },
+        body: JSON.stringify({ session_id: currentSessionId, role_token: 'admin', csrf_token: currentCsrfToken || '' })
     })
     .then(response => response.json())
     .then(data => {
@@ -514,8 +563,15 @@ function clearChat() {
 function backToSelection() {
     // 清理会话
     if (currentSessionId) {
-        fetch(`/admin/chat/api/session/${currentSessionId}`, {
-            method: 'DELETE'
+        fetch(`/admin/chat/api/delete-session`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Role-Token': 'admin',
+                'X-Session-ID': currentSessionId || '',
+                'X-CSRF-Token': currentCsrfToken || ''
+            },
+            body: JSON.stringify({ session_id: currentSessionId, role_token: 'admin', csrf_token: currentCsrfToken || '' })
         }).catch(() => {}); // 忽略错误
     }
     
@@ -534,11 +590,17 @@ function backToSelection() {
 }
 
 // 事件监听器
-universitySearchInput.addEventListener('input', (e) => {
+universitySearchInput.addEventListener('compositionstart', () => { isComposing = true; });
+universitySearchInput.addEventListener('compositionend', (e) => {
+    isComposing = false;
     clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(() => {
-        searchUniversities(e.target.value);
-    }, 300);
+    searchTimeout = setTimeout(() => { searchUniversities(e.target.value); }, 300);
+});
+
+universitySearchInput.addEventListener('input', (e) => {
+    if (isComposing) return;
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => { searchUniversities(e.target.value); }, 350);
 });
 
 startChatBtn.addEventListener('click', startChat);

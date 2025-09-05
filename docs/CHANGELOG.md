@@ -1,3 +1,30 @@
+## [2025-09-05] - 管理端聊天功能迁移与CSRF安全修复
+
+### 🔧 架构重构
+- **移除独立管理端聊天模块**: 删除了 `routes/chat.py` 文件，将管理端聊天功能完全整合到 `routes/university_chat.py` 中，实现代码统一和维护简化。
+- **代理路由实现**: 在 `app.py` 中新增 `/admin/chat/api/<path:endpoint>` 代理路由，将管理端请求转发到统一的大学聊天API处理器。
+- **角色令牌支持**: 管理端请求现在携带 `X-Role-Token: 'admin'` 头部和 `role_token: 'admin'` 字段，为未来管理端特殊功能预留接口。
+
+### 🛡️ 安全增强
+- **CSRF令牌修复**: 修复了管理端聊天功能中CSRF令牌缺失导致的403错误。现在所有POST请求（除create-session外）都会正确携带CSRF令牌进行验证。
+- **会话安全**: 管理端聊天会话现在与用户端使用相同的安全机制，包括CSRF保护和会话验证。
+
+### ✨ 功能改进
+- **新增管理端专用端点**: 在 `routes/university_chat.py` 中新增 `clear-session` 和 `delete-session` 端点，支持管理端清理和删除聊天会话。
+- **会话上下文解析**: 优化了会话相关操作（send-message、get-history、clear-session、delete-session）的大学上下文解析逻辑，优先从会话数据中获取大学信息，避免404错误。
+- **前端优化**: 管理端前端增加了输入法（IME）输入优化，减少不必要的搜索请求，提升用户体验。
+
+### 📁 文件更改
+- `routes/chat.py`: 删除（功能已迁移）
+- `routes/university_chat.py`: 新增管理端端点，优化会话上下文解析
+- `routes/admin.py`: 新增管理端聊天页面路由
+- `app.py`: 新增管理端聊天API代理路由
+- `templates/admin/chat.html`: 更新前端以支持新的API结构和CSRF令牌
+- `templates/admin/layout.html`: 修复导航链接
+- `docs/CHANGELOG.md`: 记录本次重大架构调整
+
+---
+
 ## [2025-09-05] - 新增大学标签自动生成工具和数据库索引优化
 
 ### Removed

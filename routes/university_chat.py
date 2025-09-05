@@ -76,13 +76,32 @@ def handle_university_chat_api(university_name: str, endpoint: str, deadline: st
         Flask Response
     """
     try:
-        # 获取大学信息
-        university_doc = get_university_details(university_name, deadline)
-        if not university_doc:
-            return jsonify({"success": False, "error": "未找到指定的大学信息"}), 404
-
-        university_id = str(university_doc["_id"])
         user_ip = get_client_ip()
+
+        # 对非创建会话的端点，若提供了 session_id，则通过会话恢复上下文，避免必须依赖 university_name
+        data = None
+        university_id = None
+        if endpoint in {"send-message", "get-history", "clear-session", "delete-session"}:
+            try:
+                data = request.get_json() or {}
+            except Exception:
+                data = {}
+            session_id = data.get("session_id") if isinstance(data, dict) else None
+            if session_id:
+                session_detail = chat_logger.get_chat_session_detail(session_id)
+                if not session_detail:
+                    return jsonify({"success": False, "error": "会话不存在"}), 404
+                university_id = session_detail.get("university_id")
+                # 覆盖名称为会话里记录的名称（若有）
+                if session_detail.get("university_name"):
+                    university_name = session_detail.get("university_name")
+
+        # 若未能由会话恢复到 university 上下文，则按大学名称查询
+        if not university_id:
+            university_doc = get_university_details(university_name, deadline)
+            if not university_doc:
+                return jsonify({"success": False, "error": "未找到指定的大学信息"}), 404
+            university_id = str(university_doc["_id"])
 
         # 路由到具体的API处理函数
         if endpoint == "create-session":
@@ -91,6 +110,10 @@ def handle_university_chat_api(university_name: str, endpoint: str, deadline: st
             return send_chat_message(university_id, university_name, user_ip)
         elif endpoint == "get-history":
             return get_chat_history(university_id, university_name, user_ip)
+        elif endpoint == "clear-session":
+            return clear_chat_session(university_id, university_name, user_ip)
+        elif endpoint == "delete-session":
+            return delete_chat_session(university_id, university_name, user_ip)
         elif endpoint == "health":
             return health_check()
         else:
@@ -119,6 +142,8 @@ def create_chat_session(university_id: str, university_name: str, user_ip: str):
         # 获取请求数据中的浏览器会话ID
         data = request.get_json() or {}
         browser_session_id = data.get("browser_session_id")
+        # 可选：从管理端传入的角色token（优先HTTP头，其次JSON体）
+        role_token = request.headers.get("X-Role-Token") or data.get("role_token")
 
         # 首先尝试查找现有的活跃会话
         existing_session_data = chat_logger.get_active_session_for_university(user_ip, university_id, browser_session_id)
@@ -146,6 +171,8 @@ def create_chat_session(university_id: str, university_name: str, user_ip: str):
                 "user_agent": request.headers.get("User-Agent", ""),
                 "referer": request.headers.get("Referer", ""),
             }
+            if role_token:
+                session_data["role_token"] = role_token
             chat_logger.log_chat_session(session_data)
 
         # 生成CSRF令牌
@@ -161,6 +188,7 @@ def create_chat_session(university_id: str, university_name: str, user_ip: str):
                 "university_name": university_name,
                 "csrf_token": csrf_token,
                 "created_at": session.created_at.isoformat(),
+                "last_activity": (session.last_activity.isoformat() if hasattr(session, "last_activity") and session.last_activity else session.created_at.isoformat()),
                 "is_restored": is_restored,
                 "message_count": len(session.messages) if session.messages else 0,
             },
@@ -228,12 +256,16 @@ def send_chat_message(university_id: str, university_name: str, user_ip: str):
             )
 
             # 过滤返回的信息（不返回sources等敏感信息）
+            session_info_raw = result.get("session_info", {}) or {}
             filtered_result = {
                 "success": True,
                 "response": ai_response,
                 "processing_time": round(processing_time, 2),
                 "session_info": {
-                    "message_count": result.get("session_info", {}).get("message_count", 0)
+                    "message_count": session_info_raw.get("message_count", 0),
+                    "created_at": session_info_raw.get("created_at"),
+                    "last_activity": session_info_raw.get("last_activity"),
+                    "session_id": session_id,
                 },
             }
 
@@ -342,6 +374,50 @@ def get_chat_history(university_id: str, university_name: str, user_ip: str):  #
 
     except Exception as e:
         logger.error(f"获取聊天历史时出错: {e}", exc_info=True)
+        return jsonify({"success": False, "error": "服务暂时不可用"}), 500
+
+
+@public_chat_api_protection(max_requests=10, time_window=60)
+def clear_chat_session(university_id: str, university_name: str, user_ip: str):
+    """清空会话历史（管理端/前台共用）"""
+    _ = university_id, university_name, user_ip
+    try:
+        data = request.get_json() or {}
+        session_id = data.get("session_id")
+        if not session_id:
+            return jsonify({"success": False, "error": "缺少session_id参数"}), 400
+
+        chat_mgr = get_chat_manager()
+        success = chat_mgr.clear_session_history(session_id)
+        if not success:
+            return jsonify({"success": False, "error": "会话不存在或已过期"}), 404
+
+        response = jsonify({"success": True, "message": "会话历史已清空"})
+        return add_security_headers(response)
+    except Exception as e:
+        logger.error(f"清空会话历史时出错: {e}", exc_info=True)
+        return jsonify({"success": False, "error": "服务暂时不可用"}), 500
+
+
+@public_chat_api_protection(max_requests=10, time_window=60)
+def delete_chat_session(university_id: str, university_name: str, user_ip: str):
+    """删除会话（管理端/前台共用）"""
+    _ = university_id, university_name, user_ip
+    try:
+        data = request.get_json() or {}
+        session_id = data.get("session_id")
+        if not session_id:
+            return jsonify({"success": False, "error": "缺少session_id参数"}), 400
+
+        chat_mgr = get_chat_manager()
+        success = chat_mgr.cleanup_session(session_id)
+        if not success:
+            return jsonify({"success": False, "error": "会话不存在"}), 404
+
+        response = jsonify({"success": True, "message": "会话已删除"})
+        return add_security_headers(response)
+    except Exception as e:
+        logger.error(f"删除会话时出错: {e}", exc_info=True)
         return jsonify({"success": False, "error": "服务暂时不可用"}), 500
 
 

@@ -38,7 +38,14 @@ RunJPLib 提供了一个智能 AI 对话系统，允许用户就特定大学的�
 - `POST /send-message`: 发送用户消息，触发混合搜索和 AI 回答的生成。
 - `GET /get-history`: 获取当前会话的历史消息。
 
-所有接口都通过 CSRF 令牌和会话 ID 进行保护。
+### 管理端专用接口
+
+管理端通过代理路由 (`/admin/chat/api/`) 访问相同的API，但携带额外的角色令牌：
+
+- `POST /clear-session`: 清理当前会话的历史消息（管理端专用）
+- `POST /delete-session`: 删除当前会话（管理端专用）
+
+所有接口都通过 CSRF 令牌和会话 ID 进行保护。管理端请求额外携带 `X-Role-Token: 'admin'` 头部和 `role_token: 'admin'` 字段。
 
 ### 发送消息 (`POST /send-message`)
 

@@ -20,7 +20,6 @@ from werkzeug.routing import BaseConverter
 from routes.admin import admin_bp
 from routes.blog import blog_detail_route
 from routes.blog import blog_list_route
-from routes.chat import chat_bp
 from routes.index import index_route
 from routes.index import sitemap_route
 from routes.index import university_route
@@ -109,7 +108,7 @@ def create_app(_config_name=None):
 
     # 注册蓝图
     flask_app.register_blueprint(admin_bp)
-    flask_app.register_blueprint(chat_bp)
+    # 管理端聊天改为复用 university_chat API，不再单独注册 chat_bp
 
     # 注册路由
     register_routes(flask_app)
@@ -207,6 +206,16 @@ def register_routes(flask_app):
         """大学聊天API路由"""
         from routes.university_chat import handle_university_chat_api
         return handle_university_chat_api(name, endpoint, deadline)
+
+    # 管理端兼容路由：将 /admin/chat/api/* 代理到大学聊天API，允许带角色token
+    @flask_app.route('/admin/chat/api/<path:endpoint>', methods=['GET', 'POST', 'DELETE'])
+    def admin_chat_api_proxy(endpoint):
+        from flask import request
+        from routes.university_chat import handle_university_chat_api
+        # 统一从 body/query 解析大学名称；对于 create-session，前端会同时传 university_id
+        university_name = request.args.get('university_name') or (request.get_json() or {}).get('university_name') or ''
+        deadline = request.args.get('deadline') or None
+        return handle_university_chat_api(university_name, endpoint, deadline)
 
     @flask_app.route('/blog')
     @flask_app.route('/blog/')
