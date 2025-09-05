@@ -126,8 +126,13 @@
     document.addEventListener('DOMContentLoaded', function() {
         const csrfToken = getCSRFToken();
         const csrfInput = document.getElementById('csrf_token');
+        console.log('CSRF Token:', csrfToken);
+        console.log('CSRF Input:', csrfInput);
         if (csrfInput && csrfToken) {
             csrfInput.value = csrfToken;
+            console.log('CSRF Token set to:', csrfInput.value);
+        } else {
+            console.log('Failed to set CSRF token');
         }
     });
 
