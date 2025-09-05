@@ -32,6 +32,9 @@ def admin_required(fn):
                     return redirect(url_for("admin.login"))
         except Exception as e:
             logging.warning(f"JWT validation failed for path '{request.path}': {e}")
+            logging.warning(f"Request method: {request.method}")
+            logging.warning(f"Request headers: {dict(request.headers)}")
+            logging.warning(f"Request cookies: {dict(request.cookies)}")
             if is_api_request:
                 return jsonify(msg="Token无效或已过期"), 401
             else:
