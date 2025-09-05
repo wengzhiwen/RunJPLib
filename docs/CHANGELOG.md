@@ -1,3 +1,40 @@
+## [修复] University Tagger CSRF Token 问题修复 - 2025-09-05
+
+### 问题描述
+- 点击"开始刷新大学标签"按钮时，系统报错"Missing CSRF token"
+- 用户被重定向到admin登录页面，无法正常使用功能
+
+### 根本原因
+- Flask-JWT-Extended的JWT验证在某些情况下仍然要求CSRF token
+- university_tagger.html模板缺少CSRF token支持
+- admin布局模板缺少CSRF token的meta标签
+
+### 修复内容
+1. **模板修复**:
+   - 在`university_tagger.html`中添加CSRF token隐藏字段
+   - 在`admin/layout.html`中添加CSRF token meta标签
+   - 添加JavaScript自动获取和设置CSRF token
+
+2. **后端修复**:
+   - 确保JWT cookie设置正确
+   - 验证JWT配置符合预期
+
+3. **配置验证**:
+   - 确认`JWT_COOKIE_CSRF_PROTECT=False`配置正确
+   - 验证环境变量设置符合预期
+
+### 技术细节
+- CSRF token从JWT cookie中自动获取
+- 支持多种token获取方式（meta标签、cookie、localStorage）
+- 保持与其他admin页面的一致性
+
+### 测试验证
+- ✅ university_tagger.html 包含CSRF token支持
+- ✅ admin/layout.html 包含CSRF token meta标签  
+- ✅ JWT_COOKIE_CSRF_PROTECT: False
+
+---
+
 ## [重构] Utils 模块结构重组 - 2025-09-05
 
 ### 变更内容
