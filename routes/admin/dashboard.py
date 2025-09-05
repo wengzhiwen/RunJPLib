@@ -1,18 +1,14 @@
-from datetime import datetime
-from datetime import timedelta
 import json
 import logging
 import time
+from datetime import datetime, timedelta
 
-from flask import jsonify
-from flask import render_template
-from flask import Response
+from flask import Response, jsonify, render_template
+
+from routes.admin.auth import admin_required
+from utils import get_db, get_mongo_client, thread_pool_manager
 
 from . import admin_bp
-from routes.admin.auth import admin_required
-from utils.mongo_client import get_db
-from utils.mongo_client import get_mongo_client
-from utils.thread_pool_manager import thread_pool_manager
 
 
 def _get_dashboard_stats():

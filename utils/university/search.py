@@ -2,27 +2,27 @@
 LlamaIndex集成器
 负责处理文档向量化和检索
 """
-from datetime import datetime
 import os
+from datetime import datetime
 from typing import Callable, Dict, List, Optional
 
 import chromadb
 from chromadb.config import Settings
-from llama_index.core import Document, StorageContext
+from llama_index.core import Document
 from llama_index.core import Settings as LlamaSettings
-from llama_index.core import VectorStoreIndex
+from llama_index.core import StorageContext, VectorStoreIndex
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
 # 使用retrieval logger确保日志能正确输出
-from utils.logging_config import setup_retrieval_logger
+from ..core.logging import setup_retrieval_logger
 
 logger = setup_retrieval_logger()
 
 
-class LlamaIndexIntegration:
-    """LlamaIndex集成器"""
+class VectorSearchEngine:
+    """向量搜索引擎"""
 
     def __init__(self):
         """初始化LlamaIndex集成器"""
@@ -100,7 +100,7 @@ class LlamaIndexIntegration:
             # 步骤2: 清理旧索引并准备新集合
             logger.info("--- 步骤2: 清理旧索引并准备新集合 ---")
             self.delete_university_index(university_id)
-            
+
             collection_name = f"university_{university_id}"
             logger.debug(f"集合名称: {collection_name}")
 

@@ -3,19 +3,20 @@
 增强搜索策略：混合向量搜索和优化的关键词搜索
 内存优化版本，适用于内存受限的服务器环境
 """
-import re
-import time
 import gc
-import weakref
-from typing import Dict, List, Optional, Tuple, Set
-from concurrent.futures import ThreadPoolExecutor
-import threading
-import psutil
 import os
+import re
+import threading
+import time
+import weakref
+from concurrent.futures import ThreadPoolExecutor
+from typing import Dict, List, Optional, Set, Tuple
+
+import psutil
 
 
-class EnhancedSearchStrategy:
-    """增强的混合搜索策略 - 内存优化版本"""
+class HybridSearchEngine:
+    """混合搜索引擎 - 内存优化版本"""
 
     def __init__(self, llama_index_integration, openai_client):
         self.llama_index = llama_index_integration
@@ -127,7 +128,10 @@ class EnhancedSearchStrategy:
         try:
             response = self.openai_client.chat.completions.create(
                 model="gpt-4.1-nano-2025-04-14",
-                messages=[{"role": "user", "content": prompt}],
+                messages=[{
+                    "role": "user",
+                    "content": prompt
+                }],
                 temperature=0.1,
                 max_tokens=500,
             )
@@ -165,9 +169,7 @@ class EnhancedSearchStrategy:
                     cleaned.append(clean_kw)
         return list(set(cleaned))  # 去重
 
-    def optimized_keyword_search(
-        self, university_doc: Dict, keywords: List[str], exact_match: bool = True
-    ) -> List[Dict]:
+    def optimized_keyword_search(self, university_doc: Dict, keywords: List[str], exact_match: bool = True) -> List[Dict]:
         """
         优化的关键词搜索，避免全文检索的性能问题
 
@@ -189,22 +191,17 @@ class EnhancedSearchStrategy:
 
             matches = self._search_in_text(text, keywords, exact_match)
             if matches:
-                results.extend(
-                    [
-                        {
-                            "content": match["context"],
-                            "score": match["score"],
-                            "metadata": {
-                                "content_type": content_type,
-                                "language": language,
-                                "match_type": "exact" if exact_match else "fuzzy",
-                                "matched_keywords": match["keywords"],
-                                "position": match["position"],
-                            },
-                        }
-                        for match in matches
-                    ]
-                )
+                results.extend([{
+                    "content": match["context"],
+                    "score": match["score"],
+                    "metadata": {
+                        "content_type": content_type,
+                        "language": language,
+                        "match_type": "exact" if exact_match else "fuzzy",
+                        "matched_keywords": match["keywords"],
+                        "position": match["position"],
+                    },
+                } for match in matches])
 
         # 按匹配质量排序
         results.sort(key=lambda x: x["score"], reverse=True)
@@ -220,10 +217,7 @@ class EnhancedSearchStrategy:
 
             if exact_match:
                 # 精确匹配 - 对于中日文，不使用词边界
-                if any(
-                    "\u4e00" <= char <= "\u9fff" or "\u3040" <= char <= "\u309f" or "\u30a0" <= char <= "\u30ff"
-                    for char in keyword
-                ):
+                if any("\u4e00" <= char <= "\u9fff" or "\u3040" <= char <= "\u309f" or "\u30a0" <= char <= "\u30ff" for char in keyword):
                     # 中日文字符，直接匹配
                     pattern = self._get_compiled_regex(re.escape(keyword), re.IGNORECASE)
                 else:
@@ -335,9 +329,7 @@ class EnhancedSearchStrategy:
 
                 if strategy in ["hybrid", "vector_only"]:
                     # 向量搜索
-                    vector_future = executor.submit(
-                        self._vector_search_wrapper, university_id, query_analysis.get("primary_query", ""), top_k
-                    )
+                    vector_future = executor.submit(self._vector_search_wrapper, university_id, query_analysis.get("primary_query", ""), top_k)
 
                 if strategy in ["hybrid", "keyword_only"]:
                     # 关键词搜索
@@ -404,13 +396,11 @@ class EnhancedSearchStrategy:
             print(f"向量搜索异常: {e}")
             return []
 
-    def _keyword_search_wrapper(
-        self, university_id: str, exact_keywords: List[str], fuzzy_keywords: List[str]
-    ) -> List[Dict]:
+    def _keyword_search_wrapper(self, university_id: str, exact_keywords: List[str], fuzzy_keywords: List[str]) -> List[Dict]:
         """关键词搜索包装器"""
         try:
             # 获取大学文档
-            from utils.mongo_client import get_db
+            from ..core.database import get_db
 
             db = get_db()
             from bson import ObjectId
@@ -441,9 +431,7 @@ class EnhancedSearchStrategy:
             print(f"关键词搜索异常: {e}")
             return []
 
-    def _merge_and_rerank(
-        self, vector_results: List[Dict], keyword_results: List[Dict], query_analysis: Dict, top_k: int
-    ) -> List[Dict]:
+    def _merge_and_rerank(self, vector_results: List[Dict], keyword_results: List[Dict], query_analysis: Dict, top_k: int) -> List[Dict]:
         """合并和重排序搜索结果"""
 
         # 根据搜索策略调整权重
@@ -479,9 +467,7 @@ class EnhancedSearchStrategy:
                 if self._is_similar_content(existing.get("content", ""), result.get("content", "")):
                     # 如果关键词搜索是精确匹配，优先使用关键词结果
                     if result.get("search_type") == "keyword_exact":
-                        existing["final_score"] = (
-                            result.get("score", 0) * keyword_weight + existing.get("final_score", 0) * 0.5
-                        )
+                        existing["final_score"] = (result.get("score", 0) * keyword_weight + existing.get("final_score", 0) * 0.5)
                         existing["search_type"] = "hybrid_keyword_priority"
                     else:
                         # 合并分数
@@ -515,11 +501,9 @@ class EnhancedSearchStrategy:
         # 添加调试信息
         for i, result in enumerate(final_results):
             result["rank"] = i + 1
-            print(
-                f"结果{i+1}: {result.get('search_type', 'unknown')} "
-                f"最终分数={result['final_score']:.4f} "
-                f"({result['score_components']})"
-            )
+            print(f"结果{i+1}: {result.get('search_type', 'unknown')} "
+                  f"最终分数={result['final_score']:.4f} "
+                  f"({result['score_components']})")
 
         return final_results
 

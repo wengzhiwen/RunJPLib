@@ -1,20 +1,19 @@
 """
 任务管理器 - 管理异步执行的后台任务
 """
-from datetime import datetime
-from datetime import timedelta
 import os
 import threading
 import time
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from bson.objectid import ObjectId
 import dotenv
+from bson.objectid import ObjectId
 
-from utils.logging_config import setup_task_logger
-from utils.mongo_client import get_db
-from utils.pdf_processor import run_pdf_processor
-from utils.university_tagger import UniversityTagger
+from ..core.database import get_db
+from ..core.logging import setup_task_logger
+from ..document.pdf_processor import run_pdf_processor
+from ..university.tagger import UniversityClassifier as UniversityTagger
 
 task_logger = setup_task_logger("TaskManager")
 

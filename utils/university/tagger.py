@@ -1,27 +1,24 @@
-from datetime import datetime
 import json
 import logging
 import os
+from datetime import datetime
 
-from agents import Agent
-from agents import Runner
+from agents import Agent, Runner
 from bson import ObjectId
 from dotenv import load_dotenv
 
-from utils.mongo_client import get_db
+from ..core.database import get_db
 
 # Use a standard logger for file-based logging, not for task-specific DB logging.
 file_logger = logging.getLogger(__name__)
 
 
-class UniversityTagger:
-    """
-    A class to tag universities using an LLM.
-    """
+class UniversityClassifier:
+    """大学分类器"""
 
     def __init__(self, task_id):
         """
-        Initializes the UniversityTagger.
+        Initializes the UniversityClassifier.
         Args:
             task_id (str): The ID of the task being executed.
         """
@@ -236,5 +233,5 @@ class UniversityTagger:
 if __name__ == '__main__':
     # For local testing
     logging.basicConfig(level=logging.INFO)
-    tagger = UniversityTagger("test_task_id")
+    tagger = UniversityClassifier("test_task_id")
     tagger.run_tagging_process()

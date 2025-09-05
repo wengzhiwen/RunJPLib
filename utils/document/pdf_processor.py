@@ -3,114 +3,28 @@ PDF处理器 - 大学招生信息处理器的核心类
 基于Buffalo工作流程管理器来处理PDF文件
 """
 
-from datetime import datetime
-from datetime import time as datetime_time
 import os
-from pathlib import Path
 import shutil
 import time
 import uuid
+from datetime import datetime
+from datetime import time as datetime_time
+from pathlib import Path
 
 from bson.objectid import ObjectId
-from buffalo import Buffalo
-from buffalo import Project
-from buffalo import Work
+from buffalo import Buffalo, Project, Work
 from gridfs import GridFS
 from pdf2image import convert_from_path
 
-from utils.analysis_tool import AnalysisTool
-from utils.batch_ocr_tool import BatchOCRTool
-from utils.logging_config import setup_task_logger
-from utils.mongo_client import get_db
-from utils.mongo_client import get_mongo_client
-from utils.ocr_tool import OCRTool
-from utils.translate_tool import TranslateTool
+from ..ai.analysis_tool import DocumentAnalyzer as AnalysisTool
+from ..ai.batch_ocr_tool import BatchOcrProcessor as BatchOCRTool
+from ..ai.ocr_tool import ImageOcrProcessor as OCRTool
+from ..ai.translate_tool import DocumentTranslator as TranslateTool
+from ..core.config import Config
+from ..core.database import get_db, get_mongo_client
+from ..core.logging import setup_task_logger
 
 task_logger = setup_task_logger("TaskManager")
-
-
-class Config:
-    """配置类，用于管理所有配置信息（单例模式）"""
-
-    _instance = None
-    _initialized = False
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(Config, cls).__new__(cls)
-        return cls._instance
-
-    def __init__(self):
-        if self._initialized:
-            return
-
-        # 加载环境变量配置
-        from dotenv import load_dotenv
-
-        load_dotenv()
-
-        try:
-            # 临时工作目录
-            temp_dir_str = os.getenv("PDF_PROCESSOR_TEMP_DIR")
-            if temp_dir_str is None:
-                temp_dir_str = "temp/pdf_processing"
-            self.temp_dir = Path(temp_dir_str)
-            self.temp_dir.mkdir(parents=True, exist_ok=True)
-        except Exception as e:
-            raise ValueError(f"临时目录无法创建: {self.temp_dir}") from e
-
-        try:
-            # buffalo模板文件路径
-            self.buffalo_template_file = Path(__file__).parent / "wf_template.yml"
-            if not self.buffalo_template_file.exists():
-                raise FileNotFoundError(f"Buffalo模板文件未找到: {self.buffalo_template_file}")
-        except Exception as e:
-            raise FileNotFoundError(f"Buffalo模板文件未找到: {self.buffalo_template_file}") from e
-
-        # OCR配置
-        try:
-            self.ocr_dpi = int(os.getenv("OCR_DPI", 150))
-        except Exception:
-            self.ocr_dpi = 150
-
-        # 优先从环境变量读取OCR模型名称
-        self.ocr_model_name = os.getenv("OPENAI_OCR_MODEL", "gpt-4o-mini")
-
-        # 翻译配置
-        try:
-            translate_terms_file = os.getenv("TRANSLATE_TERMS_FILE", "")
-            if translate_terms_file and Path(translate_terms_file).exists():
-                with open(translate_terms_file, "r", encoding="utf-8") as f:
-                    self.translate_terms = f.read()
-            else:
-                self.translate_terms = ""
-        except Exception:
-            self.translate_terms = ""
-
-        # 优先从环境变量读取翻译模型名称
-        self.translate_model_name = os.getenv("OPENAI_TRANSLATE_MODEL", "gpt-4o-mini")
-
-        # 优先从环境变量读取分析模型名称
-        self.analysis_model_name = os.getenv("OPENAI_ANALYSIS_MODEL", "gpt-4o-mini")
-
-        analysis_questions_file = os.getenv("ANALYSIS_QUESTIONS_FILE", "")
-        if analysis_questions_file and Path(analysis_questions_file).exists():
-            with open(analysis_questions_file, "r", encoding="utf-8") as f:
-                self.analysis_questions = f.read()
-        else:
-            # 默认的分析问题
-            self.analysis_questions = """
-1. 该大学是否招收外国人留学生？
-2. 招收外国人留学生的学部和专业有哪些？
-3. 外国人留学生的报名条件是什么？
-4. 需要提交的申请材料有哪些？
-5. 入学考试的内容和形式是什么？
-6. 报名和考试的时间安排如何？
-7. 学费和其他费用是多少？
-8. 是否有奖学金制度？
-"""
-
-        self._initialized = True
 
 
 class PDFProcessor:

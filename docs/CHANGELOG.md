@@ -1,3 +1,42 @@
+## [重构] Utils 模块结构重组 - 2025-09-05
+
+### 变更内容
+- 重新组织 utils 目录结构，按功能领域分组
+- 优化类名和文件名，提高可读性和一致性
+- 保持所有功能完全不变，确保向后兼容
+
+### 新的目录结构
+- `core/`: 核心基础设施（配置、数据库、日志）
+- `ai/`: AI相关工具（分析、生成、OCR、翻译）
+- `chat/`: 聊天相关功能（管理、安全、日志、搜索）
+- `document/`: 文档处理（PDF、Wiki）
+- `university/`: 大学相关（管理、标签、搜索）
+- `system/`: 系统管理（任务、线程池、分析）
+- `tools/`: 工具类（缓存、地理位置）
+- `templates/`: 模板文件
+
+### 类名优化
+- `AnalysisTool` → `DocumentAnalyzer`
+- `BlogGenerator` → `ContentGenerator`
+- `OCRTool` → `ImageOcrProcessor`
+- `BatchOCRTool` → `BatchOcrProcessor`
+- `TranslateTool` → `DocumentTranslator`
+- `ChatSecurityManager` → `ChatSecurityGuard`
+- `ChatLoggingManager` → `ChatSessionLogger`
+- `EnhancedSearchStrategy` → `HybridSearchEngine`
+- `LlamaIndexIntegration` → `VectorSearchEngine`
+- `UniversityDocumentManager` → `UniversityRepository`
+- `UniversityTagger` → `UniversityClassifier`
+- `IPGeoManager` → `GeoLocationResolver`
+- `ThreadPoolManager` → `ConcurrentTaskExecutor`
+
+### 兼容性
+- 所有原有导入方式继续有效
+- 所有全局实例访问方式保持不变
+- 所有类的方法和属性完全不变
+
+---
+
 ## [2025-01-XX] - Routes文件夹重构完成 + Bug修复
 
 ### 🔧 架构重构

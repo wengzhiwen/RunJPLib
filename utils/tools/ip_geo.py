@@ -1,21 +1,20 @@
-from datetime import datetime
-from datetime import timedelta
 import hashlib
 import json
 import logging
 import os
-from pathlib import Path
 import shutil
 import tempfile
+from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Dict, Optional
 
+import requests
 from geoip2.database import Reader
 from geoip2.errors import AddressNotFoundError
-import requests
 
 
-class IPGeoManager:
-    """IP地理位置管理器"""
+class GeoLocationResolver:
+    """地理位置解析器"""
 
     def __init__(self):
         self.mmdb_dir = Path("temp/mmdb")
@@ -183,4 +182,5 @@ class IPGeoManager:
 
 
 # 全局实例
-ip_geo_manager = IPGeoManager()
+# 使用新类名实例化以提高代码清晰度，但导出时使用旧名称以保持向后兼容
+ip_geo_manager = GeoLocationResolver()

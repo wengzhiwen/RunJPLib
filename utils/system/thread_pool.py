@@ -1,19 +1,19 @@
 """
 线程池管理器 - 管理不同类型的后台任务
 """
-from concurrent.futures import ThreadPoolExecutor
 import os
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict
 
-from utils.logging_config import setup_logger
+from ..core.logging import setup_logger
 
-logger = setup_logger(logger_name="ThreadPoolManager", log_level="INFO")
+logger = setup_logger(logger_name="ConcurrentTaskExecutor", log_level="INFO")
 
 
-class ThreadPoolManager:
-    """线程池管理器 - 单例模式，支持多个独立线程池"""
+class ConcurrentTaskExecutor:
+    """并发任务执行器 - 单例模式，支持多个独立线程池"""
     _instance = None
     _lock = threading.Lock()
 
@@ -21,7 +21,7 @@ class ThreadPoolManager:
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
-                    cls._instance = super(ThreadPoolManager, cls).__new__(cls)
+                    cls._instance = super(ConcurrentTaskExecutor, cls).__new__(cls)
         return cls._instance
 
     def __init__(self):
@@ -202,4 +202,5 @@ class ThreadPoolManager:
 
 
 # 全局线程池管理器实例
-thread_pool_manager = ThreadPoolManager()
+# 使用新类名实例化以提高代码清晰度，但导出时使用旧名称以保持向后兼容
+thread_pool_manager = ConcurrentTaskExecutor()

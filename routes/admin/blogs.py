@@ -9,12 +9,10 @@ from flask import render_template
 from flask import request
 from flask import url_for
 
-from . import admin_bp
 from routes.admin.auth import admin_required
-from utils.blog_generator import BlogGenerator
-from utils.cache import clear_blog_list_cache
-from utils.mongo_client import get_db
-from utils.thread_pool_manager import thread_pool_manager
+from utils import BlogGenerator, clear_blog_list_cache, get_db, thread_pool_manager
+
+from . import admin_bp
 
 
 def _save_blog_to_db(blog_data):
@@ -26,7 +24,7 @@ def _save_blog_to_db(blog_data):
             return None
 
         # 应用Wiki功能：自动识别学校名称并添加超链接
-        from utils.blog_wiki_processor import blog_wiki_processor
+        from utils import blog_wiki_processor
         original_content = blog_data.get('content_md', '')
         processed_content = blog_wiki_processor.process_blog_content(original_content)
 
@@ -59,7 +57,7 @@ def _update_blog_in_db(object_id, update_data, blog_id):
 
         # 应用Wiki功能：自动识别学校名称并添加超链接
         if 'content_md' in update_data['$set']:
-            from utils.blog_wiki_processor import blog_wiki_processor
+            from utils import blog_wiki_processor
             original_content = update_data['$set']['content_md']
             processed_content = blog_wiki_processor.process_blog_content(original_content)
 
@@ -310,7 +308,7 @@ def save_blog():
             logging.warning("Admin线程池繁忙，同步保存博客")
             try:
                 # 应用Wiki功能
-                from utils.blog_wiki_processor import blog_wiki_processor
+                from utils import blog_wiki_processor
                 original_content = new_blog.get('content_md', '')
                 processed_content = blog_wiki_processor.process_blog_content(original_content)
 
@@ -390,7 +388,7 @@ def edit_blog(blog_id):
             try:
                 # 应用Wiki功能
                 if 'content_md' in update_data['$set']:
-                    from utils.blog_wiki_processor import blog_wiki_processor
+                    from utils import blog_wiki_processor
                     original_content = update_data['$set']['content_md']
                     processed_content = blog_wiki_processor.process_blog_content(original_content)
 

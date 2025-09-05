@@ -10,10 +10,10 @@ from flask import render_template
 import markdown
 
 from routes.blog.cache import update_blog_html_in_db
-from utils.analytics import log_access
-from utils.cache import blog_list_cache
-from utils.mongo_client import get_db
-from utils.thread_pool_manager import thread_pool_manager
+from utils import blog_list_cache
+from utils import get_db
+from utils import log_access
+from utils import thread_pool_manager
 
 
 @cached(blog_list_cache)

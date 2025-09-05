@@ -2,17 +2,15 @@ import base64
 import os
 import time
 
-from agents import Agent
-from agents import Runner
-from agents import TResponseInputItem
+from agents import Agent, Runner, TResponseInputItem
 
-from utils.logging_config import setup_logger
+from ..core.logging import setup_logger
 
-logger = setup_logger(logger_name="OCRTool", log_level="INFO")
+logger = setup_logger(logger_name="ImageOcrProcessor", log_level="INFO")
 
 
-class OCRTool:
-    """OCR工具类，用于处理图像OCR识别"""
+class ImageOcrProcessor:
+    """图像OCR处理器类，用于处理图像OCR识别"""
 
     def __init__(self):
         """

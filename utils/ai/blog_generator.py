@@ -3,26 +3,24 @@
 该模块改编自参考脚本 `blog_writer.py` 的逻辑，
 支持多种生成模式和内容格式化。
 """
-from datetime import datetime
 import json
 import os
+from datetime import datetime
 from typing import Dict, List, Optional
 
-from agents import Agent
-from agents import Runner
-from agents import trace
+import nest_asyncio
+from agents import Agent, Runner, trace
 from bson.objectid import ObjectId
 from dotenv import load_dotenv
-import nest_asyncio
 
-from utils.logging_config import setup_logger
-from utils.mongo_client import get_mongo_client
+from ..core.database import get_mongo_client
+from ..core.logging import setup_logger
 
 # 应用补丁以允许嵌套的asyncio事件循环
 nest_asyncio.apply()
 
 # 设置独立的日志记录器
-logger = setup_logger(logger_name="BlogGenerator", log_level="INFO")
+logger = setup_logger(logger_name="ContentGenerator", log_level="INFO")
 
 # --- 系统提示词 ---
 
@@ -196,7 +194,8 @@ PROMPT_WEB_SEARCH = """
 """
 
 
-class BlogGenerator:
+class ContentGenerator:
+    """内容生成器类，使用AI生成博客文章"""
 
     def __init__(self):
         load_dotenv()

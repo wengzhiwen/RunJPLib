@@ -1,16 +1,15 @@
 import os
 import time
 
-from agents import Agent
-from agents import Runner
+from agents import Agent, Runner
 
-from utils.logging_config import setup_logger
+from ..core.logging import setup_logger
 
-logger = setup_logger(logger_name="AnalysisTool", log_level="INFO")
+logger = setup_logger(logger_name="DocumentAnalyzer", log_level="INFO")
 
 
-class AnalysisTool:
-    """分析工具类，用于处理Markdown文档分析"""
+class DocumentAnalyzer:
+    """文档分析工具类，用于处理Markdown文档分析"""
 
     def __init__(
         self,
@@ -79,10 +78,9 @@ class AnalysisTool:
             model=self.model_name,
         )
 
-        input_items = [
-            {
-                "role": "user",
-                "content": f"""请根据以下Markdown内容进行分析：
+        input_items = [{
+            "role": "user",
+            "content": f"""请根据以下Markdown内容进行分析：
 
 {md_content}
 
@@ -90,8 +88,7 @@ class AnalysisTool:
 
 请直接返回分析结果。务必尊从系统提示词中的要求来进行分析。
 不要忘记重要提示中关于在分析结果的结尾处添加四行大学名称和简称的信息的要求。""",
-            }
-        ]
+        }]
 
         result = Runner.run_sync(analyzer_agent, input_items)
         return result.final_output
@@ -135,10 +132,9 @@ class AnalysisTool:
             model=self.model_name,
         )
 
-        input_items = [
-            {
-                "role": "user",
-                "content": f"""请根据以下原始文档内容对分析结果进行校对：
+        input_items = [{
+            "role": "user",
+            "content": f"""请根据以下原始文档内容对分析结果进行校对：
 
 原始文档：
 {md_content}
@@ -149,8 +145,7 @@ class AnalysisTool:
 -----------
 
 请直接返回校对后的分析结果。务必尊从系统提示词中的要求来进行校对。""",
-            }
-        ]
+        }]
 
         result = Runner.run_sync(review_agent, input_items)
         return result.final_output
@@ -190,18 +185,16 @@ class AnalysisTool:
             model=self.model_name,
         )
 
-        input_items = [
-            {
-                "role": "user",
-                "content": f"""请将以下分析结果整理成Markdown格式的最终报告：
+        input_items = [{
+            "role": "user",
+            "content": f"""请将以下分析结果整理成Markdown格式的最终报告：
 
 {analysis_result}
 
 -----------
 
 请直接返回最终报告。务必尊从系统提示词中的要求来生成报告。""",
-            }
-        ]
+        }]
 
         result = Runner.run_sync(report_agent, input_items)
         return result.final_output
@@ -236,8 +229,6 @@ class AnalysisTool:
         report_time = time.time() - report_start
 
         total_time = time.time() - start_time
-        logger.info(
-            f"分析步骤耗时: {analysis_time:.2f}秒，审核步骤耗时: {review_time:.2f}秒，报告生成步骤耗时: {report_time:.2f}秒，总耗时: {total_time:.2f}秒"
-        )
+        logger.info(f"分析步骤耗时: {analysis_time:.2f}秒，审核步骤耗时: {review_time:.2f}秒，报告生成步骤耗时: {report_time:.2f}秒，总耗时: {total_time:.2f}秒")
 
         return final_report

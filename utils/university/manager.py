@@ -7,13 +7,13 @@ from typing import Dict, List, Optional
 
 from bson.objectid import ObjectId
 
-from utils.mongo_client import get_db
+from ..core.database import get_db
 
 logger = logging.getLogger(__name__)
 
 
-class UniversityDocumentManager:
-    """大学文档管理器"""
+class UniversityRepository:
+    """大学文档仓库"""
 
     def __init__(self):
         """初始化文档管理器"""

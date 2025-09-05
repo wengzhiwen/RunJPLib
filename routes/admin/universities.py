@@ -1,18 +1,13 @@
-from datetime import datetime
 import logging
+from datetime import datetime
 
 from bson.objectid import ObjectId
-from flask import jsonify
-from flask import redirect
-from flask import render_template
-from flask import request
-from flask import url_for
+from flask import jsonify, redirect, render_template, request, url_for
+
+from routes.admin.auth import admin_required
+from utils import LlamaIndexIntegration, get_db, thread_pool_manager
 
 from . import admin_bp
-from routes.admin.auth import admin_required
-from utils.llama_index_integration import LlamaIndexIntegration
-from utils.mongo_client import get_db
-from utils.thread_pool_manager import thread_pool_manager
 
 
 def _update_university_in_db(object_id, update_data, university_id):

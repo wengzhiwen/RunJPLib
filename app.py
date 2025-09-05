@@ -27,8 +27,8 @@ from routes.index import index_route
 from routes.index import sitemap_route
 from routes.index import university_route
 from routes.university_chat import chat_bp
-from utils.db_indexes import ensure_indexes
-from utils.mongo_client import get_db
+from utils import ensure_indexes
+from utils import get_db
 
 load_dotenv()
 
@@ -203,30 +203,6 @@ def register_routes(flask_app):
     def university_zh(name):
         """大学详情页路由 - 最新翻译"""
         return university_route(name, content="ZH")
-
-    # 管理端兼容路由：将 /admin/chat/api/* 代理到大学聊天API，允许带角色token
-    @flask_app.route('/admin/chat/api/<path:endpoint>', methods=['GET', 'POST', 'DELETE'])
-    def admin_chat_api_proxy(endpoint):
-        # 统一从 body/query 解析大学名称；对于 create-session，前端会同时传 university_id
-        university_name = request.args.get('university_name') or (request.get_json() or {}).get('university_name') or ''
-        deadline = request.args.get('deadline') or None
-        _ = deadline  # 避免未使用参数警告
-
-        # 构建重定向URL到新的chat_bp路由
-        if endpoint == 'create-session':
-            return redirect(f'/api/chat/{university_name}/create-session')
-        elif endpoint == 'send-message':
-            return redirect(f'/api/chat/{university_name}/send-message')
-        elif endpoint == 'get-history':
-            return redirect(f'/api/chat/{university_name}/get-history')
-        elif endpoint == 'clear-session':
-            return redirect(f'/api/chat/{university_name}/clear-session')
-        elif endpoint == 'delete-session':
-            return redirect(f'/api/chat/{university_name}/delete-session')
-        elif endpoint == 'health':
-            return redirect(f'/api/chat/{university_name}/health')
-        else:
-            return jsonify({"success": False, "error": "API端点不存在"}), 404
 
     @flask_app.route('/blog')
     @flask_app.route('/blog/')

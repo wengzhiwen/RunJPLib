@@ -1,16 +1,15 @@
 import os
 import time
 
-from agents import Agent
-from agents import Runner
+from agents import Agent, Runner
 
-from utils.logging_config import setup_logger
+from ..core.logging import setup_logger
 
-logger = setup_logger(logger_name="TranslateTool", log_level="INFO")
+logger = setup_logger(logger_name="DocumentTranslator", log_level="INFO")
 
 
-class TranslateTool:
-    """翻译工具类，用于处理日语到中文的翻译"""
+class DocumentTranslator:
+    """文档翻译器类，用于处理日语到中文的翻译"""
 
     def __init__(self, translate_terms: str = ""):
         """

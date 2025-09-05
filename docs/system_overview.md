@@ -41,3 +41,4 @@ RunJPLib 是一个基于 Flask 的 Web 应用程序，为用户提供日本大�
     - **内容生成与分析**: OpenAI
     - **向量搜索**: LlamaIndex, ChromaDB
 - **前端**: HTML, CSS, JavaScript (Bootstrap)
+- **Utils 模块**: 按功能领域组织的模块化架构

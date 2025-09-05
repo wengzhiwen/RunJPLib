@@ -6,13 +6,13 @@ import base64
 import json
 import math
 import os
-from pathlib import Path
 import tempfile
 import time
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from utils.logging_config import setup_logger
-from utils.mongo_client import get_db
+from ..core.database import get_db
+from ..core.logging import setup_logger
 
 logger = setup_logger(logger_name="BatchOCRTool", log_level="INFO")
 
@@ -23,8 +23,8 @@ except ImportError:
     raise
 
 
-class BatchOCRTool:
-    """批量OCR工具类，使用OpenAI Batch API处理图像OCR识别"""
+class BatchOcrProcessor:
+    """批量OCR处理器类，使用OpenAI Batch API处理图像OCR识别"""
 
     def __init__(self):
         """

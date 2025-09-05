@@ -2,18 +2,17 @@
 聊天系统安全模块
 提供API保护、防外站调用、速率限制等功能
 """
-from functools import wraps
 import hmac
 import logging
 import os
 import secrets
 import time
-import dotenv
+from functools import wraps
 from urllib.parse import urlparse
 
+import dotenv
 from cachetools import TTLCache
-from flask import jsonify
-from flask import request
+from flask import jsonify, request
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +29,8 @@ ALLOWED_DOMAINS = os.getenv('ALLOWED_DOMAINS', 'localhost,127.0.0.1,100.88.88.88
 ALLOWED_PORTS = os.getenv('ALLOWED_PORTS', '5000,3000,8080,5070,80,443').split(',')
 
 
-class ChatSecurityManager:
-    """聊天系统安全管理器"""
+class ChatSecurityGuard:
+    """聊天系统安全守护者"""
 
     def __init__(self):
         self.secret_key = os.getenv('FLASK_SECRET_KEY', 'default-secret-key')
@@ -158,7 +157,8 @@ class ChatSecurityManager:
 
 
 # 全局安全管理器实例
-security_manager = ChatSecurityManager()
+# 使用新类名实例化以提高代码清晰度，但导出时使用旧名称以保持向后兼容
+security_manager = ChatSecurityGuard()
 
 
 def chat_api_protection(max_requests: int = 60, time_window: int = 60):

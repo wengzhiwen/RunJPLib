@@ -7,7 +7,7 @@ import re
 from typing import List, Set, Tuple
 from urllib.parse import quote
 
-from utils.mongo_client import get_db
+from ..core.database import get_db
 
 logger = logging.getLogger(__name__)
 

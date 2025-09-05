@@ -1,10 +1,10 @@
-from datetime import datetime
 import logging
+from datetime import datetime
 
 from flask import request
 
-from utils.mongo_client import get_db
-from utils.thread_pool_manager import thread_pool_manager
+from ..core.database import get_db
+from ..system.thread_pool import thread_pool_manager
 
 
 def _write_access_log_to_db(access_log: dict):

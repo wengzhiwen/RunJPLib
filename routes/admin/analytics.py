@@ -1,16 +1,12 @@
-from datetime import datetime
-from datetime import timedelta
 import logging
+from datetime import datetime, timedelta
 
-from flask import redirect
-from flask import render_template
-from flask import request
-from flask import url_for
+from flask import redirect, render_template, request, url_for
+
+from routes.admin.auth import admin_required
+from utils import get_db, task_manager
 
 from . import admin_bp
-from routes.admin.auth import admin_required
-from utils.mongo_client import get_db
-from utils.task_manager import task_manager
 
 
 @admin_bp.route("/university-tagger", methods=["GET", "POST"])
@@ -60,7 +56,7 @@ def unique_ips_page():
         return render_template("unique_ips.html", error="数据库连接失败", items=[])
 
     # 确保mmdb文件可用
-    from utils.ip_geo import ip_geo_manager
+    from utils import ip_geo_manager
 
     logging.info("🔧 检查mmdb文件可用性...")
     mmdb_available = ip_geo_manager.ensure_mmdb_available()
@@ -151,7 +147,7 @@ def unique_ips_page():
 
 def _batch_update_geo_info(db, ips_to_lookup, items):
     """批量更新IP地理信息到数据库（嵌入方案）"""
-    from utils.ip_geo import ip_geo_manager
+    from utils import ip_geo_manager
 
     try:
         logging.info(f"🔍 开始批量更新地理信息，总IP数量: {len(ips_to_lookup)}")

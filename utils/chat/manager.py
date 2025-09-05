@@ -4,20 +4,19 @@
 """
 
 import csv
-from datetime import datetime
-from datetime import timedelta
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional
 import uuid
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
 
 from openai import OpenAI
 
-from utils.enhanced_search_strategy import EnhancedSearchStrategy
-from utils.llama_index_integration import LlamaIndexIntegration
-from utils.logging_config import setup_retrieval_logger
-from utils.university_document_manager import UniversityDocumentManager
+from ..core.logging import setup_retrieval_logger
+from ..university.manager import UniversityRepository as UniversityDocumentManager
+from ..university.search import VectorSearchEngine as LlamaIndexIntegration
+from .search_strategy import HybridSearchEngine as EnhancedSearchStrategy
 
 logger = logging.getLogger(__name__)
 

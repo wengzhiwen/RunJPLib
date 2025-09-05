@@ -3,18 +3,17 @@
 负责记录用户聊天历史到MongoDB，实现用户限制和降级机制
 """
 
-from datetime import datetime
-from datetime import timedelta
 import logging
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from utils.mongo_client import get_db
+from ..core.database import get_db
 
 logger = logging.getLogger(__name__)
 
 
-class ChatLoggingManager:
-    """聊天记录管理器"""
+class ChatSessionLogger:
+    """聊天会话日志记录器"""
 
     def __init__(self):
         """初始化聊天记录管理器"""
@@ -502,4 +501,5 @@ class ChatLoggingManager:
 
 
 # 全局实例
-chat_logger = ChatLoggingManager()
+# 使用新类名实例化以提高代码清晰度，但导出时使用旧名称以保持向后兼容
+chat_logger = ChatSessionLogger()

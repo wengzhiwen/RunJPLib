@@ -2,6 +2,53 @@
 
 本文档描述了 RunJPLib 项目的技术架构，包括数据库设计、性能优化策略和后台任务处理。
 
+## Utils 模块架构
+
+### 模块组织结构
+Utils 模块按功能领域进行了重新组织，提高了代码的可维护性和可读性：
+
+- **`core/`**: 核心基础设施
+  - `config.py`: 配置管理（单例模式）
+  - `database.py`: 数据库连接和索引管理
+  - `logging.py`: 日志配置和管理
+
+- **`ai/`**: AI相关工具
+  - `analysis_tool.py`: 文档分析器 (`DocumentAnalyzer`)
+  - `blog_generator.py`: 内容生成器 (`ContentGenerator`)
+  - `ocr_tool.py`: 图像OCR处理器 (`ImageOcrProcessor`)
+  - `batch_ocr_tool.py`: 批量OCR处理器 (`BatchOcrProcessor`)
+  - `translate_tool.py`: 文档翻译器 (`DocumentTranslator`)
+
+- **`chat/`**: 聊天相关功能
+  - `manager.py`: 聊天管理器 (`ChatManager`)
+  - `security.py`: 聊天安全守护者 (`ChatSecurityGuard`)
+  - `logging.py`: 聊天会话日志记录器 (`ChatSessionLogger`)
+  - `search_strategy.py`: 混合搜索引擎 (`HybridSearchEngine`)
+
+- **`document/`**: 文档处理
+  - `pdf_processor.py`: PDF处理器 (`PDFProcessor`)
+  - `wiki_processor.py`: Wiki处理器 (`BlogWikiProcessor`)
+
+- **`university/`**: 大学相关
+  - `manager.py`: 大学文档仓库 (`UniversityRepository`)
+  - `tagger.py`: 大学分类器 (`UniversityClassifier`)
+  - `search.py`: 向量搜索引擎 (`VectorSearchEngine`)
+
+- **`system/`**: 系统管理
+  - `task_manager.py`: 任务管理器 (`TaskManager`)
+  - `thread_pool.py`: 并发任务执行器 (`ConcurrentTaskExecutor`)
+  - `analytics.py`: 访问分析
+
+- **`tools/`**: 工具类
+  - `cache.py`: 缓存工具
+  - `ip_geo.py`: 地理位置解析器 (`GeoLocationResolver`)
+
+- **`templates/`**: 模板文件
+  - `workflow_template.yml`: 工作流模板
+
+### 向后兼容性
+所有原有导入方式继续有效，通过别名机制确保现有代码无需修改。
+
 ## 数据库设计 (MongoDB)
 
 ### 1. 核心集合

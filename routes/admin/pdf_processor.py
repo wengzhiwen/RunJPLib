@@ -1,4 +1,3 @@
-from datetime import datetime
 import errno
 import json
 import logging
@@ -6,18 +5,16 @@ import os
 import tempfile
 import time
 import uuid
+from datetime import datetime
 
 from bson.objectid import ObjectId
-from flask import jsonify
-from flask import render_template
-from flask import request
-from flask import Response
+from flask import Response, jsonify, render_template, request
 from werkzeug.utils import secure_filename
 
-from . import admin_bp
 from routes.admin.auth import admin_required
-from utils.mongo_client import get_db
-from utils.task_manager import task_manager
+from utils import get_db, task_manager
+
+from . import admin_bp
 
 
 @admin_bp.route("/pdf/processor")

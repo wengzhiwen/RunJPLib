@@ -5,10 +5,14 @@ from flask import jsonify
 from flask import render_template
 from flask import request
 
-from . import admin_bp
 from routes.admin.auth import admin_required
-from utils.chat_logging import chat_logger
-from utils.mongo_client import get_db
+from utils import add_security_headers
+from utils import chat_logger
+from utils import ChatManager
+from utils import get_csrf_token_for_session
+from utils import get_db
+
+from . import admin_bp
 
 
 @admin_bp.route('/chat', methods=['GET'])
@@ -208,3 +212,112 @@ def cleanup_chat_sessions():
     except Exception as e:
         logging.error(f"清理聊天会话失败: {e}", exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+# 全局ChatManager实例（单例模式）
+_admin_chat_manager = None
+
+
+def get_admin_chat_manager():
+    """获取admin聊天管理器实例（单例）"""
+    global _admin_chat_manager
+    if _admin_chat_manager is None:
+        _admin_chat_manager = ChatManager()
+    return _admin_chat_manager
+
+
+# Admin聊天API路由
+@admin_bp.route("/chat/api/create-session", methods=["POST"])
+@admin_required
+def admin_create_chat_session():
+    """Admin创建聊天会话"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"success": False, "error": "无效的请求格式"}), 400
+
+        university_id = data.get("university_id")
+        university_name = data.get("university_name", "")
+
+        if not university_id:
+            return jsonify({"success": False, "error": "缺少大学ID"}), 400
+
+        # 获取ChatManager实例（单例）
+        chat_mgr = get_admin_chat_manager()
+
+        # 创建会话
+        session = chat_mgr.create_chat_session(university_id)
+        if not session:
+            return jsonify({"success": False, "error": "创建会话失败"}), 500
+
+        # 生成CSRF令牌
+        csrf_token = get_csrf_token_for_session(session.session_id)
+
+        # 返回会话信息
+        response_data = {
+            "success": True,
+            "session": {
+                "session_id": session.session_id,
+                "university_name": university_name,
+                "csrf_token": csrf_token,
+                "created_at": session.created_at.isoformat() if session.created_at else datetime.now().isoformat(),
+                "last_activity": session.last_activity.isoformat() if session.last_activity else datetime.now().isoformat(),
+                "is_restored": False,
+                "message_count": 0,
+            },
+            "notice": "Admin聊天会话已创建",
+        }
+
+        response = jsonify(response_data)
+        return add_security_headers(response)
+
+    except Exception as e:
+        logging.error(f"Admin创建聊天会话失败: {e}", exc_info=True)
+        return jsonify({"success": False, "error": "服务暂时不可用"}), 500
+
+
+@admin_bp.route("/chat/api/send-message", methods=["POST"])
+@admin_required
+def admin_send_message():
+    """Admin发送消息"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"success": False, "error": "无效的请求格式"}), 400
+
+        session_id = data.get("session_id")
+        message = data.get("message", "").strip()
+
+        if not session_id or not message:
+            return jsonify({"success": False, "error": "缺少会话ID或消息内容"}), 400
+
+        # 获取ChatManager实例（单例）
+        chat_mgr = get_admin_chat_manager()
+
+        # 获取会话
+        session = chat_mgr.get_session(session_id)
+        if not session:
+            return jsonify({"success": False, "error": "会话不存在"}), 404
+
+        # 发送消息
+        result = chat_mgr.process_message(session_id, message)
+        if not result.get("success", False):
+            return jsonify({"success": False, "error": result.get("error", "发送消息失败")}), 500
+
+        response = result.get("response", "")
+
+        # 返回响应
+        response_data = {
+            "success": True,
+            "response": response,
+            "session_info": result.get("session_info", {
+                "session_id": session_id,
+                "message_count": len(session.messages) if session.messages else 0,
+            })
+        }
+
+        return jsonify(response_data)
+
+    except Exception as e:
+        logging.error(f"Admin发送消息失败: {e}", exc_info=True)
+        return jsonify({"success": False, "error": "服务暂时不可用"}), 500
