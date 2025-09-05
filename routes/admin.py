@@ -1,38 +1,36 @@
+from datetime import datetime
+from datetime import timedelta
 import errno
+from functools import wraps
 import json
 import logging
 import os
 import tempfile
 import time
 import uuid
-from datetime import datetime, timedelta
-from functools import wraps
 
 from bson.objectid import ObjectId
-from flask import (
-    Blueprint,
-    Response,
-    jsonify,
-    make_response,
-    redirect,
-    render_template,
-    request,
-    url_for,
-)
-from flask_jwt_extended import (
-    create_access_token,
-    get_jwt_identity,
-    set_access_cookies,
-    unset_jwt_cookies,
-    verify_jwt_in_request,
-)
+from flask import Blueprint
+from flask import jsonify
+from flask import make_response
+from flask import redirect
+from flask import render_template
+from flask import request
+from flask import Response
+from flask import url_for
+from flask_jwt_extended import create_access_token
+from flask_jwt_extended import get_jwt_identity
+from flask_jwt_extended import set_access_cookies
+from flask_jwt_extended import unset_jwt_cookies
+from flask_jwt_extended import verify_jwt_in_request
 from werkzeug.utils import secure_filename
 
 from utils.blog_generator import BlogGenerator
 from utils.cache import clear_blog_list_cache
 from utils.chat_logging import chat_logger
 from utils.llama_index_integration import LlamaIndexIntegration
-from utils.mongo_client import get_db, get_mongo_client
+from utils.mongo_client import get_db
+from utils.mongo_client import get_mongo_client
 from utils.task_manager import task_manager
 from utils.thread_pool_manager import thread_pool_manager
 
@@ -535,12 +533,22 @@ def get_universities():
                 match_on_tags = {"combinedTags": query["tags"]}
 
             pipeline = [
-                {"$sort": {"_id": -1}},
+                {
+                    "$sort": {
+                        "_id": -1
+                    }
+                },
                 {
                     "$group": {
                         "_id": "$university_name",
-                        "firstDoc": {"$first": "$$ROOT"},
-                        "tagsArrays": {"$addToSet": {"$ifNull": ["$tags", []]}}
+                        "firstDoc": {
+                            "$first": "$$ROOT"
+                        },
+                        "tagsArrays": {
+                            "$addToSet": {
+                                "$ifNull": ["$tags", []]
+                            }
+                        }
                     }
                 },
                 {
@@ -551,24 +559,57 @@ def get_universities():
                                 "$reduce": {
                                     "input": "$tagsArrays",
                                     "initialValue": [],
-                                    "in": {"$setUnion": ["$$value", "$$this"]}
+                                    "in": {
+                                        "$setUnion": ["$$value", "$$this"]
+                                    }
                                 }
                             }
                         }
                     }
                 },
-                {"$match": match_on_tags} if match_on_tags else {"$match": {}},
-                {"$replaceRoot": {"newRoot": "$firstDoc"}},
-                {"$sort": {"_id": -1}},
+                {
+                    "$match": match_on_tags
+                } if match_on_tags else {
+                    "$match": {}
+                },
+                {
+                    "$replaceRoot": {
+                        "newRoot": "$firstDoc"
+                    }
+                },
+                {
+                    "$sort": {
+                        "_id": -1
+                    }
+                },
                 project_stage,
             ]
         else:
             # 无标签筛选时，保持原有逻辑：每所大学仅展示最新一份，整体按创建时间逆序
             pipeline = [
-                {"$sort": {"_id": -1}},
-                {"$group": {"_id": "$university_name", "doc": {"$first": "$$ROOT"}}},
-                {"$replaceRoot": {"newRoot": "$doc"}},
-                {"$sort": {"_id": -1}},
+                {
+                    "$sort": {
+                        "_id": -1
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": "$university_name",
+                        "doc": {
+                            "$first": "$$ROOT"
+                        }
+                    }
+                },
+                {
+                    "$replaceRoot": {
+                        "newRoot": "$doc"
+                    }
+                },
+                {
+                    "$sort": {
+                        "_id": -1
+                    }
+                },
                 project_stage,
             ]
 
@@ -600,11 +641,20 @@ def get_university_tags():
     try:
         # 统计口径：每所大学的“全量文档标签合集”去重后计数，避免因最新文档未带标签导致的低估
         pipeline = [
-            {"$project": {"university_name": 1, "tags": {"$ifNull": ["$tags", []]}}},
+            {
+                "$project": {
+                    "university_name": 1,
+                    "tags": {
+                        "$ifNull": ["$tags", []]
+                    }
+                }
+            },
             {
                 "$group": {
                     "_id": "$university_name",
-                    "tagsArrays": {"$addToSet": "$tags"}
+                    "tagsArrays": {
+                        "$addToSet": "$tags"
+                    }
                 }
             },
             {
@@ -614,15 +664,34 @@ def get_university_tags():
                             "$reduce": {
                                 "input": "$tagsArrays",
                                 "initialValue": [],
-                                "in": {"$setUnion": ["$$value", "$$this"]}
+                                "in": {
+                                    "$setUnion": ["$$value", "$$this"]
+                                }
                             }
                         }
                     }
                 }
             },
-            {"$unwind": {"path": "$combinedTags", "preserveNullAndEmptyArrays": False}},
-            {"$group": {"_id": "$combinedTags", "count": {"$sum": 1}}},
-            {"$sort": {"count": -1, "_id": 1}},
+            {
+                "$unwind": {
+                    "path": "$combinedTags",
+                    "preserveNullAndEmptyArrays": False
+                }
+            },
+            {
+                "$group": {
+                    "_id": "$combinedTags",
+                    "count": {
+                        "$sum": 1
+                    }
+                }
+            },
+            {
+                "$sort": {
+                    "count": -1,
+                    "_id": 1
+                }
+            },
         ]
 
         tag_counts = list(db.universities.aggregate(pipeline))
@@ -734,17 +803,6 @@ def delete_university(item_id):
     return jsonify({"message": "删除成功"})
 
 
-@admin_bp.route("/api/universities", methods=["DELETE"])
-@admin_required
-def clear_universities():
-    db = get_db()
-    if db is None:
-        return jsonify({"error": "数据库连接失败"}), 500
-
-    db.universities.delete_many({})
-    return jsonify({"message": "数据集合已清空"})
-
-
 @admin_bp.route("/api/blogs", methods=["GET"])
 @admin_required
 def get_blogs():
@@ -793,17 +851,6 @@ def delete_blog(item_id):
 
     db.blogs.delete_one({"_id": ObjectId(item_id)})
     return jsonify({"message": "删除成功"})
-
-
-@admin_bp.route("/api/blogs", methods=["DELETE"])
-@admin_required
-def clear_blogs():
-    db = get_db()
-    if db is None:
-        return jsonify({"error": "数据库连接失败"}), 500
-
-    db.blogs.delete_many({})
-    return jsonify({"message": "数据集合已清空"})
 
 
 # --- 博客创建工具 ---

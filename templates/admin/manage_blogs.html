@@ -11,9 +11,7 @@
         <a href="{{ url_for('admin.create_blog_page') }}" class="btn btn-primary">新建博客</a>
     </div>
 
-    <div class="mb-3">
-        <button id="clear-blogs-btn" class="btn btn-danger">清空所有博客数据</button>
-    </div>
+    
 
     <table class="table table-striped">
         <thead>
@@ -38,7 +36,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const tbody = document.getElementById('blogs-tbody');
-    const clearBtn = document.getElementById('clear-blogs-btn');
+    
 
     function getStatusBadge(status) {
         switch(status) {
@@ -104,21 +102,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    clearBtn.addEventListener('click', async function() {
-        if (confirm('警告：这将删除所有博客数据，操作不可逆！确定要继续吗？')) {
-            const response = await fetch('/admin/api/blogs', {
-                method: 'DELETE'
-            });
-
-            const data = await response.json();
-            if (!response.ok) {
-                alert(`清空失败: ${data.message || response.statusText}`);
-            } else {
-                alert(data.message);
-            }
-            loadBlogs(); // Refresh table
-        }
-    });
+    
 
     loadBlogs();
 });
