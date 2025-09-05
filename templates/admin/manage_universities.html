@@ -7,7 +7,10 @@
     <h2>招生信息一览</h2>
     <p>这里是从MongoDB数据库中读取的大学招生信息列表。</p>
     
-    <div class="mb-3">
+    <div class="mb-3 d-flex align-items-center gap-3">
+        <div class="flex-grow-1">
+            <div id="tag-filter" class="d-flex flex-wrap gap-2"></div>
+        </div>
         <button id="clear-universities-btn" class="btn btn-danger">清空所有招生信息数据</button>
     </div>
 
@@ -34,10 +37,17 @@
 document.addEventListener('DOMContentLoaded', function() {
     const tbody = document.getElementById('universities-tbody');
     const clearBtn = document.getElementById('clear-universities-btn');
+    const tagContainer = document.getElementById('tag-filter');
+    let selectedTags = [];
 
     async function loadUniversities() {
         try {
-            const response = await fetch('/admin/api/universities');
+            const params = new URLSearchParams();
+            if (selectedTags.length > 0) {
+                params.set('tags', selectedTags.join(','));
+            }
+            const url = '/admin/api/universities' + (params.toString() ? ('?' + params.toString()) : '');
+            const response = await fetch(url);
             
             if (!response.ok) {
                 const errorText = await response.text();
@@ -83,6 +93,47 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    async function loadTags() {
+        try {
+            const resp = await fetch('/admin/api/university-tags');
+            if (!resp.ok) {
+                return;
+            }
+            const tags = await resp.json();
+            tagContainer.innerHTML = '';
+            if (Array.isArray(tags) && tags.length > 0) {
+                tags.forEach(item => {
+                    const tag = item.tag;
+                    const count = item.count;
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'btn btn-sm btn-outline-primary';
+                    btn.dataset.tag = tag;
+                    btn.textContent = `${tag} (${count})`;
+                    btn.addEventListener('click', () => {
+                        const t = btn.dataset.tag;
+                        const idx = selectedTags.indexOf(t);
+                        if (idx >= 0) {
+                            selectedTags.splice(idx, 1);
+                            btn.classList.remove('active');
+                        } else {
+                            if (selectedTags.length >= 2) {
+                                // 最多仅允许选择2个标签
+                                return;
+                            }
+                            selectedTags.push(t);
+                            btn.classList.add('active');
+                        }
+                        loadUniversities();
+                    });
+                    tagContainer.appendChild(btn);
+                });
+            }
+        } catch (e) {
+            console.error('加载标签失败', e);
+        }
+    }
+
     tbody.addEventListener('click', async function(e) {
         if (e.target.classList.contains('delete-btn')) {
             const itemId = e.target.dataset.id;
@@ -124,7 +175,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    loadUniversities();
+    Promise.all([loadTags()]).then(() => loadUniversities());
 });
 </script>
 {% endblock %}

@@ -1,36 +1,38 @@
-from datetime import datetime
-from datetime import timedelta
 import errno
-from functools import wraps
 import json
 import logging
 import os
 import tempfile
 import time
 import uuid
+from datetime import datetime, timedelta
+from functools import wraps
 
 from bson.objectid import ObjectId
-from flask import Blueprint
-from flask import jsonify
-from flask import make_response
-from flask import redirect
-from flask import render_template
-from flask import request
-from flask import Response
-from flask import url_for
-from flask_jwt_extended import create_access_token
-from flask_jwt_extended import get_jwt_identity
-from flask_jwt_extended import set_access_cookies
-from flask_jwt_extended import unset_jwt_cookies
-from flask_jwt_extended import verify_jwt_in_request
+from flask import (
+    Blueprint,
+    Response,
+    jsonify,
+    make_response,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
+from flask_jwt_extended import (
+    create_access_token,
+    get_jwt_identity,
+    set_access_cookies,
+    unset_jwt_cookies,
+    verify_jwt_in_request,
+)
 from werkzeug.utils import secure_filename
 
 from utils.blog_generator import BlogGenerator
 from utils.cache import clear_blog_list_cache
 from utils.chat_logging import chat_logger
 from utils.llama_index_integration import LlamaIndexIntegration
-from utils.mongo_client import get_db
-from utils.mongo_client import get_mongo_client
+from utils.mongo_client import get_db, get_mongo_client
 from utils.task_manager import task_manager
 from utils.thread_pool_manager import thread_pool_manager
 
@@ -497,27 +499,137 @@ def get_universities():
     try:
         logging.debug("[Admin API] Fetching universities from database...")
         projection = {"content": 0, "source_path": 0}
-        # 优化排序：按 _id 逆序排列，实现按创建时间倒序
-        cursor = db.universities.find({}, projection).sort("_id", -1)
 
-        universities = list(cursor)
+        # 解析基于标签的筛选参数，支持1-2个标签，AND关系
+        tags_param = request.args.get("tags", "").strip()
+        query = {}
+        if tags_param:
+            # 允许逗号分隔或多次tags参数传入
+            tags = [t.strip() for t in tags_param.split(",") if t.strip()]
+            if not tags:
+                tags = request.args.getlist("tags")
+            # 限制最多两个标签
+            if len(tags) > 2:
+                tags = tags[:2]
+            if len(tags) == 1:
+                query["tags"] = tags[0]
+            elif len(tags) == 2:
+                # AND 关系：同时包含两个标签
+                query["tags"] = {"$all": tags}
+
+        # 为了保持“同一大学仅展示最新”的去重逻辑，这里使用聚合管道：
+        # 1) 先按 _id 倒序（_id时间序），2) 按大学名分组取第一个（即最新），3) 再按 _id 倒序返回
+        project_stage = {"$project": {field: 0 for field in projection}}
+
+        if query:
+            # 基于“每所大学的标签合集”进行筛选，然后输出该大学的最新一份文档
+            # 1) 按 _id 倒序确保 firstDoc 是最新
+            # 2) group 收集每所大学所有 tags 数组
+            # 3) 用 $reduce + $setUnion 合并并去重所有 tags
+            # 4) 根据 combinedTags 做 AND/单标签匹配
+            # 5) 输出 firstDoc 并维持最终排序与投影
+            match_on_tags = {}
+            if isinstance(query.get("tags"), dict) and "$all" in query["tags"]:
+                match_on_tags = {"$expr": {"$setIsSubset": [query["tags"]["$all"], "$combinedTags"]}}
+            elif isinstance(query.get("tags"), str):
+                match_on_tags = {"combinedTags": query["tags"]}
+
+            pipeline = [
+                {"$sort": {"_id": -1}},
+                {
+                    "$group": {
+                        "_id": "$university_name",
+                        "firstDoc": {"$first": "$$ROOT"},
+                        "tagsArrays": {"$addToSet": {"$ifNull": ["$tags", []]}}
+                    }
+                },
+                {
+                    "$project": {
+                        "firstDoc": 1,
+                        "combinedTags": {
+                            "$setUnion": {
+                                "$reduce": {
+                                    "input": "$tagsArrays",
+                                    "initialValue": [],
+                                    "in": {"$setUnion": ["$$value", "$$this"]}
+                                }
+                            }
+                        }
+                    }
+                },
+                {"$match": match_on_tags} if match_on_tags else {"$match": {}},
+                {"$replaceRoot": {"newRoot": "$firstDoc"}},
+                {"$sort": {"_id": -1}},
+                project_stage,
+            ]
+        else:
+            # 无标签筛选时，保持原有逻辑：每所大学仅展示最新一份，整体按创建时间逆序
+            pipeline = [
+                {"$sort": {"_id": -1}},
+                {"$group": {"_id": "$university_name", "doc": {"$first": "$$ROOT"}}},
+                {"$replaceRoot": {"newRoot": "$doc"}},
+                {"$sort": {"_id": -1}},
+                project_stage,
+            ]
+
+        universities = list(db.universities.aggregate(pipeline))
 
         for u in universities:
             u["_id"] = str(u["_id"])
-            # 确保 deadline 字段是 ISO 格式的字符串，方便前端解析
             if u.get("deadline") and isinstance(u["deadline"], datetime):
                 u["deadline"] = u["deadline"].isoformat()
 
         logging.info(f"[Admin API] Successfully fetched {len(universities)} university documents.")
-        if universities:
-            logging.debug(f"[Admin API] First university document sample: {universities[0]}")
-
         return jsonify(universities)
     except Exception as e:
         logging.error(
             f"[Admin API] An exception occurred while fetching universities: {e}",
             exc_info=True,
         )
+        return jsonify({"error": "服务器内部错误"}), 500
+
+
+@admin_bp.route("/api/university-tags", methods=["GET"])
+@admin_required
+def get_university_tags():
+    """返回系统中存在的所有tag及其对应的大学数量，按数量降序排列。"""
+    db = get_db()
+    if db is None:
+        return jsonify({"error": "数据库连接失败"}), 500
+
+    try:
+        # 统计口径：每所大学的“全量文档标签合集”去重后计数，避免因最新文档未带标签导致的低估
+        pipeline = [
+            {"$project": {"university_name": 1, "tags": {"$ifNull": ["$tags", []]}}},
+            {
+                "$group": {
+                    "_id": "$university_name",
+                    "tagsArrays": {"$addToSet": "$tags"}
+                }
+            },
+            {
+                "$project": {
+                    "combinedTags": {
+                        "$setUnion": {
+                            "$reduce": {
+                                "input": "$tagsArrays",
+                                "initialValue": [],
+                                "in": {"$setUnion": ["$$value", "$$this"]}
+                            }
+                        }
+                    }
+                }
+            },
+            {"$unwind": {"path": "$combinedTags", "preserveNullAndEmptyArrays": False}},
+            {"$group": {"_id": "$combinedTags", "count": {"$sum": 1}}},
+            {"$sort": {"count": -1, "_id": 1}},
+        ]
+
+        tag_counts = list(db.universities.aggregate(pipeline))
+        result = [{"tag": tc["_id"], "count": tc["count"]} for tc in tag_counts]
+        return jsonify(result)
+    except Exception as e:
+        logging.error(f"[Admin API] 获取标签统计失败: {e}", exc_info=True)
         return jsonify({"error": "服务器内部错误"}), 500
 
 
@@ -1313,7 +1425,7 @@ def upload_pdf():
         file.save(temp_filepath)
 
         # 创建处理任务
-        task_id = task_manager.create_task(
+        task_id = task_manager.create_pdf_processing_task(
             university_name=university_name,
             pdf_file_path=temp_filepath,
             original_filename=original_filename,

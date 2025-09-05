@@ -16,6 +16,7 @@
   "deadline": "Date", // 报名截止日期 (BSON Date Type)
   "created_at": "DateTime", // 文档创建时间
   "is_premium": "Boolean", // 是否为 Premium，用于优先排序
+  "tags": ["String"], // 大学标签数组，如 ["国立", "難関", "理系"]
   "content": {
     "original_md": "String", // OCR 识别的日文原文
     "translated_md": "String", // 翻译后的中文内容
@@ -29,8 +30,13 @@
 - `university_name`: 加速按日文名查找。
 - `university_name_zh`: 加速按中文名查找。
 - `deadline`: 加速按截止日期排序和筛选。
+- `tags`: 加速按标签筛选查询。
 - `("university_name", 1), ("deadline", -1)`: 复合索引，用于高效查询特定大学的最新招生信息。
 - `("university_name_zh", 1), ("deadline", -1)`: 复合索引，用于中文名回退查询。
+- `("is_premium", -1), ("deadline", -1)`: 复合索引，用于Premium优先排序。
+- `("tags", 1)`: 单字段索引，用于标签筛选查询。
+- `("tags", 1), ("is_premium", -1), ("deadline", -1)`: 复合索引，用于标签筛选 + Premium优先 + 截止日期排序。
+- `("tags", 1), ("deadline", -1)`: 复合索引，用于标签筛选 + 截止日期排序。
 
 ### 2. `blogs` - 博客文章
 - **描述**: 存储博客文章。

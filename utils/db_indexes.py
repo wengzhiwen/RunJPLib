@@ -105,6 +105,30 @@ def ensure_indexes() -> bool:
         )
         logging.debug(f"已确保索引存在: chat_sessions.{result_name_chat_time}")
 
+        # universities 索引: tags（用于标签筛选）
+        result_name_tags = db.universities.create_index(
+            [("tags", 1)],
+            name="idx_universities_tags",
+            background=True,
+        )
+        logging.debug(f"已确保索引存在: universities.{result_name_tags}")
+
+        # universities 复合索引: tags + is_premium + deadline（用于标签筛选 + 排序）
+        result_name_tags_premium_deadline = db.universities.create_index(
+            [("tags", 1), ("is_premium", -1), ("deadline", -1)],
+            name="idx_universities_tags_premium_deadline",
+            background=True,
+        )
+        logging.debug(f"已确保索引存在: universities.{result_name_tags_premium_deadline}")
+
+        # universities 复合索引: tags + deadline（用于标签筛选 + 截止日期排序）
+        result_name_tags_deadline = db.universities.create_index(
+            [("tags", 1), ("deadline", -1)],
+            name="idx_universities_tags_deadline",
+            background=True,
+        )
+        logging.debug(f"已确保索引存在: universities.{result_name_tags_deadline}")
+
         return True
     except Exception as e:
         logging.error(f"创建索引失败: {e}", exc_info=True)
