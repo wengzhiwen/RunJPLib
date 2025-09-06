@@ -162,7 +162,7 @@
     const charCounter = document.getElementById('charCounter');
     
     const universityName = chatModal.getAttribute('data-university-name');
-    const apiBaseUrl = `${window.location.pathname.replace(/\/$/, '')}/chat/api/`;
+    const apiBaseUrl = `/api/chat/${universityName}/`;
 
     function getBrowserSessionId() {
         if (browserSessionId) return browserSessionId;

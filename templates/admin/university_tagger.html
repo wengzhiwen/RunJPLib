@@ -98,17 +98,26 @@
 <script>
     // 获取CSRF token的函数
     function getCSRFToken() {
+        console.log('All cookies:', document.cookie);
+        
         // 方法1：从meta标签获取
         const metaToken = document.querySelector('meta[name="csrf-token"]');
-        if (metaToken) {
-            return metaToken.getAttribute('content');
+        if (metaToken && metaToken.getAttribute('content')) {
+            const metaContent = metaToken.getAttribute('content');
+            console.log('Found CSRF token in meta tag:', metaContent);
+            return metaContent;
+        } else {
+            console.log('Meta tag not found or empty');
         }
         
         // 方法2：从cookie获取JWT CSRF token
+        console.log('Checking cookies...');
         const cookies = document.cookie.split(';');
         for (let cookie of cookies) {
             const [name, value] = cookie.trim().split('=');
+            console.log('Cookie:', name, '=', value);
             if (name === 'csrf_access_token') {
+                console.log('Found CSRF token in cookie:', value);
                 return value;
             }
         }
@@ -116,9 +125,11 @@
         // 方法3：尝试从localStorage获取（如果有的话）
         const storedToken = localStorage.getItem('csrf_token');
         if (storedToken) {
+            console.log('Found CSRF token in localStorage:', storedToken);
             return storedToken;
         }
         
+        console.log('No CSRF token found');
         return null;
     }
 
@@ -133,6 +144,19 @@
             console.log('CSRF Token set to:', csrfInput.value);
         } else {
             console.log('Failed to set CSRF token');
+        }
+        
+        // 添加表单提交时的检查
+        const form = document.querySelector('form[method="POST"]');
+        if (form) {
+            form.addEventListener('submit', function(e) {
+                const csrfValue = document.getElementById('csrf_token').value;
+                console.log('Form submitting with CSRF token:', csrfValue);
+                if (!csrfValue) {
+                    e.preventDefault();
+                    alert('CSRF token缺失，请刷新页面重试');
+                }
+            });
         }
     });
 

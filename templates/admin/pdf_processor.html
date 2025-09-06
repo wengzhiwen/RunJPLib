@@ -1,4 +1,4 @@
-{% extends "layout.html" %}
+{% extends "admin/layout.html" %}
 
 {% block title %}招生信息生成{% endblock %}
 
@@ -200,31 +200,7 @@ function loadQueueStatus() {
         });
 }
 
-// 获取CSRF token的函数
-function getCSRFToken() {
-    // 方法1：从meta标签获取
-    const metaToken = document.querySelector('meta[name="csrf-token"]');
-    if (metaToken) {
-        return metaToken.getAttribute('content');
-    }
-    
-    // 方法2：从cookie获取JWT CSRF token
-    const cookies = document.cookie.split(';');
-    for (let cookie of cookies) {
-        const [name, value] = cookie.trim().split('=');
-        if (name === 'csrf_access_token') {
-            return value;
-        }
-    }
-    
-    // 方法3：尝试从localStorage获取（如果有的话）
-    const storedToken = localStorage.getItem('csrf_token');
-    if (storedToken) {
-        return storedToken;
-    }
-    
-    return null;
-}
+// getCSRFToken() 函数由 admin/layout.html 提供
 
 function uploadPDF() {
     const form = document.getElementById('uploadForm');
@@ -273,7 +249,7 @@ function uploadPDF() {
     fetch('/admin/api/pdf/upload', {
         method: 'POST',
         headers: {
-            'X-CSRF-Token': csrfToken
+            'X-CSRF-TOKEN': csrfToken
         },
         body: formData
     })

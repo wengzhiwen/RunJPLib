@@ -137,7 +137,6 @@
 let selectedUniversityId = null;
 let selectedUniversityName = null;
 let currentSessionId = null;
-let currentCsrfToken = null;
 let searchTimeout = null;
 let loadingEventSource = null;
 let isComposing = false;
@@ -343,7 +342,8 @@ function createChatSession() {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'X-Role-Token': 'admin'
+            'X-Role-Token': 'admin',
+            'X-CSRF-TOKEN': getCSRFToken() || ''
         },
         body: JSON.stringify({
             university_id: selectedUniversityId,
@@ -356,7 +356,6 @@ function createChatSession() {
         hideStatus();
         if (data.success) {
             currentSessionId = data.session.session_id;
-            currentCsrfToken = data.session.csrf_token || null;
             
             // 更新界面
             chatTitle.textContent = `与${data.session.university_name}的AI助手对话`;
@@ -455,13 +454,13 @@ function sendMessage() {
             'Content-Type': 'application/json',
             'X-Role-Token': 'admin',
             'X-Session-ID': currentSessionId || '',
-            'X-CSRF-Token': currentCsrfToken || ''
+            'X-CSRF-TOKEN': getCSRFToken() || ''
         },
         body: JSON.stringify({
             session_id: currentSessionId,
             message: message,
             role_token: 'admin',
-            csrf_token: currentCsrfToken || ''
+            csrf_token: getCSRFToken() || ''
         })
     })
     .then(response => response.json())
@@ -537,9 +536,9 @@ function clearChat() {
             'Content-Type': 'application/json',
             'X-Role-Token': 'admin',
             'X-Session-ID': currentSessionId || '',
-            'X-CSRF-Token': currentCsrfToken || ''
+            'X-CSRF-TOKEN': getCSRFToken() || ''
         },
-        body: JSON.stringify({ session_id: currentSessionId, role_token: 'admin', csrf_token: currentCsrfToken || '' })
+        body: JSON.stringify({ session_id: currentSessionId, role_token: 'admin', csrf_token: getCSRFToken() || '' })
     })
     .then(response => response.json())
     .then(data => {
@@ -569,9 +568,9 @@ function backToSelection() {
                 'Content-Type': 'application/json',
                 'X-Role-Token': 'admin',
                 'X-Session-ID': currentSessionId || '',
-                'X-CSRF-Token': currentCsrfToken || ''
+                'X-CSRF-TOKEN': getCSRFToken() || ''
             },
-            body: JSON.stringify({ session_id: currentSessionId, role_token: 'admin', csrf_token: currentCsrfToken || '' })
+            body: JSON.stringify({ session_id: currentSessionId, role_token: 'admin', csrf_token: getCSRFToken() || '' })
         }).catch(() => {}); // 忽略错误
     }
     

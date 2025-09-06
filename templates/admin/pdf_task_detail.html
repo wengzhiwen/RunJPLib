@@ -457,7 +457,10 @@ function restartFromStep(stepName) {
     
     fetch(`/admin/api/pdf/task/${taskId}/restart`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': getCSRFToken() || ''
+        },
         body: JSON.stringify({ step_name: stepName })
     })
     .then(response => response.json())

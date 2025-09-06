@@ -11,6 +11,8 @@
     {% endif %}
 
     <form method="POST" action="{{ url_for('admin.edit_university', university_id=university._id) }}">
+        <!-- CSRF Token -->
+        <input type="hidden" name="csrf_token" id="csrf_token" value="">
         <div class="mb-3">
             <label for="university_name" class="form-label">大学名称</label>
             <input type="text" class="form-control" id="university_name" name="university_name" value="{{ university.university_name }}" required>

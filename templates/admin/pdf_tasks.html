@@ -288,6 +288,7 @@ function startTask(taskId) {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': getCSRFToken() || ''
         }
     })
     .then(response => response.json())
@@ -315,6 +316,7 @@ function processQueue() {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': getCSRFToken() || ''
         }
     })
     .then(response => response.json())

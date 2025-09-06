@@ -35,6 +35,10 @@ def admin_required(fn):
             logging.warning(f"Request method: {request.method}")
             logging.warning(f"Request headers: {dict(request.headers)}")
             logging.warning(f"Request cookies: {dict(request.cookies)}")
+            # 添加表单数据日志
+            if request.method == 'POST':
+                logging.warning(f"Request form data: {dict(request.form)}")
+                logging.warning(f"CSRF token in form: {request.form.get('csrf_token', 'NOT FOUND')}")
             if is_api_request:
                 return jsonify(msg="Token无效或已过期"), 401
             else:

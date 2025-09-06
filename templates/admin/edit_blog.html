@@ -10,6 +10,8 @@
     {% endif %}
     {% if blog %}
     <form id="edit-blog-form" method="POST" action="{{ url_for('admin.edit_blog', blog_id=blog._id) }}">
+        <!-- CSRF Token -->
+        <input type="hidden" name="csrf_token" id="csrf_token" value="">
         <div class="mb-3">
             <label for="title" class="form-label">标题</label>
             <input type="text" class="form-control" id="title" name="title" value="{{ blog.title }}" required>

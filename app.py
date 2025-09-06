@@ -108,12 +108,10 @@ def create_app(_config_name=None):
 
     flask_app.config["JWT_SECRET_KEY"] = jwt_secret or "super-secret"
     flask_app.config["JWT_TOKEN_LOCATION"] = ["headers", "cookies"]
-
-    # CSRF保护 - 生产环境建议启用
-    if is_production_mode:
-        flask_app.config["JWT_COOKIE_CSRF_PROTECT"] = os.getenv('JWT_CSRF_PROTECT', 'true').lower() == 'true'
-    else:
-        flask_app.config["JWT_COOKIE_CSRF_PROTECT"] = False
+    flask_app.config["JWT_COOKIE_CSRF_PROTECT"] = True
+    flask_app.config["JWT_CSRF_IN_COOKIES"] = True
+    flask_app.config["JWT_CSRF_METHODS"] = ["POST", "PUT", "PATCH", "DELETE"]
+    flask_app.config["JWT_CSRF_CHECK_FORM"] = True  # 启用表单CSRF检查
 
     flask_app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(days=int(os.getenv('JWT_EXPIRES_DAYS', '7')))
 

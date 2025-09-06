@@ -69,13 +69,24 @@
             return null;
         }
 
-        // 页面加载时设置CSRF token到meta标签
+        // 页面加载时设置CSRF token到meta标签和所有表单
         document.addEventListener('DOMContentLoaded', function() {
             const csrfToken = getCSRFToken();
+            
+            // 设置meta标签
             const metaToken = document.querySelector('meta[name="csrf-token"]');
             if (metaToken && csrfToken) {
                 metaToken.setAttribute('content', csrfToken);
             }
+            
+            // 自动为所有表单设置CSRF token
+            const csrfInputs = document.querySelectorAll('input[name="csrf_token"]');
+            csrfInputs.forEach(function(input) {
+                if (csrfToken) {
+                    input.value = csrfToken;
+                    console.log('CSRF token设置到表单:', input.closest('form').action);
+                }
+            });
         });
     </script>
     
