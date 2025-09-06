@@ -8,6 +8,7 @@ import logging
 import os
 
 from cachetools import cached
+from cachetools import TTLCache
 from flask import abort
 from flask import make_response
 from flask import render_template
@@ -15,7 +16,6 @@ import markdown
 
 from utils.core.database import get_db
 from utils.system.analytics import log_access
-from utils.tools.cache import TTLCache
 
 from .blog.views import get_all_blogs as get_all_blogs_for_sitemap
 from .blog.views import get_weighted_recommended_blogs_with_summary

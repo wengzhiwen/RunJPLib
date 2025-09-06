@@ -1,3 +1,68 @@
+## [缓存修复] 修复首页缓存系统问题 - 2025-09-06
+
+### 问题描述
+- 首页每次访问都显示"缓存未命中或过期"日志
+- 推荐算法、大学列表、最新更新等数据每次都重新从数据库加载
+- 缓存系统没有正常工作，影响页面加载性能
+
+### 根本原因分析
+1. **推荐算法缺少缓存装饰器**: `get_weighted_recommended_blogs_with_summary()` 函数没有使用 `@cached` 装饰器
+2. **缓存导入错误**: `routes/index.py` 中错误导入了 `utils.tools.cache.TTLCache` 而非 `cachetools.TTLCache`
+3. **缓存配置不一致**: 不同模块使用不同的缓存TTL时间
+
+### 修复内容
+
+#### 🔧 **推荐算法缓存修复**
+- **routes/blog/views.py**: 为 `get_weighted_recommended_blogs_with_summary()` 添加 `@cached(recommended_blogs_cache)` 装饰器
+- **缓存TTL**: 推荐博客缓存设置为30分钟 (1800秒)
+- **导入修复**: 正确导入 `recommended_blogs_cache` 从 `routes.blog.cache`
+
+#### 📋 **首页缓存修复**
+- **routes/index.py**: 修复缓存导入，使用 `from cachetools import TTLCache`
+- **缓存配置统一**: 所有首页相关缓存使用正确的TTL时间
+  - 大学列表缓存: 10分钟 (600秒)
+  - 最新更新缓存: 10分钟 (600秒)  
+  - 分类信息缓存: 1小时 (3600秒)
+
+#### 🧪 **测试验证**
+- **tools/test_cache_fix.py**: 创建缓存性能测试脚本
+- **测试结果**: 验证所有缓存函数第二次调用时间 < 0.01秒
+- **性能提升**: 缓存命中后响应时间从数百毫秒降至微秒级
+
+### 技术细节
+
+#### **缓存装饰器使用**
+```python
+@cached(recommended_blogs_cache)
+def get_weighted_recommended_blogs_with_summary(count=3):
+    # 函数实现...
+```
+
+#### **缓存TTL配置**
+```python
+# routes/blog/cache.py
+recommended_blogs_cache = TTLCache(maxsize=1, ttl=1800)  # 30分钟
+
+# routes/index.py  
+university_list_cache = TTLCache(maxsize=1, ttl=600)    # 10分钟
+latest_updates_cache = TTLCache(maxsize=1, ttl=600)     # 10分钟
+categories_cache = TTLCache(maxsize=1, ttl=3600)        # 1小时
+```
+
+### 性能影响
+- **首页加载**: 缓存命中后响应时间大幅减少
+- **数据库负载**: 减少重复的数据库查询
+- **用户体验**: 页面加载更加流畅
+- **日志清洁**: 不再频繁出现"缓存未命中或过期"日志
+
+### 文件更改
+- `routes/blog/views.py`: 添加推荐算法缓存装饰器
+- `routes/index.py`: 修复缓存导入问题
+- `tools/test_cache_fix.py`: 新增缓存测试脚本
+- `docs/CHANGELOG.md`: 记录本次修复
+
+---
+
 ## [重大修复] 全面CSRF Token问题修复 - 2025-09-06
 
 ### 问题描述

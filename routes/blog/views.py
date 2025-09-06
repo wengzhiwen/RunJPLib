@@ -9,6 +9,7 @@ from cachetools import cached
 from flask import render_template
 import markdown
 
+from routes.blog.cache import recommended_blogs_cache
 from routes.blog.cache import update_blog_html_in_db
 from utils.core.database import get_db
 from utils.system.analytics import log_access
@@ -115,6 +116,7 @@ def get_blog_by_url_title(url_title):
         return None
 
 
+@cached(recommended_blogs_cache)
 def get_weighted_recommended_blogs_with_summary(count=3):
     """
     根据时间权重算法获取推荐博客，并生成摘要。
