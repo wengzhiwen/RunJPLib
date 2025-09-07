@@ -65,6 +65,7 @@
         <div class="card">
             <div class="card-header">
                 <h5>处理队列状态</h5>
+                <button class="btn btn-sm btn-outline-primary float-end" id="refreshQueueStatusBtn" type="button">刷新</button>
             </div>
             <div class="card-body">
                 <div id="queue-status">
@@ -149,9 +150,20 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('university_name').value = universityName;
     }
 
-    // 加载队列状态
+    // 加载队列状态（不再自动轮询）
     loadQueueStatus();
-    setInterval(loadQueueStatus, 5000); // 每5秒刷新一次
+    const refreshBtn = document.getElementById('refreshQueueStatusBtn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', function() {
+            refreshBtn.disabled = true;
+            const originalText = refreshBtn.textContent;
+            refreshBtn.textContent = '刷新中...';
+            Promise.resolve().then(loadQueueStatus).finally(() => {
+                refreshBtn.disabled = false;
+                refreshBtn.textContent = originalText;
+            });
+        });
+    }
     
     // 处理表单提交
     document.getElementById('uploadForm').addEventListener('submit', function(e) {
