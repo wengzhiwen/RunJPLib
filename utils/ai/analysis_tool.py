@@ -30,30 +30,32 @@ class DocumentAnalyzer:
         self.analysis_questions = analysis_questions
         self.translate_terms = translate_terms
 
-    def _analyze_markdown(self, md_content: str) -> str:
-        """使用OpenAI分析Markdown内容"""
-        logger.info("分析Markdown内容...")
+    @staticmethod
+    def default_system_prompt_base() -> str:
+        """返回分析阶段系统提示词中，代码内固定的基础部分（不含问题与术语）。"""
+        return ("你是一位严谨的日本留学信息专家,你根据用户最初输入的完整Markdown内容继续以下工作流：\n"
+                "0. Markdown原文可能很长，因为有些Markdown包含了大量和留学生入学无关的信息，可以先将这部分信息排除再进行分析\n"
+                " - 但是要注意，有些学校可能不会直接使用'外国人留学生'这样的说法，但他们事实上招收留学生，如：\n"
+                "   - 允许没有日本国籍的人报名\n"
+                "   - 允许报名者在海外接受中小学教育\n"
+                "   - 允许使用EJU（日本留学生考试）的成绩报名\n"
+                " - 有些学校的部分专业对外国人和日本人一视同仁，允许日本人报名的专业同时也允许外国人报名，这类专业视同招收留学生\n"
+                "1. 仔细分析该文档内容,并对以下问题逐一用中文给出准确的回答。如果信息不确定,请明确指出。\n"
+                "    - 回答问题时请务必按照问题的顺序逐一回答（在每个问题的回答后添附相关的原文引用）\n"
+                "    - 输出的结果中不需要包含任何额外的信息，只需要回答问题即可\n"
+                "    - 输出的结果中不要包含任何文档路径相关的信息\n"
+                "    - 请严格按照文档来回答问题，不要进行任何额外的推测或猜测！\n"
+                "2. 分析报告包含每个问题以及对应的回答，请严格按照问题顺序依次回答。\n"
+                "3. 请仅将你的分析结果的正文直接返回，不要带有任何的说明性文字。\n"
+                "4. 不需要保留和外国人留学生不相关的信息（比如一般入试、归国生入试等）。")
 
-        analyzer_agent = Agent(
-            name="Markdown_Analyzer_Agent",
-            instructions=f"""你是一位严谨的日本留学信息专家,你根据用户最初输入的完整Markdown内容继续以下工作流：
-0. Markdown原文可能很长，因为有些Markdown包含了大量和留学生入学无关的信息，可以先将这部分信息排除再进行分析
- - 但是要注意，有些学校可能不会直接使用'外国人留学生'这样的说法，但他们事实上招收留学生，如：
-   - 允许没有日本国籍的人报名
-   - 允许报名者在海外接受中小学教育
-   - 允许使用EJU（日本留学生考试）的成绩报名
- - 有些学校的部分专业对外国人和日本人一视同仁，允许日本人报名的专业同时也允许外国人报名，这类专业视同招收留学生
-1. 仔细分析该文档内容,并对以下问题逐一用中文给出准确的回答。如果信息不确定,请明确指出。
-    - 回答问题时请务必按照问题的顺序逐一回答（在每个问题的回答后添附相关的原文引用）
-    - 输出的结果中不需要包含任何额外的信息，只需要回答问题即可
-    - 输出的结果中不要包含任何文档路径相关的信息
-    - 请严格按照文档来回答问题，不要进行任何额外的推测或猜测！
-2. 分析报告包含每个问题以及对应的回答，请严格按照问题顺序依次回答。
-3. 请仅将你的分析结果的正文直接返回，不要带有任何的说明性文字。
-4. 不需要保留和外国人留学生不相关的信息（比如一般入试、归国生入试等）。
+    def compose_system_prompt(self, questions: str, translate_terms: str, base_system_prompt: str = None) -> str:
+        """组合完整系统提示词（基础段 + 问题列表 + 注意事项 + 术语 + 重要提示）。"""
+        base_text = base_system_prompt if base_system_prompt is not None else self.default_system_prompt_base()
+        return f"""{base_text}
 
 你要回答的问题是：
-{self.analysis_questions}
+{questions}
 
 请注意：
  - 用户需要的是完整的分析结果，不要仅仅提供原文的引用
@@ -63,7 +65,7 @@ class DocumentAnalyzer:
  - 所有的问题都请针对'打算报考学部（本科）的外国人留学生'的状况来回答，不要将其他招生对象的情况包含进来
  - 上述所有的问题，都必须严格的使用简体中文来回答，你可以参考以下的翻译指导来完成残留的非简体中文的翻译
 
-{self.translate_terms}
+{translate_terms}
 
 ---
 重要提示：在分析过程中，请识别该PDF文档所属的大学名称，并在分析结果的结尾处添加四行格式为：
@@ -78,9 +80,23 @@ class DocumentAnalyzer:
 大学日文名称：東京大学
 大学日文简称：東大
 
-这个信息将用于后续的数据处理，请严格按照上述格式（提示性文字：名称）来添加信息。""",
-            model=self.model_name,
-        )
+这个信息将用于后续的数据处理，请严格按照上述格式（提示性文字：名称）来添加信息。"""
+
+    def get_composed_system_prompt(self) -> str:
+        """返回基于当前配置（questions + translate_terms）的完整系统提示词。"""
+        return self.compose_system_prompt(self.analysis_questions, self.translate_terms)
+
+    def _analyze_markdown(self, md_content: str, full_system_prompt_override: str = None) -> str:
+        """使用OpenAI分析Markdown内容（两种模式）
+
+        - 默认模式：根据当前配置合成完整系统提示词
+        - 覆盖模式：直接使用提供的完整系统提示词（full_system_prompt_override）
+        """
+        logger.info("分析Markdown内容...")
+
+        instructions_text = full_system_prompt_override if full_system_prompt_override is not None else self.get_composed_system_prompt()
+
+        analyzer_agent = Agent(name="Markdown_Analyzer_Agent", instructions=instructions_text, model=self.model_name)
 
         input_items = [{
             "role": "user",
@@ -239,5 +255,26 @@ class DocumentAnalyzer:
 
         total_time = time.time() - start_time
         logger.info(f"分析步骤耗时: {analysis_time:.2f}秒，审核步骤耗时: {review_time:.2f}秒，报告生成步骤耗时: {report_time:.2f}秒，总耗时: {total_time:.2f}秒")
+
+        return final_report
+
+    def regenerate_report(self, md_content: str, full_system_prompt: str) -> str:
+        """使用整段系统提示词重新生成报告（再生成模式）。"""
+        start_time = time.time()
+
+        analysis_start = time.time()
+        analysis_result = self._analyze_markdown(md_content, full_system_prompt_override=full_system_prompt)
+        analysis_time = time.time() - analysis_start
+
+        review_start = time.time()
+        reviewed_result = self._review_analysis(md_content, analysis_result)
+        review_time = time.time() - review_start
+
+        report_start = time.time()
+        final_report = self._generate_report(reviewed_result)
+        report_time = time.time() - report_start
+
+        total_time = time.time() - start_time
+        logger.info(f"再生成-分析: {analysis_time:.2f}s，审核: {review_time:.2f}s，报告: {report_time:.2f}s，总计: {total_time:.2f}s")
 
         return final_report

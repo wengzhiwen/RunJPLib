@@ -11,6 +11,8 @@ from typing import Any, Dict, List, Optional
 from bson.objectid import ObjectId
 import dotenv
 
+from ..ai.analysis_tool import DocumentAnalyzer
+from ..core.config import Config
 from ..core.database import get_db
 from ..core.logging import setup_task_logger
 from ..document.pdf_processor import run_pdf_processor
@@ -288,6 +290,35 @@ class TaskManager:
                         tagger.run_tagging_process()
                         # 对于这类任务，我们假设它内部处理了成功/失败状态的记录
                         # 这里简单地认为执行即成功，具体错误由tagger内部log记录
+                        success = True
+                    elif task_type == "REGENERATE_ANALYSIS":
+                        params = task.get("params", {})
+                        university_id = params.get("university_id")
+                        full_system_prompt = params.get("full_system_prompt")  # 整段系统提示词（必填）
+
+                        if not university_id or not full_system_prompt:
+                            raise ValueError("Missing required params for REGENERATE_ANALYSIS")
+
+                        db_conn = get_db()
+                        if db_conn is None:
+                            raise RuntimeError("DB unavailable for REGENERATE_ANALYSIS")
+
+                        # 读取translated_md
+                        uni_doc = db_conn.universities.find_one({"_id": ObjectId(university_id)}, {"content.translated_md": 1})
+                        if not uni_doc:
+                            raise ValueError(f"University not found: {university_id}")
+
+                        translated_md = (uni_doc.get("content", {}) or {}).get("translated_md", "")
+                        if not translated_md:
+                            raise ValueError("translated_md is empty; cannot regenerate analysis")
+
+                        # 实例化分析器（使用当前配置的模型/术语，但覆盖提示词）
+                        cfg = Config()
+                        analyzer = DocumentAnalyzer(cfg.analysis_questions, cfg.translate_terms)
+                        new_report = analyzer.regenerate_report(translated_md, full_system_prompt=full_system_prompt)
+
+                        # 覆盖写入report_md（最后写赢）
+                        db_conn.universities.update_one({"_id": ObjectId(university_id)}, {"$set": {"content.report_md": new_report}})
                         success = True
                     else:
                         task_logger.error(f"Unknown task type '{task_type}' for task {task_id}. Aborting.")

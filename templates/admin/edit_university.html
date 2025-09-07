@@ -10,6 +10,10 @@
         <div class="alert alert-danger">{{ error }}</div>
     {% endif %}
 
+    {% if request.args.get('msg') == 'task_created' %}
+        <div class="alert alert-info">任务已创建，请前往后台任务列表查看状态。</div>
+    {% endif %}
+
     <form method="POST" action="{{ url_for('admin.edit_university', university_id=university._id) }}">
         <!-- CSRF Token -->
         <input type="hidden" name="csrf_token" id="csrf_token" value="">
@@ -39,6 +43,9 @@
         <div class="mb-3">
             <label for="basic_analysis_report" class="form-label">基础分析报告</label>
             <textarea class="form-control" id="basic_analysis_report" name="basic_analysis_report" rows="15">{{ university.content.report_md or '' }}</textarea>
+        </div>
+        <div class="mb-3">
+            <a href="{{ url_for('admin.regenerate_university_analysis', university_id=university._id) }}" class="btn btn-warning">再生成分析报告</a>
         </div>
         
         <a href="{{ url_for('admin.manage_universities_page') }}" class="btn btn-secondary">取消</a>

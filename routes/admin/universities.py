@@ -10,6 +10,7 @@ from flask import url_for
 
 from routes.admin.auth import admin_required
 from utils.core.database import get_db
+from utils.system.task_manager import task_manager
 from utils.system.thread_pool import thread_pool_manager
 from utils.university.search import VectorSearchEngine
 
@@ -329,6 +330,56 @@ def edit_university(university_id):
         return render_template("404.html"), 404
 
     return render_template("edit_university.html", university=university)
+
+
+@admin_bp.route("/university/<university_id>/regenerate", methods=["GET", "POST"])
+@admin_required
+def regenerate_university_analysis(university_id):
+    """再生成分析报告：展示提示词并创建后台任务。
+
+    GET: 渲染页面，预填充当前config.analysis_questions。
+    POST: 接收new_prompt，读取translated_md，创建REGENERATE_ANALYSIS任务。
+    """
+    db = get_db()
+    if db is None:
+        return render_template("regenerate_analysis.html", error="数据库连接失败", university=None, analysis_questions="")
+
+    try:
+        object_id = ObjectId(university_id)
+    except Exception:
+        return render_template("404.html"), 404
+
+    university = db.universities.find_one({"_id": object_id}, {"university_name": 1, "university_name_zh": 1, "content.translated_md": 1})
+    if not university:
+        return render_template("404.html"), 404
+
+    if request.method == "GET":
+        # 预填充为“合成后的完整系统提示词”，用户直接编辑整段提示词
+        from utils.ai.analysis_tool import DocumentAnalyzer  # 延迟导入避免循环依赖
+        from utils.core.config import Config  # 延迟导入，避免顶部未使用
+        cfg = Config()
+        analyzer = DocumentAnalyzer(cfg.analysis_questions, cfg.translate_terms)
+        composed_prompt = analyzer.get_composed_system_prompt()
+        return render_template("regenerate_analysis.html", university=university, analysis_questions=composed_prompt)
+
+    # POST
+    # CSRF 已由全局JWT设置启用表单校验，这里只需读取参数
+    full_system_prompt = request.form.get("new_prompt", "").strip()
+    if not full_system_prompt:
+        from utils.ai.analysis_tool import DocumentAnalyzer
+        from utils.core.config import Config
+        cfg = Config()
+        analyzer = DocumentAnalyzer(cfg.analysis_questions, cfg.translate_terms)
+        fallback_prompt = analyzer.get_composed_system_prompt()
+        return render_template("regenerate_analysis.html", university=university, analysis_questions=fallback_prompt, error="系统提示词不能为空")
+
+    # 创建后台任务（不做并发限制，最后写赢）
+    # 直接传递整段完整系统提示词，任务端不再进行二次合成
+    task_params = {"university_id": university_id, "full_system_prompt": full_system_prompt}
+    task_manager.create_task(task_type="REGENERATE_ANALYSIS", task_name=f"Regenerate analysis for {university_id}", params=task_params)
+
+    # 重定向回编辑页，附带提示参数
+    return redirect(url_for("admin.edit_university", university_id=university_id, msg="task_created"))
 
 
 @admin_bp.route("/api/universities/<item_id>", methods=["DELETE"])

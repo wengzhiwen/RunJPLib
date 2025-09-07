@@ -1,0 +1,29 @@
+{% extends "admin/layout.html" %}
+
+{% block title %}再生成分析报告{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>再生成分析报告 - {{ university.university_name_zh or university.university_name or (university._id|string)[:8] }}</h2>
+
+    {% if error %}
+    <div class="alert alert-danger">{{ error }}</div>
+    {% endif %}
+
+    <form method="POST" action="{{ url_for('admin.regenerate_university_analysis', university_id=university._id) }}">
+        <!-- CSRF Token -->
+        <input type="hidden" name="csrf_token" id="csrf_token" value="">
+
+        <div class="mb-3">
+            <label for="new_prompt" class="form-label">系统提示词（代码片段，可编辑）</label>
+            <textarea class="form-control" id="new_prompt" name="new_prompt" rows="18">{{ analysis_questions }}</textarea>
+            <div class="form-text">此处为分析阶段系统提示词的代码内基础段（不含问题列表与翻译术语）。仅用于本次再生成任务，不会保存到配置或数据库。</div>
+        </div>
+
+        <a href="{{ url_for('admin.edit_university', university_id=university._id) }}" class="btn btn-secondary">返回编辑页</a>
+        <button type="submit" class="btn btn-primary">开始再生成</button>
+    </form>
+</div>
+{% endblock %}
+
+

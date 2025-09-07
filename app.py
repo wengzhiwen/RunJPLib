@@ -17,14 +17,6 @@ from flask_jwt_extended import JWTManager
 from gridfs import GridFS
 from werkzeug.routing import BaseConverter
 
-from routes.blog.views import blog_detail_route
-from routes.blog.views import blog_list_route
-from routes.blueprints import admin_bp
-from routes.blueprints import chat_bp
-from routes.index import index_route
-from routes.index import sitemap_route
-from routes.index import university_route
-
 # 导入路由模块以注册所有路由 - Flask最佳实践
 import routes.admin.analytics
 import routes.admin.auth
@@ -35,6 +27,13 @@ import routes.admin.pdf_processor
 import routes.admin.universities
 import routes.blog.cache
 import routes.blog.views
+from routes.blog.views import blog_detail_route
+from routes.blog.views import blog_list_route
+from routes.blueprints import admin_bp
+from routes.blueprints import chat_bp
+from routes.index import index_route
+from routes.index import sitemap_route
+from routes.index import university_route
 import routes.university_chat.chat_api
 import routes.university_chat.security
 from utils.core.database import ensure_indexes
