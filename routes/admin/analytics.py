@@ -15,6 +15,87 @@ from utils.tools.ip_geo import ip_geo_manager
 from ..blueprints import admin_bp
 
 
+@admin_bp.route("/analytics/top-pages")
+@admin_required
+def top_pages_view():
+    """展示最近24小时TOP30的blog和招生信息访问（按IP去重），并附带48小时和7天的去重访问量。"""
+    db = get_db()
+    if db is None:
+        return render_template("top_pages.html", error="数据库连接失败", items=[])
+
+    try:
+        now = datetime.utcnow()
+        ranges = {
+            "24h": now - timedelta(hours=24),
+            "48h": now - timedelta(hours=48),
+            "7d": now - timedelta(days=7),
+        }
+
+        def build_pipeline(page_type: str, since: datetime):
+            return [
+                {
+                    "$match": {
+                        "page_type": page_type,
+                        "timestamp": {
+                            "$gte": since
+                        }
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": {
+                            "resource": "$resource_key",
+                            "ip": "$ip"
+                        }
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": "$_id.resource",
+                        "unique_ip_count": {
+                            "$sum": 1
+                        }
+                    }
+                },
+                {
+                    "$sort": {
+                        "unique_ip_count": -1
+                    }
+                },
+                {
+                    "$limit": 30
+                },
+            ]
+
+        # 仅以24h为主榜单，并为主榜单中的项计算48h与7d
+        top_university_24h = list(db.access_logs.aggregate(build_pipeline("university", ranges["24h"])))
+        top_blog_24h = list(db.access_logs.aggregate(build_pipeline("blog", ranges["24h"])))
+
+        def attach_other_ranges(items, page_type: str):
+            result = []
+            for it in items:
+                resource = it.get("_id") or ""
+                # 48h
+                count_48h = db.access_logs.distinct("ip", {"page_type": page_type, "resource_key": resource, "timestamp": {"$gte": ranges["48h"]}})
+                # 7d
+                count_7d = db.access_logs.distinct("ip", {"page_type": page_type, "resource_key": resource, "timestamp": {"$gte": ranges["7d"]}})
+                result.append({
+                    "resource": resource,
+                    "count_24h": it.get("unique_ip_count", 0),
+                    "count_48h": len(count_48h),
+                    "count_7d": len(count_7d),
+                })
+            return result
+
+        universities = attach_other_ranges(top_university_24h, "university")
+        blogs = attach_other_ranges(top_blog_24h, "blog")
+
+        return render_template("top_pages.html", universities=universities, blogs=blogs)
+    except Exception as e:
+        logging.error(f"渲染TOP页面失败: {e}", exc_info=True)
+        return render_template("top_pages.html", error="查询失败", items=[])
+
+
 @admin_bp.route("/university-tagger", methods=["GET", "POST"])
 @admin_required
 def university_tagger_page():

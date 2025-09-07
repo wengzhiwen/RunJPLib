@@ -379,7 +379,8 @@ def blog_detail_route(url_title):
     博客详情路由处理函数。
     现在只从MongoDB获取数据。
     """
-    log_access('blog')
+    # 以url_title作为资源标识
+    log_access('blog', resource_key=url_title)
     logging.info(f"请求博客详情页面: {url_title}")
 
     blog = get_blog_by_url_title(url_title)

@@ -24,7 +24,7 @@ def _write_access_log_to_db(access_log: dict):
         logging.error(f"Error writing access log to database: {e}", exc_info=True)
 
 
-def log_access(page_type: str):
+def log_access(page_type: str, resource_key: str | None = None):
     """
     使用线程池记录访问事件到数据库，以避免阻塞请求。
     :param page_type: 被访问的页面类型 ('university' 或 'blog').
@@ -45,6 +45,9 @@ def log_access(page_type: str):
             "timestamp": datetime.utcnow(),
             "page_type": page_type,
         }
+
+        if resource_key:
+            access_log["resource_key"] = resource_key
 
         # 尝试提交到Analytics专用线程池进行异步写入
         success = thread_pool_manager.submit_user_access_log_task(_write_access_log_to_db, access_log)

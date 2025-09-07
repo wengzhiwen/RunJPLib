@@ -238,7 +238,11 @@ def index_route():
 
 def university_route(name, deadline=None, content="REPORT"):
     """大学详情页路由处理函数 (纯MongoDB)"""
-    log_access('university')
+    # 使用大学名和可选deadline作为资源标识，便于Admin聚合
+    resource_key = name
+    if deadline:
+        resource_key = f"{name}|{deadline}"
+    log_access('university', resource_key=resource_key)
     university_doc = get_university_details(name, deadline)
 
     if not university_doc:

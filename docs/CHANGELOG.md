@@ -1,3 +1,10 @@
+## [Unreleased]
+
+### Added
+- Admin: 新增“TOP30访问（24h/48h/7天，按IP去重）”页面 `/admin/analytics/top-pages`，支持分别查看 Blog 与 招生信息。
+- Analytics: `log_access` 支持 `resource_key`（大学使用 `大学名|deadline` 作为可选标识；博客使用 `url_title`）。
+- Admin: 侧边栏加入“TOP30访问(24h)”菜单入口。
+
 ## [缓存修复] 修复首页缓存系统问题 - 2025-09-06
 
 ### 问题描述

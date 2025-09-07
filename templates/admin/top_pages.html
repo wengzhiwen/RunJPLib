@@ -1,0 +1,66 @@
+{% extends 'admin/layout.html' %}
+{% block title %}TOP30访问（24h/48h/7天）{% endblock %}
+{% block content %}
+<div class="container-fluid">
+  <h1 class="mb-4">TOP30访问（按IP去重）</h1>
+  {% if error %}
+    <div class="alert alert-danger">{{ error }}</div>
+  {% endif %}
+
+  <div class="row">
+    <div class="col-md-6">
+      <h3>大学招生信息（24h主榜）</h3>
+      <table class="table table-sm table-striped align-middle">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>资源标识</th>
+            <th>24h</th>
+            <th>48h</th>
+            <th>7天</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in universities %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td><code>{{ item.resource }}</code></td>
+            <td>{{ item.count_24h }}</td>
+            <td>{{ item.count_48h }}</td>
+            <td>{{ item.count_7d }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="col-md-6">
+      <h3>博客（24h主榜）</h3>
+      <table class="table table-sm table-striped align-middle">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>资源标识</th>
+            <th>24h</th>
+            <th>48h</th>
+            <th>7天</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in blogs %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td><code>{{ item.resource }}</code></td>
+            <td>{{ item.count_24h }}</td>
+            <td>{{ item.count_48h }}</td>
+            <td>{{ item.count_7d }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="text-muted small mt-3">注：资源标识为大学详情使用“大学名|deadline（若有）”，博客使用“url_title”。</div>
+</div>
+{% endblock %}
+
