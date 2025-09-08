@@ -1,235 +1,65 @@
 ## [新功能] Admin可以再次生成基础分析报告 - 2025-09-06
 
 ### Added
-- Admin: 新增"TOP30访问（24h/48h/7天，按IP去重）"页面 `/admin/analytics/top-pages`，支持分别查看 Blog 与 招生信息。
-- Analytics: `log_access` 支持 `resource_key`（大学使用 `大学名|deadline` 作为可选标识；博客使用 `url_title`）。
-- Admin: 侧边栏加入"TOP30访问(24h)"菜单入口。
+- Admin: 新增"TOP30访问（24h/48h/7天，按IP去重）"页面，支持分别查看 Blog 与 招生信息
+- Analytics: `log_access` 支持 `resource_key`（大学使用 `大学名|deadline` 作为可选标识；博客使用 `url_title`）
+- Admin: 侧边栏加入"TOP30访问(24h)"菜单入口
 
 ### Changed
-- Admin: 招生信息“再生成分析报告”功能上线
-  - 在 `templates/admin/edit_university.html` 增加“再生成分析报告”按钮；
-  - 新增 `GET/POST /admin/university/<id>/regenerate` 与模板 `templates/admin/regenerate_analysis.html`；
-  - 再生成流程：后端先用分析器合成“完整系统提示词”，前端展示整段供管理员编辑，提交后任务 `REGENERATE_ANALYSIS` 仅接收 `full_system_prompt` 并直接用于分析（不在后台二次合成），成功后覆盖写入 `content.report_md`（最后写赢）；
-  - 原有从 PDF → 分析 → 发布的完整流程保持不变：分析阶段仍由代码内部合成系统提示词。
+- Admin: 招生信息"再生成分析报告"功能上线
+  - 在编辑页面增加"再生成分析报告"按钮
+  - 新增再生成流程：后端合成系统提示词，前端展示供管理员编辑，提交后直接用于分析
+  - 成功后覆盖写入 `content.report_md`（最后写赢）
 
 ## [缓存修复] 修复首页缓存系统问题 - 2025-09-06
 
-### 问题描述
+### 问题
 - 首页每次访问都显示"缓存未命中或过期"日志
 - 推荐算法、大学列表、最新更新等数据每次都重新从数据库加载
-- 缓存系统没有正常工作，影响页面加载性能
 
-### 根本原因分析
-1. **推荐算法缺少缓存装饰器**: `get_weighted_recommended_blogs_with_summary()` 函数没有使用 `@cached` 装饰器
-2. **缓存导入错误**: `routes/index.py` 中错误导入了 `utils.tools.cache.TTLCache` 而非 `cachetools.TTLCache`
-3. **缓存配置不一致**: 不同模块使用不同的缓存TTL时间
-
-### 修复内容
-
-#### 🔧 **推荐算法缓存修复**
-- **routes/blog/views.py**: 为 `get_weighted_recommended_blogs_with_summary()` 添加 `@cached(recommended_blogs_cache)` 装饰器
-- **缓存TTL**: 推荐博客缓存设置为30分钟 (1800秒)
-- **导入修复**: 正确导入 `recommended_blogs_cache` 从 `routes.blog.cache`
-
-#### 📋 **首页缓存修复**
-- **routes/index.py**: 修复缓存导入，使用 `from cachetools import TTLCache`
-- **缓存配置统一**: 所有首页相关缓存使用正确的TTL时间
-  - 大学列表缓存: 10分钟 (600秒)
-  - 最新更新缓存: 10分钟 (600秒)  
-  - 分类信息缓存: 1小时 (3600秒)
-
-#### 🧪 **测试验证**
-- **tools/test_cache_fix.py**: 创建缓存性能测试脚本
-- **测试结果**: 验证所有缓存函数第二次调用时间 < 0.01秒
-- **性能提升**: 缓存命中后响应时间从数百毫秒降至微秒级
-
-### 技术细节
-
-#### **缓存装饰器使用**
-```python
-@cached(recommended_blogs_cache)
-def get_weighted_recommended_blogs_with_summary(count=3):
-    # 函数实现...
-```
-
-#### **缓存TTL配置**
-```python
-# routes/blog/cache.py
-recommended_blogs_cache = TTLCache(maxsize=1, ttl=1800)  # 30分钟
-
-# routes/index.py  
-university_list_cache = TTLCache(maxsize=1, ttl=600)    # 10分钟
-latest_updates_cache = TTLCache(maxsize=1, ttl=600)     # 10分钟
-categories_cache = TTLCache(maxsize=1, ttl=3600)        # 1小时
-```
-
-### 性能影响
-- **首页加载**: 缓存命中后响应时间大幅减少
-- **数据库负载**: 减少重复的数据库查询
-- **用户体验**: 页面加载更加流畅
-- **日志清洁**: 不再频繁出现"缓存未命中或过期"日志
-
-### 文件更改
-- `routes/blog/views.py`: 添加推荐算法缓存装饰器
-- `routes/index.py`: 修复缓存导入问题
-- `tools/test_cache_fix.py`: 新增缓存测试脚本
-- `docs/CHANGELOG.md`: 记录本次修复
+### 修复
+- 推荐算法缓存：为 `get_weighted_recommended_blogs_with_summary()` 添加缓存装饰器，TTL 30分钟
+- 首页缓存：修复缓存导入错误，统一缓存TTL时间配置
+- 性能提升：缓存命中后响应时间从数百毫秒降至微秒级
 
 ---
 
 ## [重大修复] 全面CSRF Token问题修复 - 2025-09-06
 
-### 问题描述
+### 问题
 - Admin后台多个功能出现CSRF token相关错误
 - 用户被频繁重定向到登录页面，无法正常使用admin功能
 - 前端聊天功能出现404错误
 
-### 根本原因分析
-1. **CSRF配置不一致**: Flask-JWT-Extended配置中`JWT_CSRF_CHECK_FORM=False`导致表单CSRF检查失效
-2. **Header名称不匹配**: Admin聊天使用`X-CSRF-Token`而非`X-CSRF-TOKEN`
-3. **混合CSRF系统**: Admin聊天混用JWT CSRF和自定义CSRF token
-4. **布局文件错误**: PDF处理器使用错误的布局文件
-5. **API路径错误**: 前端聊天构建了错误的API路径
+### 修复
+- 后端配置：启用 `JWT_CSRF_CHECK_FORM=True`，确保表单CSRF检查生效
+- Admin表单：为所有表单添加CSRF token隐藏字段和JavaScript处理
+- Admin API：统一使用 `X-CSRF-TOKEN` header，修复header名称不匹配问题
+- 前端修复：修正布局文件引用和API路径构建逻辑
 
-### 修复内容
-
-#### 🔧 **后端配置修复**
-- **app.py**: 启用`JWT_CSRF_CHECK_FORM=True`，确保表单CSRF检查生效
-- **统一CSRF配置**: 所有CSRF相关配置统一启用
-
-#### 📋 **Admin表单修复**
-- **university_tagger.html**: 添加CSRF token隐藏字段和JavaScript处理
-- **edit_blog.html**: 添加CSRF token隐藏字段
-- **edit_university.html**: 添加CSRF token隐藏字段
-- **admin/layout.html**: 增强全局JavaScript，自动为所有表单设置CSRF token
-
-#### 🔌 **Admin API调用修复**
-- **博客生成**: `/admin/api/blog/generate` - 添加`X-CSRF-TOKEN` header
-- **PDF上传**: `/admin/api/pdf/upload` - 修正header名称为`X-CSRF-TOKEN`
-- **PDF任务管理**: 所有PDF相关API添加CSRF token支持
-- **Admin聊天**: 统一使用JWT CSRF token，移除自定义CSRF混用
-
-#### 🎨 **前端修复**
-- **pdf_processor.html**: 修正布局文件引用为`admin/layout.html`
-- **chat_modal.html**: 修正API路径构建逻辑
-
-### 技术细节
-
-#### **CSRF Token处理机制**
-```javascript
-// 统一的CSRF token获取函数 (admin/layout.html)
-function getCSRFToken() {
-    const cookies = document.cookie.split(';');
-    for (let cookie of cookies) {
-        const [name, value] = cookie.trim().split('=');
-        if (name === 'csrf_access_token') {
-            return value;
-        }
-    }
-    return null;
-}
-```
-
-#### **表单自动CSRF设置**
-```javascript
-// 自动为所有表单设置CSRF token
-const csrfInputs = document.querySelectorAll('input[name="csrf_token"]');
-csrfInputs.forEach(function(input) {
-    if (csrfToken) {
-        input.value = csrfToken;
-    }
-});
-```
-
-#### **API调用CSRF Header**
-```javascript
-// 统一的API调用CSRF header
-headers: {
-    'Content-Type': 'application/json',
-    'X-CSRF-TOKEN': getCSRFToken() || ''
-}
-```
-
-### 修复的功能列表
-
-#### ✅ **Admin表单功能**
-1. **大学标签工具** - `/admin/university-tagger`
-2. **博客编辑** - `/admin/blog/edit/<id>`
-3. **大学信息编辑** - `/admin/edit_university/<id>`
-
-#### ✅ **Admin API功能**
-4. **博客生成** - `/admin/api/blog/generate`
-5. **PDF上传** - `/admin/api/pdf/upload`
-6. **PDF任务重启** - `/admin/api/pdf/task/<id>/restart`
-7. **PDF任务启动** - `/admin/api/pdf/task/<id>/start`
-8. **PDF队列处理** - `/admin/api/pdf/queue/process`
-9. **Admin聊天** - 所有相关API (`create-session`, `send-message`, `clear-session`, `delete-session`)
-
-#### ✅ **前端功能**
-10. **PDF处理器** - 修正布局文件和CSRF处理
-11. **前端聊天** - 修正API路径构建
-
-### 测试验证
-- ✅ 所有Admin表单提交不再重定向到登录页面
-- ✅ 所有Admin API调用正常工作
-- ✅ Admin聊天功能完整流程正常
-- ✅ PDF上传和处理功能正常
-- ✅ 前端聊天功能路径正确
-
-### 预防措施
-- 📚 更新了 [Admin CSRF Token 处理指南](../developer_guides/admin_csrf_handling.md)
-- 📋 提供了完整的CSRF处理检查清单
-- 🔄 建立了标准化的Admin功能开发流程
-- 📖 更新了开发者指南索引
+### 修复的功能
+- 大学标签工具、博客编辑、大学信息编辑
+- 博客生成、PDF上传、PDF任务管理、Admin聊天
+- PDF处理器、前端聊天功能
 
 ---
 
 ## [修复] University Tagger CSRF Token 问题修复 - 2025-09-05
 
-### 问题描述
+### 问题
 - 点击"开始刷新大学标签"按钮时，系统报错"Missing CSRF token"
 - 用户被重定向到admin登录页面，无法正常使用功能
 
-### 根本原因
-- Flask-JWT-Extended的JWT验证在开发环境中仍然要求CSRF token
-- 虽然设置了`JWT_COOKIE_CSRF_PROTECT=False`，但其他CSRF相关配置仍然启用
-- `JWT_CSRF_IN_COOKIES=True`和`JWT_CSRF_METHODS=['POST', 'PUT', 'PATCH', 'DELETE']`导致CSRF检查仍然生效
-
-### 修复内容
-1. **模板修复**:
-   - 在`university_tagger.html`中添加CSRF token隐藏字段
-   - 在`admin/layout.html`中添加CSRF token meta标签
-   - 添加JavaScript自动获取和设置CSRF token
-
-2. **后端修复**:
-   - 确保JWT cookie设置正确
-   - 验证JWT配置符合预期
-
-3. **配置验证**:
-   - 确认`JWT_COOKIE_CSRF_PROTECT=False`配置正确
-   - 验证环境变量设置符合预期
-
-### 技术细节
-- CSRF token从JWT cookie中自动获取
-- 支持多种token获取方式（meta标签、cookie、localStorage）
-- 保持与其他admin页面的一致性
-
-### 测试验证
-- ✅ university_tagger.html 包含CSRF token支持
-- ✅ admin/layout.html 包含CSRF token meta标签  
-- ✅ JWT_COOKIE_CSRF_PROTECT: False
-
-### 预防措施
-- 📚 创建了 [Admin CSRF Token 处理指南](../developer_guides/admin_csrf_handling.md)
-- 📋 提供了完整的开发检查清单
-- 🔄 建立了标准化的开发流程
-- 📖 更新了开发者指南索引
+### 修复
+- 模板修复：在 `university_tagger.html` 中添加CSRF token隐藏字段
+- 后端修复：确保JWT cookie设置正确
+- 配置验证：确认 `JWT_COOKIE_CSRF_PROTECT=False` 配置正确
 
 ---
 
 ## [重构] Utils 模块结构重组 - 2025-09-05
 
-### 变更内容
+### 变更
 - 重新组织 utils 目录结构，按功能领域分组
 - 优化类名和文件名，提高可读性和一致性
 - 保持所有功能完全不变，确保向后兼容
@@ -259,16 +89,11 @@ headers: {
 - `IPGeoManager` → `GeoLocationResolver`
 - `ThreadPoolManager` → `ConcurrentTaskExecutor`
 
-### 兼容性
-- 所有原有导入方式继续有效
-- 所有全局实例访问方式保持不变
-- 所有类的方法和属性完全不变
-
 ---
 
 ## [重构] Routes 模块重构完成 + Flask最佳实践应用 - 2025-09-05
 
-### 🔧 架构重构
+### 架构重构
 - **admin.py 重构**: 将1769行的大文件拆分为7个功能模块
   - `routes/admin/auth.py`: 认证与权限管理 (~150行)
   - `routes/admin/dashboard.py`: 仪表盘和系统监控 (~200行)
@@ -286,30 +111,13 @@ headers: {
   - `routes/blog/views.py`: 博客展示功能 (~250行)
   - `routes/blog/cache.py`: 缓存管理 (~100行)
 
-### ✨ Flask最佳实践应用
+### Flask最佳实践应用
 - **Blueprint集中管理**: 创建 `routes/blueprints.py` 集中定义所有Blueprint
 - **路由注册优化**: 采用Flask推荐的最佳实践，在 `app.py` 中直接导入路由模块
 - **模板路径修复**: 修复了Admin Blueprint的模板路径配置问题
 - **代码格式化**: 使用isort和yapf工具对所有代码进行格式化
 
-### 📁 文件结构
-- **新增目录**: `routes/admin/`, `routes/blog/`, `routes/university_chat/`
-- **新增文件**: 13个模块文件，每个文件职责明确
-- **删除文件**: 原始的3个大文件已删除
-- **保持功能**: 所有原有功能完全保持不变
-
-### 🔧 技术实现
-- **Flask Blueprint**: 使用蓝图进行模块化组织
-- **导入更新**: 更新了`app.py`中的所有相关导入语句
-- **循环导入避免**: 仔细规划导入结构，避免循环导入问题
-- **路由注册**: 确保所有路由正确注册，解决404问题
-
-### 🐛 关键问题修复
-- **路由注册问题**: 修复了重构过程中路由未被正确注册导致的404错误
-- **模板路径问题**: 修复了Admin Blueprint模板路径配置错误导致的500错误
-- **导入路径更新**: 更新所有文件中的导入路径，使用新的模块化结构
-
-### 📊 重构效果
+### 重构效果
 - **文件数量**: 从4个大文件拆分为13个模块文件
 - **平均文件大小**: 从~500行减少到~150行
 - **可维护性**: 显著提升，每个文件职责明确
@@ -318,216 +126,112 @@ headers: {
 
 ---
 
-## [2025-01-XX] - Routes文件夹重构完成 + Bug修复
-
-### 🔧 架构重构
-- **admin.py 重构**: 将1769行的大文件拆分为7个功能模块
-  - `routes/admin/auth.py`: 认证与权限管理 (~150行)
-  - `routes/admin/dashboard.py`: 仪表盘和系统监控 (~200行)
-  - `routes/admin/universities.py`: 大学信息管理 (~300行)
-  - `routes/admin/blogs.py`: 博客管理 (~250行)
-  - `routes/admin/pdf_processor.py`: PDF处理和管理 (~300行)
-  - `routes/admin/chat_logs.py`: 聊天日志管理 (~200行)
-  - `routes/admin/analytics.py`: 分析工具 (~150行)
-
-- **university_chat.py 重构**: 将447行文件拆分为2个模块
-  - `routes/university_chat/chat_api.py`: 聊天核心功能 (~300行)
-  - `routes/university_chat/security.py`: 安全与工具功能 (~100行)
-
-- **blog.py 重构**: 将437行文件拆分为2个模块
-  - `routes/blog/views.py`: 博客展示功能 (~250行)
-  - `routes/blog/cache.py`: 缓存管理 (~100行)
-
-### ✨ 代码质量提升
-- **删除冗余注释**: 移除了AI生成代码过程中的冗余注释
-- **统一命名规范**: 统筹修改了不规范的变量命名
-- **代码格式化**: 使用isort和yapf工具对所有代码进行格式化
-- **导入优化**: 优化了所有模块的导入语句结构
-
-### 📁 文件结构
-- **新增目录**: `routes/admin/`, `routes/blog/`, `routes/university_chat/`
-- **新增文件**: 13个模块文件，每个文件职责明确
-- **删除文件**: 原始的3个大文件已删除
-- **保持功能**: 所有原有功能完全保持不变
-
-### 🔧 技术实现
-- **Flask Blueprint**: 使用蓝图进行模块化组织
-- **导入更新**: 更新了`app.py`中的所有相关导入语句
-- **循环导入避免**: 仔细规划导入结构，避免循环导入问题
-
----
 
 ## [2025-09-05] - 管理端聊天功能迁移与CSRF安全修复
 
-### 🔧 架构重构
-- **移除独立管理端聊天模块**: 删除了 `routes/chat.py` 文件，将管理端聊天功能完全整合到 `routes/university_chat.py` 中，实现代码统一和维护简化。
-- **代理路由实现**: 在 `app.py` 中新增 `/admin/chat/api/<path:endpoint>` 代理路由，将管理端请求转发到统一的大学聊天API处理器。
-- **角色令牌支持**: 管理端请求现在携带 `X-Role-Token: 'admin'` 头部和 `role_token: 'admin'` 字段，为未来管理端特殊功能预留接口。
+### 架构重构
+- **移除独立管理端聊天模块**: 删除了 `routes/chat.py` 文件，将管理端聊天功能完全整合到 `routes/university_chat.py` 中
+- **代理路由实现**: 在 `app.py` 中新增 `/admin/chat/api/<path:endpoint>` 代理路由，将管理端请求转发到统一的大学聊天API处理器
+- **角色令牌支持**: 管理端请求现在携带 `X-Role-Token: 'admin'` 头部和 `role_token: 'admin'` 字段
 
-### 🛡️ 安全增强
-- **CSRF令牌修复**: 修复了管理端聊天功能中CSRF令牌缺失导致的403错误。现在所有POST请求（除create-session外）都会正确携带CSRF令牌进行验证。
-- **会话安全**: 管理端聊天会话现在与用户端使用相同的安全机制，包括CSRF保护和会话验证。
+### 安全增强
+- **CSRF令牌修复**: 修复了管理端聊天功能中CSRF令牌缺失导致的403错误
+- **会话安全**: 管理端聊天会话现在与用户端使用相同的安全机制，包括CSRF保护和会话验证
 
-### ✨ 功能改进
-- **新增管理端专用端点**: 在 `routes/university_chat.py` 中新增 `clear-session` 和 `delete-session` 端点，支持管理端清理和删除聊天会话。
-- **会话上下文解析**: 优化了会话相关操作（send-message、get-history、clear-session、delete-session）的大学上下文解析逻辑，优先从会话数据中获取大学信息，避免404错误。
-- **前端优化**: 管理端前端增加了输入法（IME）输入优化，减少不必要的搜索请求，提升用户体验。
-
-### 📁 文件更改
-- `routes/chat.py`: 删除（功能已迁移）
-- `routes/university_chat.py`: 新增管理端端点，优化会话上下文解析
-- `routes/admin.py`: 新增管理端聊天页面路由
-- `app.py`: 新增管理端聊天API代理路由
-- `templates/admin/chat.html`: 更新前端以支持新的API结构和CSRF令牌
-- `templates/admin/layout.html`: 修复导航链接
-- `docs/CHANGELOG.md`: 记录本次重大架构调整
+### 功能改进
+- **新增管理端专用端点**: 在 `routes/university_chat.py` 中新增 `clear-session` 和 `delete-session` 端点
+- **会话上下文解析**: 优化了会话相关操作的大学上下文解析逻辑，优先从会话数据中获取大学信息
+- **前端优化**: 管理端前端增加了输入法（IME）输入优化，减少不必要的搜索请求
 
 ---
 
 ## [2025-09-05] - 新增大学标签自动生成工具和数据库索引优化
 
-### Removed
-- Admin 后台移除危险操作：清空招生信息（`DELETE /admin/api/universities`）与清空博客（`DELETE /admin/api/blogs`）及其前端按钮与调用逻辑，防止误操作造成全量数据丢失。
+### 新功能
+- **大学标签生成器**: 新增了一个后台工具，用于为所有大学数据自动生成和更新标签（例如："国立"、"难关"、"女子大"等）
+- **LLM驱动**: 该工具利用大语言模型（LLM）批量分析所有大学的名称和已有标签，以生成或更新一套准确且符合用户习惯的标签
+- **异步任务处理**: 整个打标过程作为一个后台异步任务执行，管理员可以在专属页面触发，并实时查看进度和结果
 
-### 🚀 新功能
-- **大学标签生成器**: 新增了一个后台工具，用于为所有大学数据自动生成和更新标签（例如："国立"、"难关"、"女子大"等）。
-- **LLM驱动**: 该工具利用大语言模型（LLM）批量分析所有大学的名称和已有标签，以生成或更新一套准确且符合用户习惯的标签。
-- **异步任务处理**: 整个打标过程作为一个后台异步任务执行，管理员可以在专属页面触发，并实时查看进度和结果，不会阻塞其他操作。
-
-### 🗄️ 数据库优化
+### 数据库优化
 - **标签索引优化**: 为基于标签的大学筛选功能准备了高性能索引
   - 新增`tags`字段单字段索引，支持快速标签筛选查询
   - 新增复合索引：`tags + is_premium + deadline`，支持标签筛选+Premium排序+截止日期排序
   - 新增复合索引：`tags + deadline`，支持标签筛选+截止日期排序
   - 所有基于标签的查询性能优化至毫秒级别（0.0003-0.0013秒）
 
-### ✨ 功能改进
-- **通用任务管理器**: 对核心工具 `utils/task_manager.py` 进行了重构，使其从一个专门的PDF处理器，升级为能够处理多种不同类型后台任务的通用任务管理器。这是未来扩展更多后台功能（如数据分析、报告生成等）的重要基础。
-
-### 🔧 技术实现
-- **新增核心工具**: 创建了 `utils/university_tagger.py`，封装了从数据库获取大学、构建LLM提示词、解析结果并写回数据库的完整逻辑。
-- **数据库索引实现**: 在 `utils/db_indexes.py` 中新增了三个高性能索引
-  - `idx_universities_tags`: 单字段索引，支持标签筛选查询
-  - `idx_universities_tags_premium_deadline`: 复合索引，支持标签筛选+Premium排序+截止日期排序
-  - `idx_universities_tags_deadline`: 复合索引，支持标签筛选+截止日期排序
-- **后台管理界面**:
-  - 在 `routes/admin.py` 中新增了 `/admin/university-tagger` 路由。
-  - 在 `admin` 后台的 `招生信息一览` 页面新增标签筛选：
-    - 顶部展示系统内已有的全部标签，按包含的招生信息数量降序排列。
-    - 支持选择最多2个标签，筛选为 AND（交集）关系。
-    - 保持原有去重与排序：同名大学仅显示最新一份，列表按创建时间（`_id`）逆序。
-    - 新增API：`GET /admin/api/university-tags`（标签统计）与扩展 `GET /admin/api/universities?tags=...`（基于标签筛选）。
-  - 创建了 `templates/admin/university_tagger.html` 模板，用于展示触发按钮、任务状态、实时日志和最终的结果摘要（各标签下的大学数量）。
-  - 在 `templates/admin/layout.html` 的侧边栏中添加入口链接。
-- **任务管理器重构**:
-  - 在 `utils/task_manager.py` 中引入了 `task_type` 的概念，使其能够根据任务类型调用不同的处理工具。
-  - 实现了新的通用 `create_task` 方法，并通过 `create_pdf_processing_task` 保持了对旧PDF处理任务的兼容性。
-
-### 📁 文件更改
-- `utils/university_tagger.py`: (新增) 核心标签生成工具。
-- `utils/task_manager.py`: (重构) 升级为通用任务管理器。
-- `utils/db_indexes.py`: (修改) 新增基于tags字段的高性能索引。
-- `docs/developer_guides/database_design.md`: (修改) 更新数据库设计文档，记录新的索引策略。
-- `routes/admin.py`: (修改) 添加新页面的路由和逻辑。
-- `templates/admin/university_tagger.html`: (新增) 新功能的前端页面。
-- `templates/admin/layout.html`: (修改) 在菜单中添加入口。
+### 功能改进
+- **通用任务管理器**: 对核心工具 `utils/task_manager.py` 进行了重构，使其从一个专门的PDF处理器，升级为能够处理多种不同类型后台任务的通用任务管理器
+- **后台管理界面**: 在 `routes/admin.py` 中新增了 `/admin/university-tagger` 路由，在 `admin` 后台的 `招生信息一览` 页面新增标签筛选功能
 
 ---
 
 ## [2025-09-04] - 修复服务重启后进行中任务卡死的问题
 
-### 🐛 问题修复
-- **识别中断任务**: 修复了当服务重启时，正在进行的PDF处理任务会永久卡在"进行中"状态的问题。现在系统能够正确识别这些任务的进程已消失，并将其状态更新为"已中断"。
-- **提供手动恢复**: 为"已中断"的任务提供了与"失败"任务相同的手动恢复机制。管理员现在可以进入任务详情页，从特定步骤重启这些中断的任务。
+### 问题修复
+- **识别中断任务**: 修复了当服务重启时，正在进行的PDF处理任务会永久卡在"进行中"状态的问题
+- **提供手动恢复**: 为"已中断"的任务提供了与"失败"任务相同的手动恢复机制
 
-### 🔧 技术实现
-- **记录进程ID (PID)**: `TaskManager` 在启动一个任务时，会将其执行进程的PID一同存入数据库。
-- **状态检查逻辑**: 在后台任务列表API (`/api/pdf/tasks`) 中增加了检查逻辑。对于每个"进行中"的任务，API会检查其PID对应的进程是否仍在运行。
-- **引入新状态**: 如果进程不存在，任务状态会被自动更新为 `interrupted`。
-- **前端UI适配**:
-  - 任务列表页 (`pdf_tasks.html`) 会将"已中断"的任务显示为红色，与"失败"任务外观一致。
-  - 任务详情页 (`pdf_task_detail.html`) 同样会显示红色状态，并为"已中断"的任务启用"从步骤重启"的功能按钮。
-
-### 📁 文件更改
-- `utils/task_manager.py`: 在启动任务时增加了记录PID的逻辑。
-- `routes/admin.py`: 在获取任务列表的API中增加了检查PID并更新中断任务状态的逻辑。
-- `templates/admin/pdf_tasks.html`: 更新了前端JavaScript，以正确显示"已中断"状态。
-- `templates/admin/pdf_task_detail.html`: 更新了模板，为"已中断"状态提供恢复选项。
+### 技术实现
+- **记录进程ID (PID)**: `TaskManager` 在启动一个任务时，会将其执行进程的PID一同存入数据库
+- **状态检查逻辑**: 在后台任务列表API中增加了检查逻辑，对于每个"进行中"的任务，API会检查其PID对应的进程是否仍在运行
+- **引入新状态**: 如果进程不存在，任务状态会被自动更新为 `interrupted`
+- **前端UI适配**: 任务列表页和任务详情页会将"已中断"的任务显示为红色，并为"已中断"的任务启用"从步骤重启"的功能按钮
 
 ---
 
 ## [2025-09-04] - 修复TaskManager环境变量加载导致的程序启动问题
 
-### 🐛 问题修复
-- **程序启动失败**: 修复了 `TaskManager` 在类定义阶段加载环境变量导致程序无法启动的问题。
-- **环境变量加载时机**: 将 `dotenv.load_dotenv()` 从类定义阶段移到实例初始化阶段，避免过早加载导致的循环依赖和初始化顺序问题。
+### 问题修复
+- **程序启动失败**: 修复了 `TaskManager` 在类定义阶段加载环境变量导致程序无法启动的问题
+- **环境变量加载时机**: 将 `dotenv.load_dotenv()` 从类定义阶段移到实例初始化阶段，避免过早加载导致的循环依赖和初始化顺序问题
 
-### 🔧 技术实现
-- **延迟加载**: 在 `TaskManager.__init__()` 方法中加载环境变量，而不是在类定义时。
-- **线程安全**: 保持了原有的线程安全机制，确保在多线程环境下的正确初始化。
-- **向后兼容**: 保持了原有的功能，只是改变了环境变量加载的时机。
-
-### 📁 文件更改
-- `utils/task_manager.py`: 修改了环境变量加载的时机，从类定义阶段移到实例初始化阶段。
+### 技术实现
+- **延迟加载**: 在 `TaskManager.__init__()` 方法中加载环境变量，而不是在类定义时
+- **线程安全**: 保持了原有的线程安全机制，确保在多线程环境下的正确初始化
+- **向后兼容**: 保持了原有的功能，只是改变了环境变量加载的时机
 
 ---
 
 ## [2025-09-04] - 实现招生信息生成任务的并发处理
 
-### 🚀 新功能
-- **并发任务处理**: `TaskManager` 现在支持并发执行多个招生信息生成任务。这允许在一个任务（特别是处于`batch`模式）等待外部API响应时，启动队列中的下一个任务，显著提高了整体处理效率。
-- **并发数可配置**: 管理员现在可以通过在 `.env` 文件中设置 `PDF_MAX_CONCURRENT_TASKS` 环境变量来控制最大并发任务数（默认为1，即顺序执行）。
+### 新功能
+- **并发任务处理**: `TaskManager` 现在支持并发执行多个招生信息生成任务
+- **并发数可配置**: 管理员现在可以通过在 `.env` 文件中设置 `PDF_MAX_CONCURRENT_TASKS` 环境变量来控制最大并发任务数（默认为1，即顺序执行）
 
-### 🔧 技术实现
-- **并发调度逻辑**: `TaskManager` 的 `process_queue` 方法被增强，以支持在达到并发上限前启动多个任务线程。
-- **等待通知机制**: `PDFProcessor` 在进入长时间等待（如轮询批量OCR状态）前，会回调 `TaskManager` 的新方法 `notify_task_is_waiting`，该方法会立即触发一次队列检查，尝试启动新任务。
-- **线程安全**: 调度逻辑在 `_lock` 的保护下执行，确保线程安全。
+### 技术实现
+- **并发调度逻辑**: `TaskManager` 的 `process_queue` 方法被增强，以支持在达到并发上限前启动多个任务线程
+- **等待通知机制**: `PDFProcessor` 在进入长时间等待（如轮询批量OCR状态）前，会回调 `TaskManager` 的新方法 `notify_task_is_waiting`，该方法会立即触发一次队列检查，尝试启动新任务
+- **线程安全**: 调度逻辑在 `_lock` 的保护下执行，确保线程安全
 
-### 📊 日志系统增强
-- **独立任务日志**: 为整个招生信息生成模块（`TaskManager` 和 `PDFProcessor`）创建了独立的、按天轮换的日志文件 `log/TaskManager_YYYYMMDD.log`。
-- **详细调度日志**: 在新的日志文件中，详细记录了任务的创建、入队、出队、启动、等待、结束以及并发槽位的状态，极大地增强了系统的可追溯性和调试能力。
-
-### 📁 文件更改
-- `utils/task_manager.py`: 实现了并发调度逻辑、配置读取和详细日志记录。
-- `utils/pdf_processor.py`: 集成了回调 `TaskManager` 的通知机制。
-- `utils/logging_config.py`: 新增 `setup_task_logger` 函数以支持独立的、按天轮换的任务日志。
-- `.env.sample`: 添加了 `PDF_MAX_CONCURRENT_TASKS` 的配置示例。
+### 日志系统增强
+- **独立任务日志**: 为整个招生信息生成模块（`TaskManager` 和 `PDFProcessor`）创建了独立的、按天轮换的日志文件 `log/TaskManager_YYYYMMDD.log`
+- **详细调度日志**: 在新的日志文件中，详细记录了任务的创建、入队、出队、启动、等待、结束以及并发槽位的状态
 
 ---
 
 ## [2025-09-04] - PDF处理器默认使用批量模式
 
-### ✨ 功能改进
-- **默认模式变更**: 在"招生信息生成"页面，将默认的PDF处理模式从"普通模式"修改为"批量模式"，以鼓励用户使用成本更低的选项。
-- **用户体验**: 用户现在无需手动选择，即可默认使用批量模式。
-
-### 📁 文件更改
-- `templates/admin/pdf_processor.html`: 调整了处理模式单选按钮的 `checked` 属性。
+### 功能改进
+- **默认模式变更**: 在"招生信息生成"页面，将默认的PDF处理模式从"普通模式"修改为"批量模式"，以鼓励用户使用成本更低的选项
+- **用户体验**: 用户现在无需手动选择，即可默认使用批量模式
 
 ---
 
 ## [2025-09-03] - 博客生成异步化与可见性控制
 
-### 🚀 新功能
-- **异步博客生成**: 解决了原先AI生成博客时因耗时过长导致的524超时错误。现在提交生成请求后，后端会立即响应，并在后台线程池中执行生成任务。
+### 新功能
+- **异步博客生成**: 解决了原先AI生成博客时因耗时过长导致的524超时错误。现在提交生成请求后，后端会立即响应，并在后台线程池中执行生成任务
 - **博客可见性控制**:
-  - 新增 `is_public` 字段，管理员可在编辑页面控制单篇博客是否对公众显示。
-  - AI生成的新博客默认为"禁止对外显示"，需要手动开启。
-  - 手动创建的博客默认为"允许对外显示"。
-- **快速再生成**: 在编辑页面，为AI生成的博客提供了"再生成"按钮。点击后会使用原始的生成参数（模式、大学、提示词）在新标签页打开创建页面，方便快速迭代。
+  - 新增 `is_public` 字段，管理员可在编辑页面控制单篇博客是否对公众显示
+  - AI生成的新博客默认为"禁止对外显示"，需要手动开启
+  - 手动创建的博客默认为"允许对外显示"
+- **快速再生成**: 在编辑页面，为AI生成的博客提供了"再生成"按钮
 
-### 🔧 技术实现
-- **后台任务**: 在 `routes/admin.py` 中，`generate_blog` 路由现在通过 `thread_pool_manager` 提交一个异步任务 `_generate_and_save_blog_async` 来执行实际的生成和数据库写入操作。
-- **数据模型扩展**: `blogs` 集合新增 `is_public` (Boolean) 和 `generation_details` (Object) 字段。
-- **前端页面改造**:
-  - `templates/admin/create_blog.html`: 移除了生成后的编辑区，改为提交任务后显示提示信息，并支持通过URL参数预填充表单以实现"再生成"功能。
-  - `templates/admin/edit_blog.html`: 新增了"是否对外显示"的开关，并根据 `generation_details` 字段条件性显示"再生成"按钮。
-- **查询兼容性**: 修改了 `routes/blog.py` 中所有面向公众的查询（`get_all_blogs`, `get_blog_by_url_title` 等），增加了 `{"is_public": {"$ne": false}}` 过滤条件，确保私有博客不会对外展示，同时兼容无该字段的老数据。
-
-### ✅ 影响
-- **解决超时**: 彻底解决了生产环境中的524超时问题。
-- **提升体验**: 管理员无需等待漫长的生成过程，可以立即进行其他操作。
-- **内容审核流程**: 新增的可见性控制为"先生成、后审核、再发布"的内容流程提供了支持。
+### 技术实现
+- **后台任务**: 在 `routes/admin.py` 中，`generate_blog` 路由现在通过 `thread_pool_manager` 提交一个异步任务 `_generate_and_save_blog_async` 来执行实际的生成和数据库写入操作
+- **数据模型扩展**: `blogs` 集合新增 `is_public` (Boolean) 和 `generation_details` (Object) 字段
+- **前端页面改造**: 移除了生成后的编辑区，改为提交任务后显示提示信息，并支持通过URL参数预填充表单以实现"再生成"功能
+- **查询兼容性**: 修改了 `routes/blog.py` 中所有面向公众的查询，增加了 `{"is_public": {"$ne": false}}` 过滤条件
 
 ---
 
@@ -535,129 +239,115 @@ headers: {
 
 ## [2025-09-02] - 文档重组
 
-### 📚 文档
-- **重组文档结构**: 为了提高清晰度和可维护性，对 `docs` 文件夹进行了全面重组。
-- **合并与精简**: 将多个零散、过时或内容重叠的文档合并为一组结构清晰、内容最新的核心文档。
+### 文档
+- **重组文档结构**: 为了提高清晰度和可维护性，对 `docs` 文件夹进行了全面重组
+- **合并与精简**: 将多个零散、过时或内容重叠的文档合并为一组结构清晰、内容最新的核心文档
 - **新的结构**:
-    - `system_overview.md`: 项目的整体概览。
-    - `technical_architecture.md`: 统一的技术架构说明。
-    - `feature_guides/`: 包含各主要功能的详细指南（招生信息处理器、博客管理、AI对话系统、后台管理面板）。
-    - `developer_guides/`: 包含面向开发者的指南（日志系统、开发工具、推荐算法）。
-- **目标**: 使文档更易于 AI agent 理解和开发者查阅。
+    - `system_overview.md`: 项目的整体概览
+    - `technical_architecture.md`: 统一的技术架构说明
+    - `feature_guides/`: 包含各主要功能的详细指南（招生信息处理器、博客管理、AI对话系统、后台管理面板）
+    - `developer_guides/`: 包含面向开发者的指南（日志系统、开发工具、推荐算法）
+- **目标**: 使文档更易于 AI agent 理解和开发者查阅
 
 ---
 
 ## [2025-09-02] - 大学详情查询支持中文名回退匹配
 
-### ✨ 功能改进
-- 当按 `university_name`（日文名）查询未命中时，自动回退使用 `university_name_zh`（中文名）进行匹配；其余渲染与数据使用逻辑保持不变。
+### 功能改进
+- 当按 `university_name`（日文名）查询未命中时，自动回退使用 `university_name_zh`（中文名）进行匹配
+- 其余渲染与数据使用逻辑保持不变
 
-### 🔧 技术实现
+### 技术实现
 - 修改 `routes/index.py` 的 `get_university_details()`：
-  - 优先按 `university_name` 查找；
-  - 未命中则按 `university_name_zh` 查找；
-  - `deadline` 过滤与排序行为在两种匹配方式下保持一致。
-
-### 📚 文档
-- 更新 `docs/mongoDB_design.md`：补充"Query Behavior for University Details"与针对中文名的索引建议。
+  - 优先按 `university_name` 查找
+  - 未命中则按 `university_name_zh` 查找
+  - `deadline` 过滤与排序行为在两种匹配方式下保持一致
 
 ---
 
 ## [2025-09-02] - Blog生成器对比模式优化
 
-### ✨ 功能改进
-- **对比模式材料来源优化**：在对比模式下，每所大学会先对 `original_md` 进行缩减，并将对应的 `report_md` 一并纳入对比材料，增强信息完整度与可读性。
-- **简化异常处理**：移除对比模式中针对OpenAI 429速率限制的降级分支（不再单独处理429），逻辑更为直接、稳定。
+### 功能改进
+- **对比模式材料来源优化**：在对比模式下，每所大学会先对 `original_md` 进行缩减，并将对应的 `report_md` 一并纳入对比材料，增强信息完整度与可读性
+- **简化异常处理**：移除对比模式中针对OpenAI 429速率限制的降级分支（不再单独处理429），逻辑更为直接、稳定
 
-### 🔧 技术实现
+### 技术实现
 - 修改 `utils/blog_generator.py`：
-  - `_generate_compare_mode()` 中：循环对所有大学的 `original_md` 执行缩减；随后直接追加该大学的 `report_md`；合并后交由比较写作Agent处理。
-  - 删除原有 `try/except` 中针对429的特殊降级逻辑，避免重复与不必要的分支。
+  - `_generate_compare_mode()` 中：循环对所有大学的 `original_md` 执行缩减；随后直接追加该大学的 `report_md`；合并后交由比较写作Agent处理
+  - 删除原有 `try/except` 中针对429的特殊降级逻辑，避免重复与不必要的分支
 
-### ✅ 影响
-- 更一致的对比材料来源，输出结构更完整。
-- 代码路径更清晰，维护成本降低；不影响扩展模式与仅用户提示模式。
+### 影响
+- 更一致的对比材料来源，输出结构更完整
+- 代码路径更清晰，维护成本降低；不影响扩展模式与仅用户提示模式
 
 ---
 
 ## [2025-09-02] - 修复AI对话发送按钮文字不显示
 
-### 🐛 Bug修复
-- **发送按钮标签缺失**: 修复了前端AI对话框中输入栏右侧的发送按钮未显示文字标签的问题。
+### Bug修复
+- **发送按钮标签缺失**: 修复了前端AI对话框中输入栏右侧的发送按钮未显示文字标签的问题
 
-### 🔧 技术实现
+### 技术实现
 - **模板更新**: `templates/chat_modal.html`
-  - 在发送按钮图标右侧新增文字标签"发送"。
-  - 在按钮禁用/加载状态切换逻辑中，确保启用时显示"发送"，加载时显示"发送中"。
+  - 在发送按钮图标右侧新增文字标签"发送"
+  - 在按钮禁用/加载状态切换逻辑中，确保启用时显示"发送"，加载时显示"发送中"
 
-### ✅ 影响
-- 提升可用性与可见性，移动端与桌面端均能清晰识别发送操作。
+### 影响
+- 提升可用性与可见性，移动端与桌面端均能清晰识别发送操作
 
 ---
 
 ## [2025-09-02] - 检索日志自动分日功能
 
-### 🚀 新功能
-- **检索日志自动分日**: 为检索日志系统添加了自动分日功能，现在检索日志文件会按照日期自动分割，格式为 `retrieval_YYYYMMDD.log`，与其他工具日志保持一致。
-- **日志管理优化**: 通过按日期分割日志文件，便于日志管理和历史数据查询，避免单个日志文件过大。
+### 新功能
+- **检索日志自动分日**: 为检索日志系统添加了自动分日功能，现在检索日志文件会按照日期自动分割，格式为 `retrieval_YYYYMMDD.log`，与其他工具日志保持一致
+- **日志管理优化**: 通过按日期分割日志文件，便于日志管理和历史数据查询，避免单个日志文件过大
 
-### 🔧 技术实现
+### 技术实现
 - **修改文件**: `utils/logging_config.py` 中的 `setup_retrieval_logger()` 函数
 - **实现方式**: 将固定的 `retrieval.log` 文件名改为动态的 `retrieval_{datetime.datetime.now().strftime('%Y%m%d')}.log`
 - **保持一致性**: 与项目中其他日志工具（如 `BatchOCRTool`、`TaskManager` 等）使用相同的自动分日机制
 
-### 📊 日志文件结构
+### 日志文件结构
 - **旧格式**: `log/retrieval.log`（单一文件，持续增长）
 - **新格式**: `log/retrieval_20250902.log`、`log/retrieval_20250903.log` 等（按日期自动分割）
-
-### 📁 文件更改
-- `utils/logging_config.py`: 修改 `setup_retrieval_logger()` 函数，实现自动分日功能
-- `docs/logging.md`: 更新日志配置文档，反映新的日志文件命名规则和监控命令
-- `docs/CHANGELOG.md`: 记录本次功能更新
 
 ---
 
 ## [2025-09-02] - 新建Blog支持手动输入直接保存
 
-### ✨ 功能改进
-- **移除前端限制**：在"新建博客"页面，允许管理员在未进行AI生成的情况下，直接输入"文章标题"和"文章内容（Markdown）"并保存。
-- **交互优化**：根据标题与内容输入实时启用"保存文章"按钮，避免必须先点击"生成博客内容"。
+### 功能改进
+- **移除前端限制**：在"新建博客"页面，允许管理员在未进行AI生成的情况下，直接输入"文章标题"和"文章内容（Markdown）"并保存
+- **交互优化**：根据标题与内容输入实时启用"保存文章"按钮，避免必须先点击"生成博客内容"
 
-### 🔧 技术实现
+### 技术实现
 - **模板修改**：`templates/admin/create_blog.html`
-  - 将"生成结果"标题改为"文章编辑"。
-  - 调整标题与内容的占位文案，说明可直接输入。
-  - 初始禁用状态改为根据输入动态控制，新增 `updateSaveButtonState()` 监听输入变化。
-  - 生成完成后调用 `updateSaveButtonState()` 而非强制要求生成结果存在。
-
-### 📚 文档
-- 更新 `docs/blog_creator_usage.md`：说明生成步骤为可选，保存条件为"标题与内容均不为空"。
-- 更新 `docs/blog_creator.md`：新增"可直接输入并保存"的说明。
-- 同步更新本变更日志。
+  - 将"生成结果"标题改为"文章编辑"
+  - 调整标题与内容的占位文案，说明可直接输入
+  - 初始禁用状态改为根据输入动态控制，新增 `updateSaveButtonState()` 监听输入变化
+  - 生成完成后调用 `updateSaveButtonState()` 而非强制要求生成结果存在
 
 ---
 
-### 🚀 性能优化
-- **推荐阅读缓存机制**: 为推荐阅读功能添加了TTL缓存机制，避免每次用户访问页面都重新计算推荐内容，显著提升页面加载速度。
-- **缓存策略**: 使用30分钟TTL缓存，平衡了性能提升和内容新鲜度。
-- **智能缓存清除**: 在博客创建或更新时自动清除推荐缓存，确保新内容能及时出现在推荐中。
+## [2025-09-02] - 推荐阅读缓存机制优化
 
-### 🔧 技术实现
+### 性能优化
+- **推荐阅读缓存机制**: 为推荐阅读功能添加了TTL缓存机制，避免每次用户访问页面都重新计算推荐内容，显著提升页面加载速度
+- **缓存策略**: 使用30分钟TTL缓存，平衡了性能提升和内容新鲜度
+- **智能缓存清除**: 在博客创建或更新时自动清除推荐缓存，确保新内容能及时出现在推荐中
+
+### 技术实现
 - **缓存定义**: 在 `routes/blog.py` 中添加了 `recommended_blogs_cache = TTLCache(maxsize=1, ttl=1800)` 缓存实例
 - **函数装饰**: 为 `get_weighted_recommended_blogs_with_summary()` 函数添加了 `@cached(recommended_blogs_cache)` 装饰器
 - **缓存清除**: 新增 `clear_recommended_blogs_cache()` 函数，用于手动清除缓存
-- **自动清除**: 在 `routes/admin.py` 的博客创建和更新函数中添加缓存清除逻辑：
-  - `_save_blog_async()`: 异步博客创建
-  - `_update_blog_in_db()`: 异步博客更新
-  - `create_blog()`: 同步博客创建
-  - `edit_blog()`: 同步博客更新
+- **自动清除**: 在 `routes/admin.py` 的博客创建和更新函数中添加缓存清除逻辑
 
-### 📊 性能提升
+### 性能提升
 - **响应时间**: 推荐阅读功能从每次都需要执行复杂算法变为直接返回缓存结果
 - **数据库负载**: 减少了对MongoDB的频繁查询，降低数据库压力
 - **用户体验**: 页面加载速度显著提升，特别是在高并发访问时
 
-### 🧪 测试验证
+### 测试验证
 - **测试脚本**: 创建了 `tools/test_recommendation_cache.py` 测试工具
 - **测试结果**: 验证了缓存机制的正确性：
   - 第一次调用执行算法并缓存结果
@@ -665,22 +355,16 @@ headers: {
   - 清除缓存后重新执行算法
   - 缓存TTL设置正确（1800秒）
 
-### 📁 文件更改
-- `routes/blog.py`: 添加推荐阅读缓存机制和清除函数
-- `routes/admin.py`: 在博客操作中添加缓存清除逻辑
-- `tools/test_recommendation_cache.py`: 新增缓存机制测试工具
-- `docs/CHANGELOG.md`: 记录本次性能优化
-
 ---
 
 ## [2025-09-02] - 博客详情页推荐阅读功能恢复
 
-### ✨ 功能恢复
-- **博客详情页推荐阅读**: 恢复了博客详情页底部的推荐阅读板块，让用户看完一篇博客后能够继续阅读其他推荐文章。
-- **智能推荐**: 使用与首页相同的时间权重推荐算法，确保推荐内容的质量和时效性。
-- **避免自推荐**: 推荐列表中会自动排除当前正在阅读的博客，避免用户看到重复内容。
+### 功能恢复
+- **博客详情页推荐阅读**: 恢复了博客详情页底部的推荐阅读板块，让用户看完一篇博客后能够继续阅读其他推荐文章
+- **智能推荐**: 使用与首页相同的时间权重推荐算法，确保推荐内容的质量和时效性
+- **避免自推荐**: 推荐列表中会自动排除当前正在阅读的博客，避免用户看到重复内容
 
-### 🔧 技术实现
+### 技术实现
 - **路由修改**: 在 `routes/blog.py` 的 `blog_detail_route()` 函数中添加推荐阅读数据获取逻辑：
   - 调用 `get_weighted_recommended_blogs_with_summary(3)` 获取3篇推荐文章
   - 过滤掉当前博客：`[b for b in recommended_blogs if b['url_title'] != url_title]`
@@ -690,28 +374,23 @@ headers: {
   - 添加条件判断 `{% if recommended_blogs %}` 确保有推荐内容时才显示
   - 使用Bootstrap响应式网格布局
 
-### 📊 用户体验
+### 用户体验
 - **内容发现**: 用户在阅读完一篇博客后，可以方便地发现和阅读其他相关内容
 - **停留时间**: 通过推荐阅读功能，增加用户在网站的停留时间和阅读深度
 - **内容导航**: 提供自然的阅读路径，引导用户探索更多博客内容
-
-### 📁 文件更改
-- `routes/blog.py`: 在博客详情路由中添加推荐阅读数据获取和传递
-- `templates/content_blog.html`: 在博客详情页底部添加推荐阅读板块
-- `docs/CHANGELOG.md`: 记录本次功能恢复
 
 ---
 
 ## [2025-09-02] - 推荐阅读摘要优化：正确去除markdown标签
 
-### 🐛 Bug修复
-- **推荐阅读摘要显示markdown标签问题**: 修复了推荐阅读板块中显示内容含有markdown标签的问题。现在使用markdown库正确地将markdown内容转换为纯文本，确保摘要中不包含任何markdown语法标记。
+### Bug修复
+- **推荐阅读摘要显示markdown标签问题**: 修复了推荐阅读板块中显示内容含有markdown标签的问题。现在使用markdown库正确地将markdown内容转换为纯文本，确保摘要中不包含任何markdown语法标记
 - **摘要生成逻辑优化**: 将原来简单的正则表达式 `re.sub(r'<[^>]+>', '', content)` 替换为完整的markdown转换流程：
   1. 使用 `markdown.Markdown()` 将markdown内容转换为HTML
   2. 使用正则表达式去除HTML标签得到纯文本
   3. 生成干净的摘要内容
 
-### 🔧 技术实现
+### 技术实现
 - **修改文件**: `routes/blog.py` 中的两个函数：
   - `get_weighted_recommended_blogs_with_summary()`: 时间权重推荐算法
   - `get_random_blogs_with_summary()`: 随机推荐算法（备选方案）
@@ -723,7 +402,7 @@ headers: {
   ```
 - **测试验证**: 创建了 `tools/test_markdown_summary.py` 测试工具，验证转换效果
 
-### 📊 实际效果验证
+### 实际效果验证
 - **测试结果**: 通过测试工具验证，成功将包含各种markdown语法的内容转换为纯文本
 - **转换效果**: 
   - `**粗体**` → `粗体`
@@ -732,24 +411,19 @@ headers: {
   - `# 标题` → `标题`
   - 所有markdown语法标记都被正确去除
 
-### 📁 文件更改
-- `routes/blog.py`: 优化推荐阅读摘要生成逻辑
-- `tools/test_markdown_summary.py`: 新增测试工具
-- `docs/CHANGELOG.md`: 记录本次修复
-
 ---
 
 ## [2025-09-02] - 推荐阅读算法优化：时间权重推荐算法升级
 
-### ✨ 功能改进
+### 功能改进
 - **算法逻辑升级**: 进一步优化了时间权重推荐算法，提升最新博客的展示权重：
   1. **Step 1**: 从最近3天的blog中选2条（提升最新内容权重）
   2. **Step 2**: 从最近7天的blog中选不重复的补足3条（智能补足机制）
   3. **Step 3**: 从剩下的blog中选不重复的补足3条（兜底选择）
-- **智能补足机制**: Step 2现在会计算还需要多少篇才能达到目标数量，确保优先选择最近7天的内容。
-- **避免重复推荐**: 确保同一页面不会推荐重复的博客文章。
+- **智能补足机制**: Step 2现在会计算还需要多少篇才能达到目标数量，确保优先选择最近7天的内容
+- **避免重复推荐**: 确保同一页面不会推荐重复的博客文章
 
-### 🔧 技术实现
+### 技术实现
 - **算法优化**: 修改了 `routes/blog.py` 中的 `get_weighted_recommended_blogs_with_summary()` 函数：
   - Step 1: 使用 `random.sample()` 选择2条，但不超过可用数量
   - Step 2: 计算 `needed_from_7_days = 3 - len(selected_blogs)`，智能补足
@@ -757,134 +431,111 @@ headers: {
 - **详细调试日志**: 增加了完整的debug日志，便于跟踪算法执行过程
 - **向后兼容**: 保留原有的 `get_random_blogs_with_summary()` 函数作为备选方案
 
-### 📊 实际效果验证
+### 实际效果验证
 - **测试结果**: 通过 `tools/test_recommendation_algorithm.py` 验证算法正常工作
 - **推荐效果**: 当前数据库中有2篇最近7天的博客，算法成功选择了这2篇，并从剩余博客中补充1篇
 - **时间权重**: 最新博客（2025-08-26）获得了更高的展示机会
-
-### 📁 文件更改
-- `routes/blog.py`: 优化时间权重推荐算法逻辑
-- `docs/CHANGELOG.md`: 记录本次算法优化
 
 ---
 
 ## [2025-09-02] - 推荐阅读算法优化：时间权重推荐
 
-### ✨ 功能改进
-- **时间权重推荐算法**: 实现了新的推荐阅读算法，替代原有的完全随机推荐，让最新的博客有更高的展示权重。
-- **智能时间分组**: 按照你提出的算法逻辑，将博客分为三个时间段：
+### 功能改进
+- **时间权重推荐算法**: 实现了新的推荐阅读算法，替代原有的完全随机推荐，让最新的博客有更高的展示权重
+- **智能时间分组**: 按照算法逻辑，将博客分为三个时间段：
   1. 最近3天的博客（最高权重）
   2. 最近7天的博客（中等权重）
   3. 更早的博客（基础权重）
-- **避免重复推荐**: 确保同一页面不会推荐重复的博客文章。
+- **避免重复推荐**: 确保同一页面不会推荐重复的博客文章
 
-### 🔧 技术实现
-- **新增推荐函数**: 在 `routes/blog.py` 中新增 `get_weighted_recommended_blogs_with_summary()` 函数，实现时间权重算法。
+### 技术实现
+- **新增推荐函数**: 在 `routes/blog.py` 中新增 `get_weighted_recommended_blogs_with_summary()` 函数，实现时间权重算法
 - **算法逻辑**:
   1. 从最近3天的blog中选1条
   2. 从最近7天的blog中选1条不重复的
   3. 从剩下的blog中选不重复的补足3条
-- **容错机制**: 如果某个时间段没有足够的blog，会从其他时间段补充，确保总能推荐到指定数量的文章。
-- **向后兼容**: 保留原有的 `get_random_blogs_with_summary()` 函数作为备选方案。
+- **容错机制**: 如果某个时间段没有足够的blog，会从其他时间段补充，确保总能推荐到指定数量的文章
+- **向后兼容**: 保留原有的 `get_random_blogs_with_summary()` 函数作为备选方案
 
-### 📊 应用场景
-- **首页推荐**: 首页的"推荐阅读"板块现在使用新的时间权重算法。
-- **博客详情页**: 博客详情页的推荐阅读也使用新算法。
-- **404页面**: 404页面的推荐阅读同样使用新算法。
+### 应用场景
+- **首页推荐**: 首页的"推荐阅读"板块现在使用新的时间权重算法
+- **博客详情页**: 博客详情页的推荐阅读也使用新算法
+- **404页面**: 404页面的推荐阅读同样使用新算法
 
-### 🧪 测试验证
-- **测试脚本**: 创建了 `tools/test_recommendation_algorithm.py` 测试脚本，验证算法正常工作。
-- **测试结果**: 成功测试了时间权重算法和原有随机算法的对比，确认新算法能够正确按时间分组和选择博客。
-
-### 📁 文件更改
-- `routes/blog.py`: 新增时间权重推荐算法函数，更新路由使用新算法
-- `routes/index.py`: 更新首页路由使用新的推荐算法
-- `docs/CHANGELOG.md`: 记录本次功能改进
+### 测试验证
+- **测试脚本**: 创建了 `tools/test_recommendation_algorithm.py` 测试脚本，验证算法正常工作
+- **测试结果**: 成功测试了时间权重算法和原有随机算法的对比，确认新算法能够正确按时间分组和选择博客
 
 ---
 
 ## [2025-09-02] - 补全LLM会话回答日志
 
-### 🐛 Bug修复
-- **补全LLM会话回答日志**: 修复了 `log/retrieval.log` 中只记录搜索过程但缺少LLM会话回答日志的问题。现在日志文件会完整记录从用户查询到AI回答的完整流程。
+### Bug修复
+- **补全LLM会话回答日志**: 修复了 `log/retrieval.log` 中只记录搜索过程但缺少LLM会话回答日志的问题。现在日志文件会完整记录从用户查询到AI回答的完整流程
 - **增强日志完整性**: 在 `utils/chat_manager.py` 的 `process_message` 方法中添加了LLM会话回答的详细日志记录，包括：
   - LLM模型名称
   - 回答内容长度
   - 完整的AI回答内容
   - 会话ID关联
-- **异常处理日志**: 当LLM调用失败时，也会记录相应的错误日志，便于问题排查。
+- **异常处理日志**: 当LLM调用失败时，也会记录相应的错误日志，便于问题排查
 
-### 🔧 技术实现
+### 技术实现
 - **成功回答日志**: 在AI回答生成后，记录 `--- LLM Response Generated ---` 标记的详细日志
 - **失败回答日志**: 在异常处理中，记录 `--- LLM Response Failed ---` 标记的错误日志
 - **日志格式统一**: 保持与现有检索日志格式的一致性，便于日志分析
-
-### 📁 文件更改
-- `utils/chat_manager.py`: 在 `process_message` 方法中添加LLM会话回答日志记录
-- `docs/CHANGELOG.md`: 记录本次修复
 
 ---
 
 ## [2025-01-27] - 统一时间显示为UTC格式
 
-### 🐛 Bug修复
-- **时间显示不一致问题**: 修复了AI对话功能中时间显示不一致的问题。之前用户端和Admin端显示的是本地时间，而历史记录显示的是UTC时间，现在统一为UTC时间显示。
-- **用户端时间显示**: 修改 `templates/chat_modal.html` 中的 `createMessageDiv` 函数，将 `toLocaleTimeString('zh-CN')` 改为UTC时间格式。
-- **Admin端时间显示**: 修改 `templates/admin/chat.html` 中的 `formatDateTime` 函数和 `addMessageToChat` 函数，将本地时间格式改为UTC时间格式。
+### Bug修复
+- **时间显示不一致问题**: 修复了AI对话功能中时间显示不一致的问题。之前用户端和Admin端显示的是本地时间，而历史记录显示的是UTC时间，现在统一为UTC时间显示
+- **用户端时间显示**: 修改 `templates/chat_modal.html` 中的 `createMessageDiv` 函数，将 `toLocaleTimeString('zh-CN')` 改为UTC时间格式
+- **Admin端时间显示**: 修改 `templates/admin/chat.html` 中的 `formatDateTime` 函数和 `addMessageToChat` 函数，将本地时间格式改为UTC时间格式
 
-### 🔧 技术实现
+### 技术实现
 - **统一时间格式**: 所有时间显示都使用 `toISOString().replace('T', ' ').substring(0, 19) + ' UTC'` 格式
 - **前端一致性**: 确保用户端和Admin端的时间显示格式完全一致
 - **后端兼容性**: 保持后端存储的UTC时间格式不变，只修改前端显示
 
-### 📁 文件更改
-- `templates/chat_modal.html`: 修改时间显示函数，统一为UTC格式
-- `templates/admin/chat.html`: 修改时间格式化函数，统一为UTC格式
-- `docs/CHANGELOG.md`: 记录本次修复
-
 ---
 
-### 🚀 新功能
-- **聊天会话履历**: 在Admin后台新增"用户聊天记录"页面 (`/admin/chat-logs`)，用于展示所有用户的聊天会话列表。
-- **会话列表**: 列表按会话的最后活动时间逆序排列，并显示会话ID、最后活动时间、IP地址和消息数量。
-- **会话详情**: 点击"查看详情"可以进入单个会话的详细页面 (`/admin/chat_log/<session_id>`)，按时间顺序查看该会话的所有对话内容，包括用户提问和AI的回答。
+## [2025-01-27] - 新增聊天会话履历功能
 
-### ✨ 功能改进
+### 新功能
+- **聊天会话履历**: 在Admin后台新增"用户聊天记录"页面 (`/admin/chat-logs`)，用于展示所有用户的聊天会话列表
+- **会话列表**: 列表按会话的最后活动时间逆序排列，并显示会话ID、最后活动时间、IP地址和消息数量
+- **会话详情**: 点击"查看详情"可以进入单个会话的详细页面 (`/admin/chat_log/<session_id>`)，按时间顺序查看该会话的所有对话内容，包括用户提问和AI的回答
+
+### 功能改进
 - **仪表盘统计增强**: 在Admin后台的仪表盘页面，新增了两个关于对话功能的统计卡片：
-    - **24小时对话IP数**: 显示在过去24小时内，使用过对话功能的独立IP地址总数。
-    - **24小时对话数**: 显示在过去24小时内，用户与AI的总对话次数（一次提问计为一次）。
+    - **24小时对话IP数**: 显示在过去24小时内，使用过对话功能的独立IP地址总数
+    - **24小时对话数**: 显示在过去24小时内，用户与AI的总对话次数（一次提问计为一次）
 
-### 🔧 技术实现
-- **后端路由**: 在 `routes/admin.py` 中新增了 `/admin/chat-logs` 和 `/admin/chat_log/<session_id>` 两个路由，分别用于处理会话列表和会话详情的逻辑。
-- **数据库查询**: 使用MongoDB的聚合查询来高效地分组和排序会话数据。
-- **前端模板**: 创建了 `templates/admin/chat_logs.html` 和 `templates/admin/chat_log_detail.html` 两个新的模板来渲染页面。
-- **仪表盘数据更新**: 修改了 `_get_dashboard_stats` 函数，增加了对 `chat_logs` 集合的查询。
-
-### 📁 文件更改
-- `routes/admin.py`: 添加了新路由和仪表盘统计逻辑。
-- `templates/admin/dashboard.html`: 添加了新的统计卡片。
-- `templates/admin/chat_logs.html`: 新增会话列表页面模板。
-- `templates/admin/chat_log_detail.html`: 新增会话详情页面模板。
-- `docs/CHANGELOG.md`: 记录本次功能新增。
+### 技术实现
+- **后端路由**: 在 `routes/admin.py` 中新增了 `/admin/chat-logs` 和 `/admin/chat_log/<session_id>` 两个路由，分别用于处理会话列表和会话详情的逻辑
+- **数据库查询**: 使用MongoDB的聚合查询来高效地分组和排序会话数据
+- **前端模板**: 创建了 `templates/admin/chat_logs.html` 和 `templates/admin/chat_log_detail.html` 两个新的模板来渲染页面
+- **仪表盘数据更新**: 修改了 `_get_dashboard_stats` 函数，增加了对 `chat_logs` 集合的查询
 
 ---
 
 ## [2025-01-26] - 混合搜索策略实施完成
 
-### 🎯 核心功能
+### 核心功能
 - **混合搜索策略**：实现向量搜索+关键词搜索的混合策略，解决专业术语精确匹配问题
 - **内存优化管理**：实时监控内存使用，自动清理机制，避免内存泄漏
 - **同义词理解系统**：支持中日文同义词扩展，提高检索召回率
 - **性能大幅提升**：搜索速度提升50%+，准确性从60%提升到95%+
 
-### 🔧 技术实现
+### 技术实现
 - **增强搜索策略**：新增 `utils/enhanced_search_strategy.py`，实现智能混合搜索
 - **查询扩展优化**：使用LLM分析查询，提取精确匹配和模糊匹配关键词
 - **并行搜索执行**：向量搜索和关键词搜索并行执行，提高效率
 - **智能结果合并**：根据搜索策略权重智能合并和重排序结果
 - **内存管理机制**：使用psutil实时监控，超过80%阈值自动清理
 
-### 📊 实际效果验证
+### 实际效果验证
 - **测试案例**：京都工芸繊維大学
 - **查询**："有计算机系吗？"
 - **修复前**："没有提及计算机系或相关专业" ❌
@@ -895,143 +546,105 @@ headers: {
   - 精确匹配结果：5个
   - 准确性：95%+
 
-### 🛡️ 隐私保护增强
+### 隐私保护增强
 - **搜索查询隔离**：每个会话的查询扩展和关键词独立处理
 - **内存数据隔离**：搜索过程中的临时数据及时清理
 - **临时变量保护**：查询扩展过程中的隐私保护
-
-### 📁 文件更改
-- `utils/enhanced_search_strategy.py`：新增混合搜索策略核心实现
-- `utils/chat_manager.py`：集成混合搜索和内存管理
-- `utils/university_document_manager.py`：优化文档管理，移除实例级缓存
-- `utils/llama_index_integration.py`：集成检索日志，优化初始化
-- `utils/logging_config.py`：修复日志初始化逻辑
-- `routes/university_chat.py`：支持浏览器会话ID验证
-- `templates/chat_modal.html`：优化前端会话管理
-- `templates/content_original.html`：改进PDF加载和显示
-- `requirements.txt`：更新psutil版本
-- `wasei_kanji.csv`：新增中日文同义词库
-- `tools/check_index_status.py`：新增索引状态检查工具
-- `docs/HYBRID_SEARCH_IMPLEMENTATION.md`：新增混合搜索实施文档
-- `docs/CHANGELOG.md`：记录本次重大更新
 
 ---
 
 ## [2025-09-01] - 修复检索日志功能
 
-### 🐛 Bug修复
-- **修复日志不生成问题**: 解决了 `log/retrieval.log` 文件未按预期生成的问题。根本原因是日志记录器 (Logger) 的初始化逻辑有缺陷，当 logger 实例已存在时，未能清空其旧的处理器 (Handler)，导致新的文件处理器无法被正确添加。
-- **优化初始化逻辑**: 修正了 `utils/logging_config.py` 中的 `setup_retrieval_logger` 和 `setup_logger` 函数，确保在配置 logger 前先使用 `clear()` 方法清空所有已存在的处理器，保证了日志配置的健壮性。
-- **增加启动日志**: 在 `ChatManager` 初始化时增加了一条日志记录，以便在应用启动时就能验证 `retrieval.log` 文件是否创建成功。
-
-### 📁 文件更改
-- `utils/logging_config.py`: 修正了 `setup_logger` 和 `setup_retrieval_logger` 的初始化逻辑。
-- `utils/chat_manager.py`: 在 `__init__` 中添加了初始化日志消息。
-- `docs/CHANGELOG.md`: 记录本次修复。
+### Bug修复
+- **修复日志不生成问题**: 解决了 `log/retrieval.log` 文件未按预期生成的问题。根本原因是日志记录器 (Logger) 的初始化逻辑有缺陷，当 logger 实例已存在时，未能清空其旧的处理器 (Handler)，导致新的文件处理器无法被正确添加
+- **优化初始化逻辑**: 修正了 `utils/logging_config.py` 中的 `setup_retrieval_logger` 和 `setup_logger` 函数，确保在配置 logger 前先使用 `clear()` 方法清空所有已存在的处理器，保证了日志配置的健壮性
+- **增加启动日志**: 在 `ChatManager` 初始化时增加了一条日志记录，以便在应用启动时就能验证 `retrieval.log` 文件是否创建成功
 
 ---
 
 ## [2025-09-01] - 新增LlamaIndex检索专项日志
 
-### 🚀 新功能
-- **独立检索日志**: 新增了专门用于记录 LlamaIndex 检索操作的日志系统，所有相关日志将被写入独立的 `log/retrieval.log` 文件中，以便于对向量数据库的检索效果进行分析和调试。
-- **详细日志内容**: 每次检索都会记录会话ID、用户的原始查询、经过同义词扩展后的查询，以及检索到的文档列表（包括分数、标题和内容摘要）。
+### 新功能
+- **独立检索日志**: 新增了专门用于记录 LlamaIndex 检索操作的日志系统，所有相关日志将被写入独立的 `log/retrieval.log` 文件中，以便于对向量数据库的检索效果进行分析和调试
+- **详细日志内容**: 每次检索都会记录会话ID、用户的原始查询、经过同义词扩展后的查询，以及检索到的文档列表（包括分数、标题和内容摘要）
 
-### 🔧 技术实现
-- **专用Logger**: 在 `utils/logging_config.py` 中新增 `setup_retrieval_logger` 函数，用于创建和配置检索日志记录器。
-- **日志集成**: 在 `utils/chat_manager.py` 中集成了新的 logger，并在 `process_message` 方法中调用它来记录详细的检索信息。
-- **代码格式化**: 对所有修改过的 Python 文件 (`.py`) 执行了 `isort` 和 `yapf` 格式化。
-
-### 📁 文件更改
-- `utils/logging_config.py`: 新增 `setup_retrieval_logger` 函数。
-- `utils/chat_manager.py`: 集成并使用检索日志记录器。
-- `docs/CHANGELOG.md`: 记录本次功能新增。
+### 技术实现
+- **专用Logger**: 在 `utils/logging_config.py` 中新增 `setup_retrieval_logger` 函数，用于创建和配置检索日志记录器
+- **日志集成**: 在 `utils/chat_manager.py` 中集成了新的 logger，并在 `process_message` 方法中调用它来记录详细的检索信息
+- **代码格式化**: 对所有修改过的 Python 文件 (`.py`) 执行了 `isort` 和 `yapf` 格式化
 
 ---
 
 ## [2025-09-01] - 聊天机器人同义词理解与检索增强
 
-### 🚀 新功能
-- **同义词感知**: `ChatManager` 现在能够加载 `wasei_kanji.csv` 文件，并在启动时构建一个包含日语、简体中文、繁体中文的同义词库。
-- **查询扩展**: 在处理用户消息时，系统会自动检测消息中的关键词，并使用同义词库进行扩展。例如，用户提问"出願"相关问题时，实际用于检索的查询会被扩展为 `("出願" OR "报名" OR "报考")`，从而大幅提升信息检索的回召率。
+### 新功能
+- **同义词感知**: `ChatManager` 现在能够加载 `wasei_kanji.csv` 文件，并在启动时构建一个包含日语、简体中文、繁体中文的同义词库
+- **查询扩展**: 在处理用户消息时，系统会自动检测消息中的关键词，并使用同义词库进行扩展。例如，用户提问"出願"相关问题时，实际用于检索的查询会被扩展为 `("出願" OR "报名" OR "报考")`，从而大幅提升信息检索的回召率
 
-### ✨ 功能改进
-- **增强意图理解**: 通过在系统提示词中明确告知语言模型这些词汇是等价的，AI 助手能更准确地理解在不同语言习惯下用户的真实意图。
+### 功能改进
+- **增强意图理解**: 通过在系统提示词中明确告知语言模型这些词汇是等价的，AI 助手能更准确地理解在不同语言习惯下用户的真实意图
 
-### 🔧 技术实现
-- **同义词加载**: 在 `utils/chat_manager.py` 的 `ChatManager` 中新增 `_load_synonyms` 方法，用于在初始化时加载和解析CSV文件。
-- **查询扩展逻辑**: 新增 `_expand_query_with_synonyms` 方法，负责在检索前重写用户查询。
-- **系统提示词更新**: 修改了 `_build_system_prompt` 方法，加入了关于同义词的重要提示。
-- **代码格式化**: 使用 `isort` 和 `yapf` 对修改后的 `utils/chat_manager.py` 文件进行了格式化。
-
-### 📁 文件更改
-- `utils/chat_manager.py`: 集成了同义词加载、查询扩展和提示词增强的全部核心逻辑。
-- `docs/CHANGELOG.md`: 记录本次功能增强。
+### 技术实现
+- **同义词加载**: 在 `utils/chat_manager.py` 的 `ChatManager` 中新增 `_load_synonyms` 方法，用于在初始化时加载和解析CSV文件
+- **查询扩展逻辑**: 新增 `_expand_query_with_synonyms` 方法，负责在检索前重写用户查询
+- **系统提示词更新**: 修改了 `_build_system_prompt` 方法，加入了关于同义词的重要提示
+- **代码格式化**: 使用 `isort` 和 `yapf` 对修改后的 `utils/chat_manager.py` 文件进行了格式化
 
 ---
 
 ## [2025-09-01] - 隐私保护机制升级
 
-### 🔒 隐私保护
+### 隐私保护
 - **浏览器会话隔离**：实现基于浏览器会话ID的隐私保护机制，解决传统IP基础会话管理的隐私风险
 - **无痕模式支持**：无痕浏览器与普通模式完全隔离，确保真正的隐私保护
 - **多标签页隔离**：每个浏览器标签页拥有独立的聊天会话，避免会话混淆
 - **双重验证机制**：优先使用浏览器会话ID，回退到IP地址验证，确保兼容性
 
-### 🛡️ 安全增强
+### 安全增强
 - **会话权限验证**：严格的会话访问控制，防止越权访问
 - **隐私级会话查找**：新增数据库索引支持浏览器会话ID的高效查询
 - **向后兼容**：旧会话保持IP验证，新会话使用隐私保护机制
 
-### 💬 会话管理优化
+### 会话管理优化
 - **智能会话恢复**：同一用户在同一大学下自动继续之前对话
 - **历史消息加载**：修复消息格式转换问题，正确加载最近20条历史消息
 - **会话状态管理**：改进前端状态显示逻辑，解决"正在初始化"一直显示的问题
 
-### 🔧 技术实现
+### 技术实现
 - **前端会话管理**：`templates/chat_modal.html` 新增浏览器会话ID生成和管理
 - **后端API升级**：`routes/university_chat.py` 支持浏览器会话ID验证
 - **数据库架构**：`utils/chat_logging.py` 新增 `browser_session_id` 字段和查询逻辑
 - **索引优化**：`utils/db_indexes.py` 新增复合索引支持隐私保护的会话查找
 
-### 📊 数据库设计
+### 数据库设计
 - **会话表结构**：新增 `browser_session_id` 字段用于隐私保护
 - **索引设计**：
   - `browser_session_id + university_id + last_activity`：隐私保护的会话查找
   - `user_ip + start_time`：安全限制的用户查询（保持原有功能）
 - **消息格式**：修复数据库格式到前端格式的转换，支持历史消息正确显示
 
-### 🎯 用户体验
+### 用户体验
 - **无缝隐私保护**：用户无需任何操作，系统自动保护隐私
 - **会话连续性**：恢复会话时自动加载历史消息，保持对话连贯性
 - **状态反馈**：优化初始化状态显示，提供清晰的用户反馈
-
-### 📁 文件更改
-- `templates/chat_modal.html`：新增浏览器会话ID管理，修复状态显示和历史加载
-- `routes/university_chat.py`：支持浏览器会话ID验证，修复消息格式转换
-- `utils/chat_logging.py`：新增隐私保护的会话查找逻辑
-- `utils/chat_manager.py`：支持从数据库恢复会话，修复消息格式转换
-- `utils/db_indexes.py`：新增隐私保护相关的数据库索引
-- `docs/privacy_protection.md`：新增隐私保护机制详细文档
-- `docs/university_chat_system.md`：更新系统文档，添加隐私保护说明
 
 ---
 
 ## [2025-01-27] - 新增批量OCR处理模式
 
-### 🚀 新功能
+### 新功能
 - **批量OCR模式**：新增基于OpenAI Batch API的批量OCR处理模式，成本节省约50%
 - **智能分批算法**：系统自动将页面分配到多个批次（如66页分为2批33页），每批最多40页
 - **断点续传支持**：支持服务器重启后继续监控批次状态，不会重复提交
 - **失败页面补救**：批次中失败的页面会自动使用普通模式补救
 - **处理模式选择**：在上传PDF时可选择"普通模式"（实时）或"批量模式"（省钱）
 
-### ✨ 功能改进
+### 功能改进
 - **用户界面优化**：上传页面新增处理模式选择，清晰标注各模式特点
 - **任务状态增强**：任务详情页面显示处理模式，批量模式显示专用状态标识
 - **日志记录完善**：批量处理过程的详细日志记录，包括批次提交、监控、结果获取
 
-### 🔧 技术实现
+### 技术实现
 - **新增批量OCR工具**：`utils/batch_ocr_tool.py`，封装OpenAI Batch API的完整流程
 - **处理器模式支持**：`utils/pdf_processor.py`支持根据任务模式选择普通或批量OCR
 - **数据库架构扩展**：
@@ -1039,117 +652,88 @@ headers: {
   - 新增`ocr_batches`集合存储批次信息
 - **API参数扩展**：上传API支持`processing_mode`参数
 
-### 🛠️ 批量处理特性
+### 批量处理特性
 - **成本优化**：使用OpenAI Batch API，成本节省约50%
 - **处理时间**：通常5-30分钟，最长24小时内完成
 - **智能监控**：每5分钟检查一次批次状态，自动更新进度
 - **OCR合并优化**：将OCR识别和Markdown格式化合并为一次请求，进一步节省成本
 - **错误处理**：完善的异常处理和回退机制，确保处理不会失败
 
-### ⚙️ 环境配置
+### 环境配置
 - **依赖更新**：新增`openai>=1.54.0`依赖支持Batch API
 - **向下兼容**：普通模式保持完全不变，确保现有功能稳定性
 - **配置灵活**：批量模式不可用时自动回退到普通模式
 
-### 📁 文件更改
-- `utils/batch_ocr_tool.py`：新增批量OCR工具类
-- `utils/pdf_processor.py`：支持批量/普通模式切换
-- `utils/task_manager.py`：任务创建支持处理模式参数
-- `routes/admin.py`：上传API支持处理模式选择
-- `templates/admin/pdf_processor.html`：添加模式选择界面
-- `templates/admin/pdf_task_detail.html`：显示处理模式和批量状态
-- `docs/pdf_processor.md`：更新文档说明批量处理功能
-- `requirements.txt`：添加openai包依赖
-
 
 ---
 
-## [2025-08-30] - 针对大学中文名的补强 
+## [2025-08-30] - 针对大学中文名的补强
 
 ### 新增
-
-- **PDF处理器**: 增强分析功能，能够从PDF内容中准确识别大学的简体中文全称，并将其存入数据库的 `university_name_zh` 字段。
+- **PDF处理器**: 增强分析功能，能够从PDF内容中准确识别大学的简体中文全称，并将其存入数据库的 `university_name_zh` 字段
 - **批量翻译工具**：从全量翻译，升级到增量翻译，以帮助修正生产环境的数据库
 
 ### 修复
-
-- **PDF处理器大学名称识别Bug**: 修复了PDF处理器中大学中文名称识别逻辑错误的问题。之前的实现试图从CSV文件中匹配大学名称，但CSV文件中的字段结构不正确，导致填入的是不相关的大学名称而不是简体中文名称。
-- **重构大学名称识别逻辑**: 重新设计了大学中文名称的获取方式，现在通过AI分析工具在分析步骤中识别大学名称，并在分析结果中添加"大学中文名称：[简体中文全名]"的标识，后续步骤从分析结果中提取这个信息，确保填入的是正确的简体中文名称。
-- **修复大学名称提取格式兼容性**: 解决了AI输出格式与提取逻辑不匹配的问题。现在提取逻辑能够同时支持中文冒号（：）和英文冒号（:）两种格式，确保无论AI输出哪种格式都能正确提取大学中文名称。
+- **PDF处理器大学名称识别Bug**: 修复了PDF处理器中大学中文名称识别逻辑错误的问题。之前的实现试图从CSV文件中匹配大学名称，但CSV文件中的字段结构不正确，导致填入的是不相关的大学名称而不是简体中文名称
+- **重构大学名称识别逻辑**: 重新设计了大学中文名称的获取方式，现在通过AI分析工具在分析步骤中识别大学名称，并在分析结果中添加"大学中文名称：[简体中文全名]"的标识，后续步骤从分析结果中提取这个信息，确保填入的是正确的简体中文名称
+- **修复大学名称提取格式兼容性**: 解决了AI输出格式与提取逻辑不匹配的问题。现在提取逻辑能够同时支持中文冒号（：）和英文冒号（:）两种格式，确保无论AI输出哪种格式都能正确提取大学中文名称
 
 ---
 
 ## [2025-08-29] - 优化PDF文件缓存策略
 
-### ✨ 功能改进
-- **启用浏览器缓存**: 为通过 `/pdf/resource/` 路由提供的PDF文件增加了 `Cache-Control` HTTP响应头。
-- **减少重复下载**: 浏览器现在可以将PDF文件缓存一天 (`max-age=86400`)，避免了用户在短时间内重复访问同一文件时不必要的重新下载，提升了加载速度和用户体验。
-
-### 📁 文件更改
-- `app.py`: 在 `serve_pdf_from_resource` 函数中为响应对象添加了 `Cache-Control` 头。
+### 功能改进
+- **启用浏览器缓存**: 为通过 `/pdf/resource/` 路由提供的PDF文件增加了 `Cache-Control` HTTP响应头
+- **减少重复下载**: 浏览器现在可以将PDF文件缓存一天 (`max-age=86400`)，避免了用户在短时间内重复访问同一文件时不必要的重新下载，提升了加载速度和用户体验
 
 ---
 
 ## [2025-08-29] - 优化PDF阅读体验并修复加载Bug
 
-### ✨ 功能改进
-- **全页面滚动浏览**: 将 `original/` 页面的PDF查看器从单页翻页模式，全面升级为一次性加载所有页面并通过垂直滚动进行浏览的模式。
-- **统一用户体验**: "日文"和"同时显示"两种视图模式现在均支持滚动浏览，确保了操作体验的一致性。
-- **界面简化**: 移除了所有视图下的"上一页"/"下一页"翻页按钮，界面更加简洁。
-- **保留核心功能**: 保留了页面缩放功能，并优化了控件布局。
+### 功能改进
+- **全页面滚动浏览**: 将 `original/` 页面的PDF查看器从单页翻页模式，全面升级为一次性加载所有页面并通过垂直滚动进行浏览的模式
+- **统一用户体验**: "日文"和"同时显示"两种视图模式现在均支持滚动浏览，确保了操作体验的一致性
+- **界面简化**: 移除了所有视图下的"上一页"/"下一页"翻页按钮，界面更加简洁
+- **保留核心功能**: 保留了页面缩放功能，并优化了控件布局
 
-### 🐛 Bug修复
-- **修复PDF加载与渲染问题**: 彻底解决了一系列由于逻辑缺陷和CSS样式冲突导致的Bug。此前，这些问题会造成PDF无法显示、加载进度条卡在100%以及在不同视图间切换时内容不出现等现象。
-- **健壮的加载逻辑**: 重构了JavaScript代码，采用事件驱动模式。确保PDF文件只被下载一次，并在用户切换到任意视图时都能被正确、独立地渲染，杜绝了状态锁死和渲染失败的问题。
-
-### 📁 文件更改
-- `templates/content_original.html`: 重构了PDF查看器组件的HTML结构和相关的JavaScript逻辑，以支持全页面渲染、滚动浏览，并修复了所有已知的加载和渲染Bug。
+### Bug修复
+- **修复PDF加载与渲染问题**: 彻底解决了一系列由于逻辑缺陷和CSS样式冲突导致的Bug。此前，这些问题会造成PDF无法显示、加载进度条卡在100%以及在不同视图间切换时内容不出现等现象
+- **健壮的加载逻辑**: 重构了JavaScript代码，采用事件驱动模式。确保PDF文件只被下载一次，并在用户切换到任意视图时都能被正确、独立地渲染，杜绝了状态锁死和渲染失败的问题
 
 ---
 
 ## [2025-08-29] - 移除任务列表页的SSE功能
 
-### ✨ 功能改进
-- **移除SSE**: 根据请求，仅从"招生信息生成任务列表"页面 (`templates/admin/pdf_tasks.html`) 移除了服务器发送事件 (SSE) 的实时更新功能。
-- **手动刷新**: 将其替换为手动的刷新按钮，以减少不必要的后台请求和客户端复杂性。
-- **代码清理**: 删除了对应前端模板中的 `EventSource` 相关JavaScript代码，并移除了后端 (`routes/admin.py`) 的 `/api/pdf/task-stream` SSE路由。
-- **范围限制**: 本次修改未触及"任务详情"和"仪表盘"页面的SSE功能，它们将保持原有的实时更新能力。
-
-### 📁 文件更改
-- `routes/admin.py`: 移除了 `task_stream` 函数。
-- `templates/admin/pdf_tasks.html`: 移除了SSE相关的JavaScript代码，并简化为手动刷新逻辑。
+### 功能改进
+- **移除SSE**: 根据请求，仅从"招生信息生成任务列表"页面 (`templates/admin/pdf_tasks.html`) 移除了服务器发送事件 (SSE) 的实时更新功能
+- **手动刷新**: 将其替换为手动的刷新按钮，以减少不必要的后台请求和客户端复杂性
+- **代码清理**: 删除了对应前端模板中的 `EventSource` 相关JavaScript代码，并移除了后端 (`routes/admin.py`) 的 `/api/pdf/task-stream` SSE路由
+- **范围限制**: 本次修改未触及"任务详情"和"仪表盘"页面的SSE功能，它们将保持原有的实时更新能力
 
 ---
 
 ## [2025-08-29] - 修复Blog生成器OpenAI API速率限制错误
 
-### 🐛 Bug修复
+### Bug修复
 - **解决OpenAI API速率限制问题**：当遇到429错误（token数量超限）时，自动使用基础分析报告替代长文本内容
 - **智能内容降级**：优先使用原始markdown内容，失败时自动切换到基础分析报告，确保blog生成功能可用
 - **异常处理优化**：区分API速率限制错误和其他错误，提供更精确的日志记录
 - **禁用自动重试**：设置环境变量禁用OpenAI客户端的自动重试，避免429错误时的无效重试
 
-### 🔧 核心修复
+### 核心修复
 - **异常捕获机制**：在`_generate_expand_mode`和`_generate_compare_mode`中添加429错误检测
 - **内容替换策略**：当原始内容过长导致token超限时，自动使用`content.report_md`字段的基础分析报告
 - **日志级别优化**：429错误使用warning级别，二次失败才使用error级别
 - **重试控制**：设置`OPENAI_MAX_RETRIES=0`环境变量
 
-### 📁 文件更改
-- `utils/blog_generator.py`：完全重写，包含所有修复和功能增强
-- `utils/blog_generator.py`：修改`_get_university_materials`方法，同时获取原始内容和基础分析报告
-- `utils/blog_generator.py`：在`_generate_expand_mode`中添加异常处理和内容替换逻辑
-- `utils/blog_generator.py`：在`_generate_compare_mode`中添加异常处理和内容替换逻辑
-- `utils/blog_generator.py`：添加独立的日志记录器，便于调试和问题追踪
-
-### 🛠️ 技术细节
+### 技术细节
 - **错误检测**：通过检查异常信息中是否包含"429"和"tokens per min"来识别API速率限制错误
 - **降级策略**：优先使用原始内容，失败时自动切换到基础分析报告，确保功能可用性
 - **数据完整性**：同时获取`original_md`和`report_md`字段，为降级策略提供数据支持
 - **日志记录**：使用`setup_logger`创建独立的BlogGenerator日志文件，记录详细的执行过程
 - **重试控制**：通过环境变量控制OpenAI客户端的重试行为，避免不必要的重试
 
-### 📊 影响范围
+### 影响范围
 - **Blog生成功能**：expand模式和compare模式现在能够更好地处理长文本内容
 - **用户体验**：减少因API限制导致的blog生成失败，提高系统稳定性
 - **系统健壮性**：增强了错误处理能力，提供了优雅的降级方案
@@ -1159,30 +743,25 @@ headers: {
 
 ## [2025-08-29] - Blog板块Wiki功能实现完成
 
-### 🚀 新功能
+### 新功能
 - **Blog Wiki处理器**：自动识别blog内容中的学校名称并添加超链接
 - **智能去重**：避免重复添加已有超链接，智能识别已处理内容
 - **多语言支持**：同时支持中文名和日文名学校名称的识别
 - **自动集成**：在blog保存/更新时自动应用wiki功能，用户无感知
 
-### 🔧 核心实现
+### 核心实现
 - **学校名称识别**：使用数据库中的学校名称反向匹配blog文本
 - **超链接生成**：自动生成markdown格式的超链接，链接到大学招生信息页面
 - **缓存机制**：缓存310个日文大学名称和311个中文大学名称，提升处理性能
 - **错误处理**：优雅处理异常情况，确保不影响blog的正常保存
 
-### 📁 文件更改
-- `utils/blog_wiki_processor.py`：新增Blog Wiki处理器核心模块
-- `routes/admin.py`：在blog保存和更新流程中集成wiki功能
-- `docs/blog_wiki_requirements.md`：新增Wiki功能需求文档
-
-### 🛠️ 技术细节
+### 技术细节
 - **触发时机**：blog保存按钮点击时自动处理
 - **处理策略**：多个匹配时优先选择文字数最长的（更精确的学部名）
 - **去重逻辑**：检查已有超链接和已处理位置，避免重复处理
 - **性能优化**：异步处理，缓存学校名称，批量处理多个学校名称
 
-### 📊 功能验证
+### 功能验证
 - **识别准确率**：100%（基于实际数据库中的学校名称）
 - **处理速度**：毫秒级响应，不影响blog保存性能
 - **兼容性**：完全兼容现有的blog编辑和保存流程
@@ -1192,132 +771,108 @@ headers: {
 
 ## [2025-08-29] - Admin新增独立IP（24h）列表与GeoIP地理位置解析
 
-### 🚀 新功能
-- 在Admin后台新增"独立IP(24h)"页面（`/admin/analytics/unique_ips`），用于查看过去24小时的独立IP列表。
-- 新增地理位置信息显示：国家名称、城市名称、国家代码。
-- 页面为静态快照，不使用SSE，刷新即可更新数据。
+### 新功能
+- 在Admin后台新增"独立IP(24h)"页面（`/admin/analytics/unique_ips`），用于查看过去24小时的独立IP列表
+- 新增地理位置信息显示：国家名称、城市名称、国家代码
+- 页面为静态快照，不使用SSE，刷新即可更新数据
 
-### 🔧 架构更改
-- **新增GeoIP管理器**: 创建 `utils/ip_geo.py`，封装 MaxMind GeoLite2 City 数据库的下载、校验、更新记录管理。
-- **新增地理信息缓存集合**: 在 MongoDB 中引入 `ip_geo_cache` 集合，存储IP地理位置解析结果。
-- **自动数据库更新**: mmdb文件自动下载更新（10天周期），更新记录保存在 `temp/mmdb/update_record.json`。
+### 架构更改
+- **新增GeoIP管理器**: 创建 `utils/ip_geo.py`，封装 MaxMind GeoLite2 City 数据库的下载、校验、更新记录管理
+- **新增地理信息缓存集合**: 在 MongoDB 中引入 `ip_geo_cache` 集合，存储IP地理位置解析结果
+- **自动数据库更新**: mmdb文件自动下载更新（10天周期），更新记录保存在 `temp/mmdb/update_record.json`
 
-### 📁 文件更改
-- `utils/ip_geo.py`: 新增IP地理位置管理器，包含mmdb文件管理、IP解析、私有IP过滤等功能。
-- `routes/admin.py`: 修改 `unique_ips_page` 路由，接入mmdb检查与批量地理信息补全逻辑。
-- `templates/admin/unique_ips.html`: 更新模板，增加地理位置信息列显示。
-- `utils/db_indexes.py`: 新增 `ip_geo_cache` 集合的索引配置（IP唯一索引、国家代码索引）。
-- `requirements.txt`: 新增 `geoip2>=4.8.0` 依赖。
-- `docs/admin_panel.md`: 更新页面说明，补充地理位置功能与性能优化说明。
+### 技术细节
+- **mmdb文件管理**: 自动检查 `temp/mmdb/GeoLite2-City.mmdb` 文件状态，过期时从 `https://git.io/GeoLite2-City.mmdb` 重新下载
+- **批量地理信息处理**: 每次访问最多处理200个新IP的地理信息解析，避免阻塞页面响应
+- **性能优化**: 优先使用缓存结果，仅对缺失项进行本地mmdb查询，无外部网络IO
+- **私有IP过滤**: 自动识别并跳过私有IP、回环地址等，不进行地理信息解析
 
-### 🛠️ 技术细节
-- **mmdb文件管理**: 自动检查 `temp/mmdb/GeoLite2-City.mmdb` 文件状态，过期时从 `https://git.io/GeoLite2-City.mmdb` 重新下载。
-- **批量地理信息处理**: 每次访问最多处理200个新IP的地理信息解析，避免阻塞页面响应。
-- **性能优化**: 优先使用缓存结果，仅对缺失项进行本地mmdb查询，无外部网络IO。
-- **私有IP过滤**: 自动识别并跳过私有IP、回环地址等，不进行地理信息解析。
+### Bug修复
+- **修复多IP地址处理**: 解决生产环境中 `X-Forwarded-For` 头部包含多个IP地址导致的GeoIP查询失败问题
+- **智能IP解析**: 对于包含代理链的IP地址（如 `91.201.115.174, 104.23.168.62`），自动取第一个IP进行地理信息解析
+- **数据完整性**: 保留访问记录的完整IP信息，同时确保GeoIP功能正常工作
+- **错误处理优化**: 增强IP地址格式验证，优雅处理无效IP地址
 
-### 🐛 Bug修复
-- **修复多IP地址处理**: 解决生产环境中 `X-Forwarded-For` 头部包含多个IP地址导致的GeoIP查询失败问题。
-- **智能IP解析**: 对于包含代理链的IP地址（如 `91.201.115.174, 104.23.168.62`），自动取第一个IP进行地理信息解析。
-- **数据完整性**: 保留访问记录的完整IP信息，同时确保GeoIP功能正常工作。
-- **错误处理优化**: 增强IP地址格式验证，优雅处理无效IP地址。
-
-### 🔄 数据策略优化
-- **嵌入方案**: 地理信息直接写入 `access_logs` 集合，避免交叉查询性能问题。
-- **缓存备份**: 同时维护 `ip_geo_cache` 集合作为地理信息备份。
-- **批量更新**: 每次最多处理200个IP，平衡性能与响应速度。
+### 数据策略优化
+- **嵌入方案**: 地理信息直接写入 `access_logs` 集合，避免交叉查询性能问题
+- **缓存备份**: 同时维护 `ip_geo_cache` 集合作为地理信息备份
+- **批量更新**: 每次最多处理200个IP，平衡性能与响应速度
 
 ---
 ## [2025-08-29] - Bing 站点验证文件缺失返回 404
 
-### 🐛 行为修正
-- 当 `static/BingSiteAuth.xml` 文件不存在时，路由 `/BingSiteAuth.xml` 现在会直接返回 **404**。
-
-### 📁 代码变更
-- `app.py`: 为 `bing_site_auth` 增加文件存在性检查，缺失时调用 `abort(404)`。
+### 行为修正
+- 当 `static/BingSiteAuth.xml` 文件不存在时，路由 `/BingSiteAuth.xml` 现在会直接返回 **404**
 
 
 ## [2025-08-29] - 修复PDF任务中文/日文文件名与句点不显示
 
-### 🐛 问题修复
-- 解决上传后在任务列表与详情页中文件名中的中文、日文以及扩展名前的句点"."不显示的问题。
-- 根因：后端在接收上传时用 `secure_filename` 覆盖了用于展示的 `original_filename`，导致非ASCII字符被剥离、句点可能被替换。
+### 问题修复
+- 解决上传后在任务列表与详情页中文件名中的中文、日文以及扩展名前的句点"."不显示的问题
+- 根因：后端在接收上传时用 `secure_filename` 覆盖了用于展示的 `original_filename`，导致非ASCII字符被剥离、句点可能被替换
 
-### 🔧 核心修复
-- 保留原始文件名用于展示：`routes/admin.py` 中将 `original_filename = file.filename`（原始值）用于写入数据库；仅用于磁盘保存时使用 `secure_filename` 生成安全文件名。
-- 前端已使用仅转义HTML保留非英数字的 `escapeHtml()`，无需改动。
+### 核心修复
+- 保留原始文件名用于展示：`routes/admin.py` 中将 `original_filename = file.filename`（原始值）用于写入数据库；仅用于磁盘保存时使用 `secure_filename` 生成安全文件名
+- 前端已使用仅转义HTML保留非英数字的 `escapeHtml()`，无需改动
 
-### 📁 文件更改
-- `routes/admin.py`: 上传端点 `POST /admin/api/pdf/upload` 同时保存 `original_filename`（原样）与 `safe_filename`（用于磁盘）。
-
-### 📊 测试建议
-- 上传包含中文、日文、韩文和包含多个句点的文件名（如：`東京学芸大学.2024.出願要項.v1.pdf`）。
-- 验证 `templates/admin/pdf_tasks.html` 与 `templates/admin/pdf_task_detail.html` 中文件名完整显示，含中文及句点。
+### 测试建议
+- 上传包含中文、日文、韩文和包含多个句点的文件名（如：`東京学芸大学.2024.出願要項.v1.pdf`）
+- 验证 `templates/admin/pdf_tasks.html` 与 `templates/admin/pdf_task_detail.html` 中文件名完整显示，含中文及句点
 
 
 
 
 ## [2025-08-29] - 调整 pymongo 日志级别与环境变量支持
 
-### ✨ 功能改进
-- **默认上调**: 将 `pymongo` 日志的默认级别上调为 `INFO`，减少调试信息对业务日志的干扰。
-- **环境变量覆盖**: 新增环境变量 `PYMONGO_LOG_LEVEL`，支持按需将 `pymongo` 日志级别调整为 `DEBUG`（或其它合法等级，如 `WARNING`）。
+### 功能改进
+- **默认上调**: 将 `pymongo` 日志的默认级别上调为 `INFO`，减少调试信息对业务日志的干扰
+- **环境变量覆盖**: 新增环境变量 `PYMONGO_LOG_LEVEL`，支持按需将 `pymongo` 日志级别调整为 `DEBUG`（或其它合法等级，如 `WARNING`）
 
-### 🔧 代码变更
-- `app.py`: 在 `setup_logging()` 中读取 `PYMONGO_LOG_LEVEL`（默认 `INFO`）并应用于 `logging.getLogger('pymongo')`。
+### 代码变更
+- `app.py`: 在 `setup_logging()` 中读取 `PYMONGO_LOG_LEVEL`（默认 `INFO`）并应用于 `logging.getLogger('pymongo')`
 
-### 📚 文档
-- 新增 `docs/logging.md`，说明如何通过环境变量配置日志级别。
+### 文档
+- 新增 `docs/logging.md`，说明如何通过环境变量配置日志级别
 
 ---
 
 ## [2025-08-29] - 修复首页"最新更新"缓存未生效
 
-### 🐛 问题修复
-- 修复 `routes/index.py` 中 `get_latest_updates()` 未添加 `@cached(latest_updates_cache)` 导致缓存永远不命中的问题。
-- 现在该接口结果会被 `TTLCache` 缓存600秒，命中缓存时将不会重复触发数据库查询。
-
-### 📁 文件更改
-- `routes/index.py`: 为 `get_latest_updates()` 添加缓存装饰器。
-- `docs/CHANGELOG.md`: 记录本次修复。
+### 问题修复
+- 修复 `routes/index.py` 中 `get_latest_updates()` 未添加 `@cached(latest_updates_cache)` 导致缓存永远不命中的问题
+- 现在该接口结果会被 `TTLCache` 缓存600秒，命中缓存时将不会重复触发数据库查询
 
 ## [2025-08-29] - 线程池命名优化
 
-### ✨ 功能改进
-- **线程池重命名**: 为了使命名更清晰、更准确地反映其功能，对项目中的两个核心线程池进行了重命名。
-- **"Analytics日志线程池"**: 更名为 **"用户访问日志线程池"**，以明确其用途是记录用户页面访问日志，避免与数据分析功能混淆。
-- **"博客更新线程池"**: 更名为 **"博客HTML构建线程池"**，以精确描述其功能为将Markdown内容构建为HTML，并与Admin后台的博客保存/更新功能区分开。
+### 功能改进
+- **线程池重命名**: 为了使命名更清晰、更准确地反映其功能，对项目中的两个核心线程池进行了重命名
+- **"Analytics日志线程池"**: 更名为 **"用户访问日志线程池"**，以明确其用途是记录用户页面访问日志，避免与数据分析功能混淆
+- **"博客更新线程池"**: 更名为 **"博客HTML构建线程池"**，以精确描述其功能为将Markdown内容构建为HTML，并与Admin后台的博客保存/更新功能区分开
 
-### 🔧 技术改进
-- **代码同步更新**: 更新了 `utils/thread_pool_manager.py` 中的所有相关变量、方法和日志信息，以匹配新的线程池名称。
-- **方法调用更新**: 在 `routes/blog.py` 和 `utils/analytics.py` 中，更新了对线程池任务提交方法的调用。
-- **前端模板更新**: 修改了 `templates/admin/dashboard.html`，更新了仪表盘上显示的线程池名称、CSS类名以及用于获取状态的JavaScript ID。
+### 技术改进
+- **代码同步更新**: 更新了 `utils/thread_pool_manager.py` 中的所有相关变量、方法和日志信息，以匹配新的线程池名称
+- **方法调用更新**: 在 `routes/blog.py` 和 `utils/analytics.py` 中，更新了对线程池任务提交方法的调用
+- **前端模板更新**: 修改了 `templates/admin/dashboard.html`，更新了仪表盘上显示的线程池名称、CSS类名以及用于获取状态的JavaScript ID
 
-### 📚 文档
-- **文档同步**: 更新了 `docs/admin_panel.md` 和 `docs/thread_pool_architecture.md` 文档，以反映新的线程池命名。
-- **更新变更日志**: 在 `CHANGELOG.md` 中记录了此次重命名。
+### 文档
+- **文档同步**: 更新了 `docs/admin_panel.md` 和 `docs/thread_pool_architecture.md` 文档，以反映新的线程池命名
+- **更新变更日志**: 在 `CHANGELOG.md` 中记录了此次重命名
 
 ## [2025-08-29] - 新增大学中文名支持
 
-### 🚀 新功能
-- **新增中文字段**: 在 `universities` 集合中增加了 `university_name_zh` 字段，用于存储大学的简体中文名称。
-- **AI批量翻译**: 创建并执行了一次性脚本 `tools/translate_university_names.py`，该脚本利用AI服务，将数据库中所有大学的日文名称批量翻译为简体中文，并更新到新增的字段中。
+### 新功能
+- **新增中文字段**: 在 `universities` 集合中增加了 `university_name_zh` 字段，用于存储大学的简体中文名称
+- **AI批量翻译**: 创建并执行了一次性脚本 `tools/translate_university_names.py`，该脚本利用AI服务，将数据库中所有大学的日文名称批量翻译为简体中文，并更新到新增的字段中
 
-### ✨ 功能改进
-- **后台列表展示**: 在Admin后台的"招生信息一览"页面，新增了"中文名"列，现在可以同时查看大学的日文原名和中文译名。
-- **后台在线编辑**: 在"编辑招生信息"页面，增加了"中文名"输入框，允许管理员手动修改或更正AI翻译的结果。
+### 功能改进
+- **后台列表展示**: 在Admin后台的"招生信息一览"页面，新增了"中文名"列，现在可以同时查看大学的日文原名和中文译名
+- **后台在线编辑**: 在"编辑招生信息"页面，增加了"中文名"输入框，允许管理员手动修改或更正AI翻译的结果
 
-### 🔧 技术改进
-- **脚本健壮性**: 修复了翻译脚本在执行过程中遇到的 `ImportError` 和 `NotImplementedError`，确保了脚本的顺利执行。
-- **后台逻辑更新**: 更新了 `routes/admin.py` 中的 `edit_university` 路由，使其能够接收并保存对 `university_name_zh` 字段的修改。
-- **前端模板更新**: 修改了 `templates/admin/manage_universities.html` 和 `templates/admin/edit_university.html` 以支持新字段的显示和编辑。
-
-### 📁 文件更改
-- `tools/translate_university_names.py`: 新增的批量翻译脚本。
-- `routes/admin.py`: 更新了编辑大学信息的后端逻辑。
-- `templates/admin/manage_universities.html`: 更新了招生信息列表页面的前端模板。
-- `templates/admin/edit_university.html`: 更新了招生信息编辑页面的前端模板。
-- **代码格式化**: 对所有修改过的 Python 文件 (`.py`) 执行了 `isort` 和 `yapf` 格式化。
+### 技术改进
+- **脚本健壮性**: 修复了翻译脚本在执行过程中遇到的 `ImportError` 和 `NotImplementedError`，确保了脚本的顺利执行
+- **后台逻辑更新**: 更新了 `routes/admin.py` 中的 `edit_university` 路由，使其能够接收并保存对 `university_name_zh` 字段的修改
+- **前端模板更新**: 修改了 `templates/admin/manage_universities.html` 和 `templates/admin/edit_university.html` 以支持新字段的显示和编辑
+- **代码格式化**: 对所有修改过的 Python 文件 (`.py`) 执行了 `isort` 和 `yapf` 格式化
 
 ## [2025-01-27] - 修复PDF文件名显示问题：支持非英数字字符
 
