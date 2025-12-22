@@ -59,6 +59,25 @@
                 </form>
             </div>
         </div>
+
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5>导入本地OCR结果 (ZIP)</h5>
+            </div>
+            <div class="card-body">
+                <form id="ocrZipForm" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="zip_file" class="form-label">OCR ZIP 文件 *</label>
+                        <input type="file" class="form-control" id="zip_file" name="zip_file" accept=".zip" required>
+                        <div class="form-text">使用 pdf-craft runjplib-ocr 生成的 zip 包</div>
+                    </div>
+                    <button type="submit" class="btn btn-secondary" id="ocrUploadBtn">
+                        <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                        上传并导入
+                    </button>
+                </form>
+            </div>
+        </div>
     </div>
     
     <div class="col-md-4">
@@ -170,6 +189,14 @@ document.addEventListener('DOMContentLoaded', function() {
         e.preventDefault();
         uploadPDF();
     });
+
+    const ocrForm = document.getElementById('ocrZipForm');
+    if (ocrForm) {
+        ocrForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            uploadOcrZip();
+        });
+    }
 });
 
 function loadQueueStatus() {
@@ -298,6 +325,81 @@ function uploadPDF() {
         // 恢复按钮状态
         uploadBtn.disabled = false;
         uploadBtn.innerHTML = '开始处理';
+    });
+}
+
+function uploadOcrZip() {
+    const form = document.getElementById('ocrZipForm');
+    const uploadBtn = document.getElementById('ocrUploadBtn');
+    const zipFile = document.getElementById('zip_file').files[0];
+
+    if (!zipFile) {
+        showResult('错误', '请选择ZIP文件', 'error');
+        return;
+    }
+
+    if (!zipFile.name.toLowerCase().endsWith('.zip')) {
+        showResult('错误', '只支持ZIP文件格式', 'error');
+        return;
+    }
+
+    const maxSize = 1073741824;
+    if (zipFile.size > maxSize) {
+        showResult('错误', '文件太大，请选择小于1GB的ZIP文件', 'error');
+        return;
+    }
+
+    const csrfToken = getCSRFToken();
+    if (!csrfToken) {
+        showResult('错误', '无法获取安全令牌，请刷新页面后重试', 'error');
+        return;
+    }
+
+    uploadBtn.disabled = true;
+    uploadBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 上传中...';
+
+    const formData = new FormData(form);
+
+    fetch('/admin/api/pdf/ocr-zip/upload', {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': csrfToken
+        },
+        body: formData
+    })
+    .then(response => {
+        if (response.status === 413) {
+            throw new Error('文件太大，请选择小于1GB的ZIP文件');
+        }
+        if (!response.ok) {
+            throw new Error(`服务器错误 (${response.status}): ${response.statusText}`);
+        }
+        return response.json().catch(() => {
+            throw new Error('服务器响应格式错误');
+        });
+    })
+    .then(data => {
+        if (data.error) {
+            showResult('导入失败', data.error, 'error');
+        } else {
+            const createdCount = (data.created_task_ids || []).length;
+            const skippedCount = (data.skipped_items || []).length;
+            let message = `已创建任务: ${createdCount} 个`;
+            if (skippedCount > 0) {
+                message += `<br>跳过条目: ${skippedCount} 个`;
+            }
+            showResult('导入成功', message, 'success', data.created_task_ids && data.created_task_ids[0]);
+            form.reset();
+            loadQueueStatus();
+        }
+    })
+    .catch(error => {
+        console.error('Error uploading OCR zip:', error);
+        showResult('导入失败', error.message || '网络错误，请稍后重试', 'error');
+    })
+    .finally(() => {
+        uploadBtn.disabled = false;
+        uploadBtn.innerHTML = '上传并导入';
     });
 }
 

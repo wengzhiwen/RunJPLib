@@ -27,6 +27,8 @@
                         <p><strong>任务类型:</strong> 
                             {% if task.task_type == 'PDF_PROCESSING' %}
                                 <span class="badge bg-primary">PDF处理</span>
+                            {% elif task.task_type == 'OCR_IMPORT' %}
+                                <span class="badge bg-info">OCR导入</span>
                             {% elif task.task_type == 'TAG_UNIVERSITIES' %}
                                 <span class="badge bg-success">大学标签</span>
                             {% elif task.university_name %}
@@ -37,18 +39,23 @@
                             {% endif %}
                         </p>
                         <p><strong>任务名称:</strong> {{ task.task_name or '-' }}</p>
-                        {% if task.task_type == 'PDF_PROCESSING' %}
+                        {% if task.task_type in ['PDF_PROCESSING', 'OCR_IMPORT'] %}
                             <p><strong>大学名称:</strong> {{ task.params.university_name if task.params else '-' }}</p>
                             <p><strong>文件名:</strong> <span id="filename-display">{{ task.params.original_filename if task.params else '-' }}</span></p>
-                            <p><strong>处理模式:</strong> 
-                                {% if task.params and task.params.processing_mode == 'batch' %}
-                                    <span class="badge bg-success">批量模式</span>
-                                    <small class="text-muted">(省钱50%)</small>
-                                {% else %}
-                                    <span class="badge bg-primary">普通模式</span>
-                                    <small class="text-muted">(实时处理)</small>
-                                {% endif %}
-                            </p>
+                            {% if task.task_type == 'OCR_IMPORT' %}
+                                <p><strong>来源:</strong> 本地OCR导入</p>
+                                <p><strong>起始步骤:</strong> 翻译</p>
+                            {% else %}
+                                <p><strong>处理模式:</strong> 
+                                    {% if task.params and task.params.processing_mode == 'batch' %}
+                                        <span class="badge bg-success">批量模式</span>
+                                        <small class="text-muted">(省钱50%)</small>
+                                    {% else %}
+                                        <span class="badge bg-primary">普通模式</span>
+                                        <small class="text-muted">(实时处理)</small>
+                                    {% endif %}
+                                </p>
+                            {% endif %}
                         {% elif task.task_type == 'TAG_UNIVERSITIES' %}
                             <p><strong>任务描述:</strong> <span class="text-muted">批量生成大学标签</span></p>
                         {% elif task.university_name %}
@@ -120,7 +127,7 @@
                 <p id="current-step"><strong>当前步骤:</strong> {{ task.current_step }}</p>
                 {% endif %}
                 
-                {% if task.status in ['completed', 'failed', 'interrupted'] and (task.task_type == 'PDF_PROCESSING' or task.university_name) %}
+                {% if task.status in ['completed', 'failed', 'interrupted'] and (task.task_type in ['PDF_PROCESSING', 'OCR_IMPORT'] or task.university_name) %}
                 <div class="mt-3">
                     <div class="dropdown">
                         <button class="btn btn-warning btn-sm dropdown-toggle" type="button" id="restartDropdown" data-bs-toggle="dropdown" aria-expanded="false">
@@ -438,7 +445,7 @@ function restartFromStep(stepName) {
     const hasUniversityName = '{{ task.university_name }}' !== '';
     
     // 只允许PDF处理任务使用重启功能（包括历史任务）
-    if (taskType !== 'PDF_PROCESSING' && !hasUniversityName) {
+    if (taskType !== 'PDF_PROCESSING' && taskType !== 'OCR_IMPORT' && !hasUniversityName) {
         alert('此任务类型不支持重启功能');
         return;
     }

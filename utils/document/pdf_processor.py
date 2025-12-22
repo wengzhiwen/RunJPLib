@@ -37,6 +37,7 @@ class PDFProcessor:
         task_id: str,
         university_name: str,
         pdf_file_path: str,
+        original_md_path: str = None,
         restart_from_step: str = None,
         processing_mode: str = "normal",
         task_manager_instance=None,
@@ -55,6 +56,7 @@ class PDFProcessor:
         self.task_id = task_id
         self.university_name = university_name
         self.pdf_file_path = pdf_file_path
+        self.original_md_path = original_md_path
         self.restart_from_step = restart_from_step
         self.processing_mode = processing_mode
         self.config = Config()
@@ -69,6 +71,33 @@ class PDFProcessor:
         self.batch_ocr_tool = None
         self.translate_tool = None
         self.analysis_tool = None
+
+        # 如果提供了外部OCR结果，预先加载到任务目录
+        self._prepare_original_md()
+
+    def _prepare_original_md(self):
+        """如果提供外部OCR结果，将其写入任务目录"""
+        if not self.original_md_path:
+            return
+
+        try:
+            source_path = Path(self.original_md_path)
+            if not source_path.exists():
+                self._log_message(f"External OCR markdown not found: {source_path}", "ERROR")
+                return
+
+            target_path = self.task_dir / "original.md"
+            content = source_path.read_text(encoding="utf-8")
+            target_path.write_text(content, encoding="utf-8")
+
+            if not hasattr(self, "step_data"):
+                self.step_data = {}
+            self.step_data["original_md_path"] = str(target_path)
+            self.step_data["original_md_content"] = content
+
+            self._log_message("Loaded external OCR markdown into task workspace.")
+        except Exception as e:
+            self._log_message(f"Failed to load external OCR markdown: {e}", "ERROR")
 
     def _update_task_status(
         self,
@@ -790,6 +819,7 @@ def run_pdf_processor(
     task_id: str,
     university_name: str,
     pdf_file_path: str,
+    original_md_path: str = None,
     restart_from_step: str = None,
     processing_mode: str = "normal",
     task_manager_instance=None,
@@ -801,6 +831,7 @@ def run_pdf_processor(
         task_id: 任务ID
         university_name: 大学名称
         pdf_file_path: PDF文件路径
+        original_md_path: 外部OCR结果Markdown路径（可选）
         restart_from_step: 从哪个步骤开始重启（可选）
         processing_mode: 处理模式 ("normal" | "batch")
         task_manager_instance: TaskManager的实例，用于回调
@@ -812,6 +843,7 @@ def run_pdf_processor(
         task_id,
         university_name,
         pdf_file_path,
+        original_md_path,
         restart_from_step,
         processing_mode,
         task_manager_instance,

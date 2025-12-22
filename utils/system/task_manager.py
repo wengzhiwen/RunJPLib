@@ -165,7 +165,14 @@ class TaskManager:
             self.queue_processor_thread.start()
             task_logger.info("Task queue processor service started.")
 
-    def create_task(self, task_type: str, task_name: str, params: Dict[str, Any] = None) -> Optional[str]:
+    def create_task(
+        self,
+        task_type: str,
+        task_name: str,
+        params: Dict[str, Any] = None,
+        restart_from_step: Optional[str] = None,
+        source: Optional[str] = None,
+    ) -> Optional[str]:
         """
         创建新的后台任务
         
@@ -173,6 +180,8 @@ class TaskManager:
             task_type: 任务类型 (e.g., "TAG_UNIVERSITIES", "PDF_PROCESSING")
             task_name: 任务的显示名称
             params: 任务需要的参数字典
+            restart_from_step: 从哪个步骤开始重启（可选）
+            source: 任务来源标记（可选）
             
         返回:
             任务ID字符串，失败时返回None
@@ -196,6 +205,10 @@ class TaskManager:
                 "created_at": datetime.utcnow(),
                 "updated_at": datetime.utcnow()
             }
+            if restart_from_step:
+                task_doc["restart_from_step"] = restart_from_step
+            if source:
+                task_doc["source"] = source
 
             result = db.processing_tasks.insert_one(task_doc)
             task_id = str(result.inserted_id)
@@ -225,6 +238,27 @@ class TaskManager:
         }
         task_name = f"PDF Processing for {original_filename}"
         return self.create_task(task_type="PDF_PROCESSING", task_name=task_name, params=params)
+
+    def create_ocr_import_task(self, university_name: str, pdf_file_path: str, original_md_path: str, original_filename: str) -> Optional[str]:
+        """
+        为OCR导入创建一个任务，从翻译步骤开始。
+        """
+        params = {
+            "university_name": university_name,
+            "pdf_file_path": pdf_file_path,
+            "original_md_path": original_md_path,
+            "original_filename": original_filename,
+            "processing_mode": "normal",
+            "source": "local_ocr",
+        }
+        task_name = f"OCR Import for {original_filename}"
+        return self.create_task(
+            task_type="OCR_IMPORT",
+            task_name=task_name,
+            params=params,
+            restart_from_step="03_translate",
+            source="local_ocr",
+        )
 
     def process_queue(self):
         """处理任务队列"""
@@ -276,15 +310,19 @@ class TaskManager:
                     task_type = task.get("task_type")
 
                     success = False
-                    if task_type == "PDF_PROCESSING":
+                    if task_type in ["PDF_PROCESSING", "OCR_IMPORT"]:
                         params = task.get("params", {})
-                        restart_from_step = task.get("restart_from_step")
-                        success = run_pdf_processor(task_id=task_id,
-                                                    university_name=params.get("university_name"),
-                                                    pdf_file_path=params.get("pdf_file_path"),
-                                                    restart_from_step=restart_from_step,
-                                                    processing_mode=params.get("processing_mode", "normal"),
-                                                    task_manager_instance=self)
+                        restart_from_step = task.get("restart_from_step") or params.get("restart_from_step")
+                        original_md_path = params.get("original_md_path")
+                        success = run_pdf_processor(
+                            task_id=task_id,
+                            university_name=params.get("university_name"),
+                            pdf_file_path=params.get("pdf_file_path"),
+                            original_md_path=original_md_path,
+                            restart_from_step=restart_from_step,
+                            processing_mode=params.get("processing_mode", "normal"),
+                            task_manager_instance=self,
+                        )
                     elif task_type == "TAG_UNIVERSITIES":
                         tagger = UniversityClassifier(task_id=task_id)
                         tagger.run_tagging_process()

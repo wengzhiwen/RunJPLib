@@ -212,6 +212,7 @@ function updateTasksTable(tasks) {
 function getTaskTypeBadge(taskType) {
     const badges = {
         'PDF_PROCESSING': '<span class="badge bg-primary">PDF处理</span>',
+        'OCR_IMPORT': '<span class="badge bg-info">OCR导入</span>',
         'TAG_UNIVERSITIES': '<span class="badge bg-success">大学标签</span>'
     };
     // 对于历史任务（没有task_type但有university_name），显示为PDF处理
@@ -219,10 +220,12 @@ function getTaskTypeBadge(taskType) {
 }
 
 function getTaskDetails(task) {
-    if (task.task_type === 'PDF_PROCESSING') {
+    if (task.task_type === 'PDF_PROCESSING' || task.task_type === 'OCR_IMPORT') {
         const params = task.params || {};
+        const sourceLabel = task.task_type === 'OCR_IMPORT' ? '<small class="text-muted">来源:</small> 本地OCR<br>' : '';
         return `
             <div>
+                ${sourceLabel}
                 <small class="text-muted">大学:</small> ${escapeHtml(params.university_name || '-')}<br>
                 <small class="text-muted">文件:</small> ${escapeHtml(params.original_filename || '-')}
             </div>

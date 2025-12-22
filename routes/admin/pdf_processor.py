@@ -16,6 +16,7 @@ from werkzeug.utils import secure_filename
 
 from routes.admin.auth import admin_required
 from utils.core.database import get_db
+from utils.document.ocr_importer import import_ocr_zip
 from utils.system.task_manager import task_manager
 
 from ..blueprints import admin_bp
@@ -100,6 +101,62 @@ def upload_pdf():
 
     except Exception as e:
         logging.error(f"[Admin API] PDF上传失败: {e}", exc_info=True)
+        return jsonify({"error": "服务器内部错误"}), 500
+
+
+@admin_bp.route("/api/pdf/ocr-zip/upload", methods=["POST"])
+@admin_required
+def upload_ocr_zip():
+    """上传OCR结果zip并创建后续处理任务"""
+    try:
+        if "zip_file" not in request.files:
+            return jsonify({"error": "没有上传文件"}), 400
+
+        file = request.files["zip_file"]
+        if file.filename == "":
+            return jsonify({"error": "没有选择文件"}), 400
+
+        if not file.filename.lower().endswith(".zip"):
+            return jsonify({"error": "只支持ZIP文件"}), 400
+
+        original_filename = file.filename
+        safe_filename = secure_filename(file.filename)
+        temp_filename = f"{uuid.uuid4().hex}_{safe_filename}"
+
+        temp_dir = os.path.join(tempfile.gettempdir(), "ocr_zip_uploads")
+        os.makedirs(temp_dir, exist_ok=True)
+        temp_filepath = os.path.join(temp_dir, temp_filename)
+        file.save(temp_filepath)
+
+        import_result = import_ocr_zip(temp_filepath)
+        created_task_ids = []
+        skipped_items = import_result.get("skipped", [])
+
+        for item in import_result.get("items", []):
+            task_id = task_manager.create_ocr_import_task(
+                university_name=item["university_name"],
+                pdf_file_path=item["pdf_file_path"],
+                original_md_path=item["original_md_path"],
+                original_filename=item["original_filename"],
+            )
+            if task_id:
+                created_task_ids.append(task_id)
+            else:
+                skipped_items.append({"item_id": item.get("item_id"), "reason": "failed to create task"})
+
+        if not created_task_ids and not skipped_items:
+            return jsonify({"error": "没有可导入的任务"}), 400
+
+        return jsonify({
+            "message": "导入完成",
+            "import_id": import_result.get("import_id"),
+            "created_task_ids": created_task_ids,
+            "skipped_items": skipped_items,
+            "original_filename": original_filename,
+        })
+
+    except Exception as e:
+        logging.error(f"[Admin API] OCR ZIP上传失败: {e}", exc_info=True)
         return jsonify({"error": "服务器内部错误"}), 500
 
 
