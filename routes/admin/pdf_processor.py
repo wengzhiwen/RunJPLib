@@ -65,6 +65,16 @@ def upload_pdf():
         if not university_name:
             return jsonify({"error": "请输入大学名称"}), 400
 
+        reference_md_path = None
+        reference_md_file = request.files.get("markdown_file")
+        if reference_md_file and reference_md_file.filename:
+            reference_filename = reference_md_file.filename
+            lowered = reference_filename.lower()
+            if not (lowered.endswith(".md") or lowered.endswith(".markdown")):
+                return jsonify({"error": "参考Markdown仅支持 .md 或 .markdown 文件"}), 400
+            if reference_md_file.content_length and reference_md_file.content_length > 20 * 1024 * 1024:
+                return jsonify({"error": "参考Markdown文件过大，请选择小于20MB的文件"}), 400
+
         # 获取处理模式
         processing_mode = request.form.get("processing_mode", "normal").strip()
         if processing_mode not in ["normal", "batch"]:
@@ -81,12 +91,20 @@ def upload_pdf():
         temp_filepath = os.path.join(temp_dir, temp_filename)
         file.save(temp_filepath)
 
+        if reference_md_file and reference_md_file.filename:
+            safe_ref_filename = secure_filename(reference_md_file.filename)
+            ref_temp_filename = f"{uuid.uuid4().hex}_{safe_ref_filename}"
+            ref_temp_filepath = os.path.join(temp_dir, ref_temp_filename)
+            reference_md_file.save(ref_temp_filepath)
+            reference_md_path = ref_temp_filepath
+
         # 创建处理任务
         task_id = task_manager.create_pdf_processing_task(
             university_name=university_name,
             pdf_file_path=temp_filepath,
             original_filename=original_filename,
             processing_mode=processing_mode,
+            reference_md_path=reference_md_path,
         )
 
         if task_id:
@@ -97,6 +115,11 @@ def upload_pdf():
                 os.remove(temp_filepath)
             except OSError:
                 pass
+            if reference_md_path:
+                try:
+                    os.remove(reference_md_path)
+                except OSError:
+                    pass
             return jsonify({"error": "创建任务失败"}), 500
 
     except Exception as e:

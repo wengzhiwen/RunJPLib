@@ -4,6 +4,7 @@
 from datetime import datetime
 from datetime import timedelta
 import os
+from pathlib import Path
 import threading
 import time
 from typing import Any, Dict, List, Optional
@@ -12,9 +13,11 @@ from bson.objectid import ObjectId
 import dotenv
 
 from ..ai.analysis_tool import DocumentAnalyzer
+from ..ai.translate_tool import DocumentTranslator
 from ..core.config import Config
 from ..core.database import get_db
 from ..core.logging import setup_task_logger
+from ..core.proof import save_proof_bundle
 from ..document.pdf_processor import run_pdf_processor
 from ..university.tagger import UniversityClassifier
 
@@ -60,6 +63,32 @@ class TaskManager:
             self.recover_pending_tasks()
 
             self.__class__._initialized = True
+
+    def _append_task_log(
+        self,
+        db_conn,
+        task_id: str,
+        message: str,
+        level: str = "INFO",
+        status: Optional[str] = None,
+        current_step: Optional[str] = None,
+        progress: Optional[int] = None,
+        error_message: Optional[str] = None,
+    ) -> None:
+        """为任务追加日志，并可选更新状态信息。"""
+        log_entry = {"timestamp": datetime.utcnow(), "level": level, "message": message}
+        update = {"$push": {"logs": log_entry}, "$set": {"updated_at": datetime.utcnow()}}
+
+        if status is not None:
+            update["$set"]["status"] = status
+        if current_step is not None:
+            update["$set"]["current_step"] = current_step
+        if progress is not None:
+            update["$set"]["progress"] = progress
+        if error_message is not None:
+            update["$set"]["error_message"] = error_message
+
+        db_conn.processing_tasks.update_one({"_id": ObjectId(task_id)}, update)
 
     def notify_task_is_waiting(self, task_id: str):
         """
@@ -226,7 +255,14 @@ class TaskManager:
             task_logger.error(f"Failed to create task: {e}")
             return None
 
-    def create_pdf_processing_task(self, university_name: str, pdf_file_path: str, original_filename: str, processing_mode: str = "normal") -> Optional[str]:
+    def create_pdf_processing_task(
+        self,
+        university_name: str,
+        pdf_file_path: str,
+        original_filename: str,
+        processing_mode: str = "normal",
+        reference_md_path: Optional[str] = None,
+    ) -> Optional[str]:
         """
         为PDF处理创建一个特定的任务 (兼容旧接口)
         """
@@ -234,8 +270,10 @@ class TaskManager:
             "university_name": university_name,
             "pdf_file_path": pdf_file_path,
             "original_filename": original_filename,
-            "processing_mode": processing_mode
+            "processing_mode": processing_mode,
         }
+        if reference_md_path:
+            params["reference_md_path"] = reference_md_path
         task_name = f"PDF Processing for {original_filename}"
         return self.create_task(task_type="PDF_PROCESSING", task_name=task_name, params=params)
 
@@ -314,11 +352,13 @@ class TaskManager:
                         params = task.get("params", {})
                         restart_from_step = task.get("restart_from_step") or params.get("restart_from_step")
                         original_md_path = params.get("original_md_path")
+                        reference_md_path = params.get("reference_md_path")
                         success = run_pdf_processor(
                             task_id=task_id,
                             university_name=params.get("university_name"),
                             pdf_file_path=params.get("pdf_file_path"),
                             original_md_path=original_md_path,
+                            reference_md_path=reference_md_path,
                             restart_from_step=restart_from_step,
                             processing_mode=params.get("processing_mode", "normal"),
                             task_manager_instance=self,
@@ -358,6 +398,72 @@ class TaskManager:
                         # 覆盖写入report_md（最后写赢）
                         db_conn.universities.update_one({"_id": ObjectId(university_id)}, {"$set": {"content.report_md": new_report}})
                         success = True
+                    elif task_type == "REFINE_AND_REGENERATE":
+                        params = task.get("params", {})
+                        university_id = params.get("university_id")
+                        reference_md_path = params.get("reference_md_path")
+
+                        if not university_id or not reference_md_path:
+                            raise ValueError("Missing required params for REFINE_AND_REGENERATE")
+
+                        db_conn = get_db()
+                        if db_conn is None:
+                            raise RuntimeError("DB unavailable for REFINE_AND_REGENERATE")
+
+                        self._append_task_log(db_conn, task_id, "开始校对并重新生成流程", current_step="refine", progress=10)
+
+                        uni_doc = db_conn.universities.find_one({"_id": ObjectId(university_id)}, {"content.original_md": 1, "university_name": 1})
+                        if not uni_doc:
+                            raise ValueError(f"University not found: {university_id}")
+
+                        original_md = (uni_doc.get("content", {}) or {}).get("original_md", "")
+                        if not original_md:
+                            raise ValueError("original_md is empty; cannot refine")
+
+                        reference_path = Path(reference_md_path)
+                        if not reference_path.exists():
+                            raise ValueError("reference markdown not found; cannot refine")
+
+                        reference_md = reference_path.read_text(encoding="utf-8")
+                        if not reference_md.strip():
+                            raise ValueError("reference markdown is empty; cannot refine")
+
+                        cfg = Config()
+                        analyzer = DocumentAnalyzer(cfg.analysis_questions, cfg.translate_terms)
+                        refine_start = time.time()
+                        refined_md = analyzer.refine_markdown_with_reference(original_md, reference_md)
+                        refine_cost = time.time() - refine_start
+                        self._append_task_log(db_conn, task_id, f"校对完成，耗时 {refine_cost:.2f}s，开始翻译", current_step="translate", progress=40)
+                        try:
+                            save_proof_bundle(uni_doc.get("university_name", "unknown"), original_md, reference_md, refined_md)
+                            task_logger.info("Saved proof bundle for refine/regenerate task.")
+                        except Exception as save_error:
+                            task_logger.warning(f"Failed to save proof bundle: {save_error}")
+
+                        translator = DocumentTranslator(cfg.translate_terms)
+                        translate_start = time.time()
+                        translated_md = translator.md2zh(refined_md)
+                        translate_cost = time.time() - translate_start
+                        self._append_task_log(db_conn, task_id, f"翻译完成，耗时 {translate_cost:.2f}s，开始生成分析报告", current_step="analysis", progress=70)
+                        analysis_start = time.time()
+                        new_report = analyzer.md2report(translated_md)
+                        analysis_cost = time.time() - analysis_start
+
+                        db_conn.universities.update_one(
+                            {"_id": ObjectId(university_id)},
+                            {"$set": {
+                                "content.original_md": refined_md,
+                                "content.translated_md": translated_md,
+                                "content.report_md": new_report,
+                                "last_modified": datetime.utcnow(),
+                            }},
+                        )
+                        self._append_task_log(db_conn, task_id, f"分析完成，耗时 {analysis_cost:.2f}s；校对与报告更新完成", current_step="finished", progress=100, status="completed")
+                        try:
+                            reference_path.unlink()
+                        except OSError:
+                            pass
+                        success = True
                     else:
                         task_logger.error(f"Unknown task type '{task_type}' for task {task_id}. Aborting.")
                         raise ValueError(f"Unknown task type: {task_type}")
@@ -378,6 +484,10 @@ class TaskManager:
                     try:
                         db_conn = get_db()
                         if db_conn:
+                            try:
+                                self._append_task_log(db_conn, task_id, f"任务执行异常: {e}", level="ERROR", status="failed")
+                            except Exception:
+                                pass
                             db_conn.processing_tasks.update_one({"_id": ObjectId(task_id)},
                                                                 {"$set": {
                                                                     "status": "failed",

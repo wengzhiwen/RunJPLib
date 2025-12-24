@@ -13,6 +13,9 @@
     {% if request.args.get('msg') == 'task_created' %}
         <div class="alert alert-info">任务已创建，请前往后台任务列表查看状态。</div>
     {% endif %}
+    {% if request.args.get('msg') == 'refine_task_created' %}
+        <div class="alert alert-info">校对任务已创建，请前往后台任务列表查看状态。</div>
+    {% endif %}
 
     <form method="POST" action="{{ url_for('admin.edit_university', university_id=university._id) }}">
         <!-- CSRF Token -->
@@ -47,9 +50,21 @@
         <div class="mb-3">
             <a href="{{ url_for('admin.regenerate_university_analysis', university_id=university._id) }}" class="btn btn-warning">再生成分析报告</a>
         </div>
-        
+
         <a href="{{ url_for('admin.manage_universities_page') }}" class="btn btn-secondary">取消</a>
         <button type="submit" class="btn btn-primary">保存更改</button>
     </form>
+
+    <div class="mt-4">
+        <form method="POST" action="{{ url_for('admin.refine_and_regenerate_university', university_id=university._id) }}" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="">
+            <div class="mb-2">
+                <label for="reference_markdown" class="form-label">校对用Markdown（B）</label>
+                <input type="file" class="form-control" id="reference_markdown" name="reference_markdown" accept=".md,.markdown" required>
+                <div class="form-text">用于校对日文原文（A），表格更准时会参考；A仍为主要依据</div>
+            </div>
+            <button type="submit" class="btn btn-outline-primary">校对并重新生成分析报告</button>
+        </form>
+    </div>
 </div>
 {% endblock %}

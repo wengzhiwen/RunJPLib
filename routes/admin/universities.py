@@ -1,5 +1,8 @@
 from datetime import datetime
 import logging
+import os
+import tempfile
+import uuid
 
 from bson.objectid import ObjectId
 from flask import jsonify
@@ -7,6 +10,7 @@ from flask import redirect
 from flask import render_template
 from flask import request
 from flask import url_for
+from werkzeug.utils import secure_filename
 
 from routes.admin.auth import admin_required
 from utils.core.database import get_db
@@ -380,6 +384,48 @@ def regenerate_university_analysis(university_id):
 
     # 重定向回编辑页，附带提示参数
     return redirect(url_for("admin.edit_university", university_id=university_id, msg="task_created"))
+
+
+@admin_bp.route("/university/<university_id>/refine-regenerate", methods=["POST"])
+@admin_required
+def refine_and_regenerate_university(university_id):
+    """使用参考Markdown校对原文并重新翻译、生成分析报告。"""
+    db = get_db()
+    if db is None:
+        return render_template("edit_university.html", error="数据库连接失败", university=None)
+
+    try:
+        object_id = ObjectId(university_id)
+    except Exception:
+        return render_template("404.html"), 404
+
+    university = db.universities.find_one({"_id": object_id})
+    if not university:
+        return render_template("404.html"), 404
+
+    reference_file = request.files.get("reference_markdown")
+    if not reference_file or not reference_file.filename:
+        return render_template("edit_university.html", university=university, error="请上传参考Markdown文件")
+
+    filename_lower = reference_file.filename.lower()
+    if not (filename_lower.endswith(".md") or filename_lower.endswith(".markdown")):
+        return render_template("edit_university.html", university=university, error="参考Markdown仅支持 .md 或 .markdown 文件")
+
+    temp_dir = os.path.join(tempfile.gettempdir(), "reference_md_uploads")
+    os.makedirs(temp_dir, exist_ok=True)
+    safe_filename = secure_filename(reference_file.filename)
+    temp_filename = f"{uuid.uuid4().hex}_{safe_filename}"
+    temp_filepath = os.path.join(temp_dir, temp_filename)
+    reference_file.save(temp_filepath)
+
+    task_params = {"university_id": university_id, "reference_md_path": temp_filepath}
+    task_manager.create_task(
+        task_type="REFINE_AND_REGENERATE",
+        task_name=f"Refine and regenerate for {university_id}",
+        params=task_params,
+    )
+
+    return redirect(url_for("admin.edit_university", university_id=university_id, msg="refine_task_created"))
 
 
 @admin_bp.route("/api/universities/<item_id>", methods=["DELETE"])

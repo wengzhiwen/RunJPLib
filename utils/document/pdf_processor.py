@@ -6,9 +6,12 @@ PDF处理器 - 大学招生信息处理器的核心类
 from datetime import datetime
 from datetime import time as datetime_time
 from pathlib import Path
+import json
+import re
 import shutil
 import time
 import uuid
+from typing import Optional
 
 from bson.objectid import ObjectId
 from buffalo import Buffalo
@@ -25,8 +28,14 @@ from ..core.config import Config
 from ..core.database import get_db
 from ..core.database import get_mongo_client
 from ..core.logging import setup_task_logger
+from ..core.proof import save_proof_bundle
 
 task_logger = setup_task_logger("TaskManager")
+
+_MARKDOWN_LINK_PATTERN = re.compile(r'(!?\[[^\]]*\]\()([^)]+)(\))')
+_ASSET_IMAGE_PATTERN = re.compile(r'!\[[^\]]*\]\(([^)]+)\)')
+_ASSET_EXTENSIONS = {".png", ".jpg", ".jpeg"}
+_ASSET_OCR_FALLBACK = "画像：正確に認識できなかった画像"
 
 
 class PDFProcessor:
@@ -38,6 +47,7 @@ class PDFProcessor:
         university_name: str,
         pdf_file_path: str,
         original_md_path: str = None,
+        reference_md_path: str = None,
         restart_from_step: str = None,
         processing_mode: str = "normal",
         task_manager_instance=None,
@@ -57,6 +67,7 @@ class PDFProcessor:
         self.university_name = university_name
         self.pdf_file_path = pdf_file_path
         self.original_md_path = original_md_path
+        self.reference_md_path = reference_md_path
         self.restart_from_step = restart_from_step
         self.processing_mode = processing_mode
         self.config = Config()
@@ -88,16 +99,70 @@ class PDFProcessor:
 
             target_path = self.task_dir / "original.md"
             content = source_path.read_text(encoding="utf-8")
-            target_path.write_text(content, encoding="utf-8")
+            normalized_content = self._normalize_markdown_asset_links(content)
+            target_path.write_text(normalized_content, encoding="utf-8")
 
             if not hasattr(self, "step_data"):
                 self.step_data = {}
             self.step_data["original_md_path"] = str(target_path)
-            self.step_data["original_md_content"] = content
+            self.step_data["original_md_content"] = normalized_content
+
+            if normalized_content != content:
+                self._log_message("Rewrote absolute asset links to relative paths in original.md.")
 
             self._log_message("Loaded external OCR markdown into task workspace.")
         except Exception as e:
             self._log_message(f"Failed to load external OCR markdown: {e}", "ERROR")
+
+    @staticmethod
+    def _normalize_markdown_asset_links(content: str) -> str:
+        """将 markdown 中指向 assets 的绝对路径改为相对路径。"""
+
+        def rewrite_target(target: str) -> str:
+            lowered = target.lower()
+            if lowered.startswith(("http://", "https://", "data:", "mailto:")):
+                return target
+
+            is_absolute = target.startswith("/") or re.match(r"^[a-zA-Z]:[\\/]", target)
+            if not is_absolute:
+                return target
+
+            idx_forward = target.rfind("/assets/")
+            idx_backward = target.rfind("\\assets\\")
+            idx = max(idx_forward, idx_backward)
+            if idx == -1:
+                return target
+
+            suffix = target[idx:]
+            return suffix.replace("\\", "/")
+
+        def normalize_target(target: str) -> str:
+            stripped = target.strip()
+            if stripped.startswith("<") and stripped.endswith(">"):
+                inner = stripped[1:-1]
+                rewritten = rewrite_target(inner)
+                if rewritten == inner:
+                    return target
+                return f"<{rewritten}>"
+
+            parts = stripped.split()
+            if len(parts) == 1:
+                dest = stripped
+                tail = ""
+            else:
+                dest = parts[0]
+                tail = stripped[len(parts[0]):]
+
+            rewritten = rewrite_target(dest)
+            if rewritten == dest:
+                return target
+            return rewritten + tail
+
+        def replacer(match: re.Match[str]) -> str:
+            prefix, target, suffix = match.groups()
+            return f"{prefix}{normalize_target(target)}{suffix}"
+
+        return _MARKDOWN_LINK_PATTERN.sub(replacer, content)
 
     def _update_task_status(
         self,
@@ -227,10 +292,21 @@ class PDFProcessor:
 
     def process_step_02_ocr(self, work: Work) -> bool:
         """步骤2: OCR识别"""
+        if self.original_md_path:
+            return self._process_asset_ocr()
+
         if self.processing_mode == "batch":
-            return self._process_batch_ocr()
+            ocr_success = self._process_batch_ocr()
         else:
-            return self._process_normal_ocr()
+            ocr_success = self._process_normal_ocr()
+
+        if not ocr_success:
+            return False
+
+        if self.reference_md_path:
+            return self._refine_ocr_with_reference()
+
+        return True
 
     def _process_normal_ocr(self) -> bool:
         """普通OCR处理模式"""
@@ -458,6 +534,264 @@ class PDFProcessor:
             self.step_data = {}
         self.step_data["original_md_path"] = str(combined_md_file)
         self.step_data["original_md_content"] = combined_markdown
+
+    def _get_original_md_content(self) -> str:
+        if hasattr(self, "step_data") and "original_md_content" in self.step_data:
+            return self.step_data["original_md_content"]
+        if hasattr(self, "previous_results") and "original_md_content" in self.previous_results:
+            return self.previous_results["original_md_content"]
+        original_md_file = self.task_dir / "original.md"
+        if original_md_file.exists():
+            return original_md_file.read_text(encoding="utf-8")
+        return ""
+
+    @staticmethod
+    def _extract_markdown_link_target(raw_target: str) -> str:
+        target = raw_target.strip()
+        if target.startswith("<") and target.endswith(">"):
+            target = target[1:-1].strip()
+        if " " in target:
+            target = target.split(" ", 1)[0]
+        return target
+
+    def _extract_asset_image_refs(self, content: str) -> list:
+        matches = []
+        for match in _ASSET_IMAGE_PATTERN.finditer(content):
+            raw_target = match.group(1)
+            target = self._extract_markdown_link_target(raw_target).replace("\\", "/")
+            target_lower = target.lower()
+            if target_lower.startswith(("http://", "https://", "data:", "mailto:")):
+                continue
+            if "/assets/" not in target_lower and not target_lower.startswith("assets/"):
+                continue
+            if Path(target_lower).suffix not in _ASSET_EXTENSIONS:
+                continue
+            matches.append({
+                "start": match.start(),
+                "end": match.end(),
+                "target": target,
+                "raw_target": raw_target,
+            })
+        return matches
+
+    def _resolve_asset_path(self, base_dir: Path, target: str) -> Optional[Path]:
+        normalized = target.replace("\\", "/")
+        if normalized.startswith("/"):
+            idx = normalized.lower().rfind("/assets/")
+            if idx != -1:
+                normalized = normalized[idx + 1:]
+        rel = Path(normalized)
+        candidate = (base_dir / rel).resolve()
+        try:
+            base_resolved = base_dir.resolve()
+        except FileNotFoundError:
+            base_resolved = base_dir
+        if base_resolved not in candidate.parents and candidate != base_resolved:
+            return None
+        if "assets" not in [part.lower() for part in candidate.parts]:
+            return None
+        if not candidate.exists():
+            return None
+        if candidate.suffix.lower() not in _ASSET_EXTENSIONS:
+            return None
+        return candidate
+
+    def _save_asset_manifest(self, manifest: list) -> None:
+        manifest_path = self.task_dir / "asset_ocr_manifest.json"
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _merge_asset_ocr_results(self, content: str, asset_entries: list, ocr_results: dict) -> str:
+        replacements = []
+        for entry in asset_entries:
+            page_num = entry.get("page_num")
+            text = None
+            if page_num is not None:
+                text = ocr_results.get(str(page_num).zfill(3))
+                if text:
+                    text = text.strip()
+            if not text or text == "EMPTY_PAGE":
+                text = _ASSET_OCR_FALLBACK
+            replacements.append((entry["start"], entry["end"], text))
+
+        updated = content
+        for start, end, replacement in sorted(replacements, key=lambda item: item[0], reverse=True):
+            updated = updated[:start] + replacement + updated[end:]
+        return updated
+
+    def _process_asset_ocr(self) -> bool:
+        """针对assets图片进行批量OCR并合并回原文"""
+        try:
+            self._log_message("Starting OCR for asset images (batch mode)...")
+            self._update_task_status("processing", "02_ocr", 30)
+
+            if not self.batch_ocr_tool:
+                self.batch_ocr_tool = BatchOcrProcessor()
+            if not self.ocr_tool:
+                self.ocr_tool = ImageOcrProcessor()
+
+            content = self._get_original_md_content()
+            if not content:
+                self._log_message("No original markdown content found for asset OCR.", "WARNING")
+                return True
+
+            asset_entries = self._extract_asset_image_refs(content)
+            if not asset_entries:
+                self._log_message("No asset image references found in markdown. Skipping asset OCR.")
+                return True
+
+            base_dir = Path(self.original_md_path).parent if self.original_md_path else self.task_dir
+            path_to_page = {}
+            page_numbers = []
+            image_paths = []
+            next_page_num = 1
+
+            for entry in asset_entries:
+                asset_path = self._resolve_asset_path(base_dir, entry["target"])
+                entry["asset_path"] = str(asset_path) if asset_path else None
+                if not asset_path:
+                    entry["page_num"] = None
+                    continue
+                key = str(asset_path)
+                if key in path_to_page:
+                    entry["page_num"] = path_to_page[key]
+                    continue
+                entry["page_num"] = next_page_num
+                path_to_page[key] = next_page_num
+                image_paths.append(str(asset_path))
+                page_numbers.append(next_page_num)
+                next_page_num += 1
+
+            self._save_asset_manifest(asset_entries)
+
+            if not image_paths:
+                updated_content = self._merge_asset_ocr_results(content, asset_entries, {})
+                self._save_ocr_results(updated_content)
+                self._log_message("All asset images missing; replaced with fallback text.")
+                return True
+
+            batch_status = self.batch_ocr_tool.check_batch_status(self.task_id)
+            if "error" not in batch_status and batch_status.get("total_batches", 0) > 0:
+                self._log_message(f"Found existing asset OCR batches: {batch_status['total_batches']}")
+                if not batch_status.get("all_completed", False):
+                    return self._wait_for_asset_batch_completion(content, asset_entries)
+                return self._retrieve_and_merge_asset_results(content, asset_entries)
+
+            self._log_message(f"Submitting asset OCR batch for {len(image_paths)} images.")
+            prompt = self.batch_ocr_tool._create_asset_prompt()
+            self.batch_ocr_tool.submit_batch_ocr(image_paths, self.task_id, prompt=prompt, page_numbers=page_numbers)
+            return self._wait_for_asset_batch_completion(content, asset_entries)
+
+        except Exception as e:
+            self._log_message(f"Asset OCR failed: {e}", "WARNING")
+            content = self._get_original_md_content()
+            if content:
+                asset_entries = self._extract_asset_image_refs(content)
+                if asset_entries:
+                    updated_content = self._merge_asset_ocr_results(content, asset_entries, {})
+                    self._save_ocr_results(updated_content)
+            return True
+
+    def _wait_for_asset_batch_completion(self, content: str, asset_entries: list) -> bool:
+        max_wait_time = 24 * 60 * 60
+        check_interval = 5 * 60
+        start_time = time.time()
+
+        if self.task_manager_instance:
+            self.task_manager_instance.notify_task_is_waiting(self.task_id)
+
+        while time.time() - start_time < max_wait_time:
+            batch_status = self.batch_ocr_tool.check_batch_status(self.task_id)
+            if "error" in batch_status:
+                self._log_message(f"Failed to check asset OCR batch status: {batch_status['error']}", "WARNING")
+                break
+
+            completed = batch_status.get("completed_batches", 0)
+            total = batch_status.get("total_batches", 0)
+            failed = batch_status.get("failed_batches", 0)
+            processing = batch_status.get("processing_batches", 0)
+
+            self._log_message(f"Asset batch status: {completed}/{total} complete, {failed} failed, {processing} in progress.")
+
+            if batch_status.get("all_completed", False):
+                return self._retrieve_and_merge_asset_results(content, asset_entries)
+
+            if total > 0:
+                progress = 30 + int((completed / total) * 10)
+                self._update_task_status("processing", "02_ocr_batch_waiting", progress)
+
+            self._log_message(f"Waiting for {check_interval//60} minutes before next check...")
+            time.sleep(check_interval)
+
+        self._log_message("Asset OCR batch timed out. Replacing with fallback text.", "WARNING")
+        updated_content = self._merge_asset_ocr_results(content, asset_entries, {})
+        self._save_ocr_results(updated_content)
+        return True
+
+    def _retrieve_and_merge_asset_results(self, content: str, asset_entries: list) -> bool:
+        try:
+            self._log_message("Retrieving asset OCR batch results...")
+            page_results = self.batch_ocr_tool.retrieve_batch_results(self.task_id, fallback_ocr_tool=None)
+            updated_content = self._merge_asset_ocr_results(content, asset_entries, page_results)
+            self._save_ocr_results(updated_content)
+            self.batch_ocr_tool.cleanup_batch_data(self.task_id)
+            self._log_message("Asset OCR merge complete.")
+            return True
+        except Exception as e:
+            self._log_message(f"Failed to retrieve asset OCR results: {e}", "WARNING")
+            updated_content = self._merge_asset_ocr_results(content, asset_entries, {})
+            self._save_ocr_results(updated_content)
+            return True
+
+    def _refine_ocr_with_reference(self) -> bool:
+        """使用外部Markdown对OCR结果进行校对补强。"""
+        try:
+            primary_md = self._get_original_md_content()
+            if not primary_md:
+                self._log_message("No OCR markdown found for refinement.", "WARNING")
+                return True
+
+            reference_path = Path(self.reference_md_path)
+            if not reference_path.exists():
+                self._log_message(f"Reference markdown not found: {reference_path}", "WARNING")
+                return True
+
+            reference_md = reference_path.read_text(encoding="utf-8")
+            if not reference_md.strip():
+                self._log_message("Reference markdown is empty. Skipping refinement.")
+                return True
+
+            if not self.analysis_tool:
+                self.analysis_tool = DocumentAnalyzer(
+                    self.config.analysis_questions,
+                    self.config.translate_terms,
+                )
+
+            refine_start = time.time()
+            self._log_message("Refine OCR markdown with reference started.")
+            refined_md = self.analysis_tool.refine_markdown_with_reference(primary_md, reference_md)
+            refine_cost = time.time() - refine_start
+            self._log_message(f"Refine OCR markdown completed in {refine_cost:.2f}s.")
+            if refined_md and refined_md.strip():
+                try:
+                    save_proof_bundle(self.university_name, primary_md, reference_md, refined_md)
+                    self._log_message("Saved proof bundle for OCR refinement.")
+                except Exception as save_error:
+                    self._log_message(f"Failed to save proof bundle: {save_error}", "WARNING")
+
+                combined_md_file = self.task_dir / "original.md"
+                combined_md_file.write_text(refined_md, encoding="utf-8")
+                if not hasattr(self, "step_data"):
+                    self.step_data = {}
+                self.step_data["original_md_path"] = str(combined_md_file)
+                self.step_data["original_md_content"] = refined_md
+                self._log_message("OCR markdown refined with reference markdown.")
+            else:
+                self._log_message("Refined markdown is empty, keeping original OCR result.", "WARNING")
+
+            return True
+        except Exception as e:
+            self._log_message(f"Refine OCR with reference failed: {e}", "WARNING")
+            return True
 
     def process_step_03_translate(self, work: Work) -> bool:
         """步骤3: 翻译"""
@@ -820,6 +1154,7 @@ def run_pdf_processor(
     university_name: str,
     pdf_file_path: str,
     original_md_path: str = None,
+    reference_md_path: str = None,
     restart_from_step: str = None,
     processing_mode: str = "normal",
     task_manager_instance=None,
@@ -832,6 +1167,7 @@ def run_pdf_processor(
         university_name: 大学名称
         pdf_file_path: PDF文件路径
         original_md_path: 外部OCR结果Markdown路径（可选）
+        reference_md_path: 参考Markdown路径（可选）
         restart_from_step: 从哪个步骤开始重启（可选）
         processing_mode: 处理模式 ("normal" | "batch")
         task_manager_instance: TaskManager的实例，用于回调
@@ -844,6 +1180,7 @@ def run_pdf_processor(
         university_name,
         pdf_file_path,
         original_md_path,
+        reference_md_path,
         restart_from_step,
         processing_mode,
         task_manager_instance,

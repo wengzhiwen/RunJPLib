@@ -7,6 +7,7 @@
 - **自动化处理流程**: 基于工作流引擎，将复杂的处理过程分解为多个独立的、可管理的步骤。
 - **异步任务处理**: 所有 PDF 处理都在后台异步执行，管理员可以提交多个任务而无需等待。
 - **多种处理模式**: 支持“普通模式”（实时处理）和“批量模式”（成本优化），以适应不同场景的需求。
+- **可选参考校对**: PDF 上传时可附带参考 Markdown（B），用于在 OCR 后对结果进行校对补强。
 - **智能名称识别**: 在处理过程中，利用 AI 自动识别并提取大学的简体中文全称。
 - **任务管理与监控**: 提供完整的后台界面，用于监控任务进度、查看日志，并支持从任意步骤重启失败的任务。
 
@@ -22,11 +23,12 @@
 
 2.  **OCR 识别 (`02_ocr`)**
     - **职责**: 将图片中的文字内容识别出来。
-    - **工具 (普通模式)**: `utils/ocr_tool.py` 中的 `OCRTool`。它会遍历所有图片，逐一调用 OpenAI Vision API 进行文字识别。
-    - **工具 (批量模式)**: `utils/batch_ocr_tool.py` 中的 `BatchOCRTool`。它会先将所有页面的识别请求打包，通过 OpenAI Batch API 一次性提交，以实现成本优化。
+    - **工具 (普通模式)**: `utils/ai/ocr_tool.py` 中的 `ImageOcrProcessor`。它会遍历所有图片，逐一调用 OpenAI Vision API 进行文字识别。
+    - **工具 (批量模式)**: `utils/ai/batch_ocr_tool.py` 中的 `BatchOcrProcessor`。它会先将所有页面的识别请求打包，通过 OpenAI Batch API 一次性提交，以实现成本优化。
+    - **可选校对补强**: 如果上传了参考 Markdown（B），则在 OCR 完成后使用 `OPENAI_ANALYSIS_MODEL` 对 A/B 进行校对补强，输出校对后的日文 Markdown（C）。
 
 3.  **翻译 Agent (`03_translate`)**
-    - **Agent**: `utils/translate_tool.py` 中的 `TranslateTool` 实际上是一个 **翻译 Agent**。
+    - **Agent**: `utils/ai/translate_tool.py` 中的 `DocumentTranslator` 实际上是一个 **翻译 Agent**。
     - **Prompt**: 它接收上一步 OCR 识别出的全部日文文本，并使用一个精心设计的 Prompt 来调用 OpenAI API。该 Prompt 指示 AI：
         - 将所有日文文本翻译成流畅、准确的简体中文。
         - 参考 `TRANSLATE_TERMS_FILE` 中提供的术语表，确保专业词汇（如“出願”、“併願”）翻译的准确性和一致性。
@@ -34,7 +36,7 @@
     - **输出**: Agent 的输出是完整的简体中文 Markdown 文本。
 
 4.  **分析 Agent (`04_analysis`)**
-    - **Agent**: `utils/analysis_tool.py` 中的 `AnalysisTool` 是一个 **分析 Agent**。
+    - **Agent**: `utils/ai/analysis_tool.py` 中的 `DocumentAnalyzer` 是一个 **分析 Agent**。
     - **Prompt**: 这是提取结构化信息的关键步骤。它向 OpenAI API 提交一个包含多个问题的复杂 Prompt，其核心指令是：
         - “你是一位日本大学招生专家，请根据以下翻译后的招生简章，回答下列问题...”
         - 问题列表从 `ANALYSIS_QUESTIONS_FILE` 文件中加载，涵盖申请条件、学费、日程、所需材料等。
@@ -47,6 +49,14 @@
         1.  **提取中文名**: 从分析 Agent 的报告中，通过正则表达式精确提取 `大学中文名称：` 后的大学名称。
         2.  **存储 PDF**: 将原始 PDF 文件上传到 GridFS。
         3.  **写入数据库**: 创建一个新的 `universities` 文档，将所有处理结果（OCR 文本、翻译文本、分析报告、大学中日文名、GridFS 文件 ID 等）一并存入数据库。
+
+## 校对追踪与 Proof 归档
+
+当发生“校对补强”时，系统会在项目根目录 `proof/` 下生成一个以 `时间戳_大学名称` 命名的文件夹，并保存：
+
+- `A_original.md`: OCR 原始结果（A）
+- `B_reference.md`: 上传的参考 Markdown（B）
+- `C_refined.md`: 校对后的结果（C）
 
 ## 任务管理与异步处理
 

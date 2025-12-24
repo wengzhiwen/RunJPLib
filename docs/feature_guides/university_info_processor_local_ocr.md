@@ -2,6 +2,8 @@
 
 本设计文档描述如何将 PDF 的 OCR 环节迁移到本地项目 `/home/wengzhiwen/dev/pdf-craft`，并在 RunJPLib 中新增“OCR 结果导入”流程，使后续翻译与分析仍基于线上 LLM 提供商完成。
 
+> 更新说明：当前后台已移除 ZIP 导入入口，改为在 PDF 上传时可选附带参考 Markdown（B）以进行 OCR 后校对补强。若需恢复 ZIP 导入，请重新启用相关前后端入口。
+
 ## 目标与范围
 
 ### 目标
