@@ -69,6 +69,14 @@ parse_mongodb_uri() {
     MONGO_HOST="${host_port%%:*}"
     MONGO_PORT="${host_port##*:}"
     [ "$MONGO_PORT" = "$MONGO_HOST" ] && MONGO_PORT="27017"
+
+    # URL 解码用户名和密码（处理 %23 %24 等编码字符）
+    if [ -n "$MONGO_USER" ]; then
+        MONGO_USER=$(python3 -c "import urllib.parse, sys; print(urllib.parse.unquote(sys.argv[1]))" "$MONGO_USER")
+    fi
+    if [ -n "$MONGO_PASS" ]; then
+        MONGO_PASS=$(python3 -c "import urllib.parse, sys; print(urllib.parse.unquote(sys.argv[1]))" "$MONGO_PASS")
+    fi
 }
 
 parse_mongodb_uri
@@ -90,12 +98,9 @@ mkdir -p "$BACKUP_DIR"
 
 BACKUP_PATH="$BACKUP_DIR/${TIMESTAMP}_${DB_NAME}"
 
-# 构建 mongodump 命令参数
-DUMP_ARGS=("--host" "$MONGO_HOST" "--port" "$MONGO_PORT" "--db" "$DB_NAME" "--out" "$BACKUP_PATH")
-
-if [ -n "$MONGO_USER" ] && [ -n "$MONGO_PASS" ]; then
-    DUMP_ARGS+=("--username" "$MONGO_USER" "--password" "$MONGO_PASS" "--authenticationDatabase" "admin")
-fi
+# 构建 mongodump 命令参数（直接使用原始 URI 避免特殊字符问题）
+ORIGINAL_URI="${MONGODB_URI:-mongodb://localhost:27017/RunJPLib}"
+DUMP_ARGS=("--uri" "$ORIGINAL_URI" "--db" "$DB_NAME" "--out" "$BACKUP_PATH")
 
 # 执行备份
 echo -e "${GREEN}[INFO]${NC} 开始备份..."
