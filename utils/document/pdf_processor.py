@@ -26,7 +26,6 @@ from ..ai.ocr_tool import ImageOcrProcessor
 from ..ai.translate_tool import DocumentTranslator
 from ..core.config import Config
 from ..core.database import get_db
-from ..core.database import get_mongo_client
 from ..core.logging import setup_task_logger
 from ..core.proof import save_proof_bundle
 
@@ -174,12 +173,10 @@ class PDFProcessor:
     ):
         """更新任务状态到数据库"""
         try:
-            client = get_mongo_client()
-            if client is None:
+            db = get_db()
+            if db is None:
                 task_logger.error(f"[{self.task_id}] Cannot connect to DB to update status.")
                 return
-
-            db = client.RunJPLib
             update_data = {
                 "status": status,
                 "current_step": current_step,
@@ -216,9 +213,8 @@ class PDFProcessor:
 
         # 写入任务日志
         try:
-            client = get_mongo_client()
-            if client is not None:
-                db = client.RunJPLib
+            db = get_db()
+            if db is not None:
                 db.processing_tasks.update_one({"_id": ObjectId(self.task_id)}, {"$push": {"logs": log_entry}})
         except Exception as e:
             task_logger.error(f"[{self.task_id}] Failed to write log to DB: {e}")

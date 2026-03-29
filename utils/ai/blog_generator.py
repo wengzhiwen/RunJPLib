@@ -15,7 +15,7 @@ from bson.objectid import ObjectId
 from dotenv import load_dotenv
 import nest_asyncio
 
-from ..core.database import get_mongo_client
+from ..core.database import get_db
 from ..core.logging import setup_logger
 
 # 应用补丁以允许嵌套的asyncio事件循环
@@ -297,10 +297,9 @@ class ContentGenerator:
             return ""
 
     def _get_university_materials(self, university_ids: List[str]) -> List[Dict]:
-        client = get_mongo_client()
-        if not client:
+        db = get_db()
+        if not db:
             raise ConnectionError("Could not connect to MongoDB.")
-        db = client.RunJPLib
 
         materials = []
         for uid_str in university_ids:

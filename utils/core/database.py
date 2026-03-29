@@ -70,10 +70,17 @@ def get_mongo_client():
 
 def get_db():
     """
-    返回RunJPLib数据库实例
+    返回数据库实例（从 MONGODB_URI 中读取数据库名）
     """
     client = get_mongo_client()
-    return client.get_database("RunJPLib") if client else None
+    if not client:
+        return None
+    mongo_uri = os.getenv("MONGODB_URI", "")
+    # 从 URI 路径中提取数据库名，格式: mongodb://host:port/dbname
+    db_name = mongo_uri.rstrip("/").split("/")[-1].split("?")[0] if "/" in mongo_uri[len("mongodb://"):] else "RunJPLib"
+    if not db_name:
+        db_name = "RunJPLib"
+    return client.get_database(db_name)
 
 
 def close_mongo_client():

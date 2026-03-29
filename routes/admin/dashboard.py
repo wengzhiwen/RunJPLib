@@ -10,7 +10,6 @@ from flask import Response
 
 from routes.admin.auth import admin_required
 from utils.core.database import get_db
-from utils.core.database import get_mongo_client
 from utils.system.thread_pool import thread_pool_manager
 
 from ..blueprints import admin_bp
@@ -67,9 +66,8 @@ def dashboard():
     if "error" in stats:
         return render_template("dashboard.html", error=stats["error"])
 
-    client = get_mongo_client()
     expired_premium_universities = []
-    if client is not None:
+    if get_db() is not None:
 
         try:
             today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -106,7 +104,7 @@ def dashboard():
                     }
                 },
             ]
-            expired_premium_universities = list(client.RunJPLib.universities.aggregate(pipeline))
+            expired_premium_universities = list(get_db().universities.aggregate(pipeline))
         except Exception as e:
             logging.error(f"查询过期Premium学校时出错: {e}", exc_info=True)
 
