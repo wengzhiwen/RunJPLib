@@ -5,24 +5,23 @@ PDF处理器 - 大学招生信息处理器的核心类
 
 from datetime import datetime
 from datetime import time as datetime_time
-from pathlib import Path
 import json
+from pathlib import Path
 import re
 import shutil
 import time
-import uuid
 from typing import Optional
+import uuid
 
 from bson.objectid import ObjectId
 from buffalo import Buffalo
 from buffalo import Project
 from buffalo import Work
 from gridfs import GridFS
-from pdf2image import convert_from_path
 
 from ..ai.analysis_tool import DocumentAnalyzer
 from ..ai.batch_ocr_tool import BatchOcrProcessor
-from ..ai.ocr_tool import ImageOcrProcessor
+from ..ai.ocr_tool import PdfOcrProcessor
 from ..ai.translate_tool import DocumentTranslator
 from ..core.config import Config
 from ..core.database import get_db
@@ -248,43 +247,10 @@ class PDFProcessor:
             self._log_message(f"Loaded {len(self.previous_results)} previous results for restart.")
 
     def process_step_01_pdf2img(self, work: Work) -> bool:
-        """步骤1: PDF转图片"""
-        try:
-            self._log_message("Starting PDF to image conversion...")
-            self._update_task_status("processing", "01_pdf2img", 10)
-
-            pdf_path = Path(self.pdf_file_path)
-            if not pdf_path.exists():
-                raise FileNotFoundError(f"PDF file not found: {pdf_path}")
-
-            # 创建图片输出目录
-            images_dir = self.task_dir / "images"
-            images_dir.mkdir(exist_ok=True)
-
-            # 转换PDF为图片
-            self._log_message(f"Converting PDF file: {pdf_path}")
-            images = convert_from_path(str(pdf_path), dpi=self.config.ocr_dpi)
-
-            image_paths = []
-            for i, image in enumerate(images, 1):
-                image_path = images_dir / f"page_{i:03d}.png"
-                image.save(str(image_path), "PNG")
-                image_paths.append(str(image_path))
-                self._log_message(f"Saved page {i}: {image_path.name}")
-
-            # 保存图片路径列表到实例数据
-            if not hasattr(self, "step_data"):
-                self.step_data = {}
-            self.step_data["image_paths"] = image_paths
-            self.step_data["total_pages"] = len(image_paths)
-
-            self._log_message(f"PDF to image conversion complete. Total pages: {len(image_paths)}")
-            return True
-
-        except Exception as e:
-            error_msg = f"PDF to image conversion failed: {str(e)}"
-            self._log_message(error_msg, "ERROR")
-            return False
+        """步骤1: 已跳过（新流程直接将 PDF 输入模型，无需预先转换为图片）"""
+        self._log_message("Step 01 (PDF→images) skipped: PDF is now sent directly to the model.")
+        self._update_task_status("processing", "01_pdf2img", 10)
+        return True
 
     def process_step_02_ocr(self, work: Work) -> bool:
         """步骤2: OCR识别"""
@@ -305,54 +271,26 @@ class PDFProcessor:
         return True
 
     def _process_normal_ocr(self) -> bool:
-        """普通OCR处理模式"""
+        """普通OCR处理模式：将 PDF 直接发送给模型进行文档级识别"""
         try:
-            self._log_message("Starting OCR (normal mode)...")
+            self._log_message("Starting OCR (normal mode, PDF direct input)...")
             self._update_task_status("processing", "02_ocr", 30)
 
-            # 初始化OCR工具
             if not self.ocr_tool:
-                self.ocr_tool = ImageOcrProcessor()
+                self.ocr_tool = PdfOcrProcessor()
 
-            # 获取图片路径
-            image_paths = self._get_image_paths()
-            if not image_paths:
-                raise ValueError("No image files found for OCR")
+            pdf_path = self.pdf_file_path
+            if not Path(pdf_path).exists():
+                raise FileNotFoundError(f"PDF file not found: {pdf_path}")
 
-            # 创建OCR输出目录
-            ocr_dir = self.task_dir / "ocr"
-            ocr_dir.mkdir(exist_ok=True)
+            self._log_message(f"Sending PDF to model for OCR: {Path(pdf_path).name}")
+            md_content = self.ocr_tool.pdf2md(pdf_path)
 
-            markdown_contents = []
-            for i, image_path in enumerate(image_paths, 1):
-                self._log_message(f"OCR processing page {i}/{len(image_paths)}...")
+            if not md_content or not md_content.strip():
+                raise ValueError("OCR returned empty result")
 
-                try:
-                    md_content = self.ocr_tool.img2md(image_path)
-                    if md_content and md_content.strip() != "EMPTY_PAGE":
-                        markdown_contents.append(md_content)
-
-                        # 保存单页OCR结果
-                        page_md_file = ocr_dir / f"page_{i:03d}.md"
-                        with open(page_md_file, "w", encoding="utf-8") as f:
-                            f.write(md_content)
-
-                        self._log_message(f"Page {i} OCR completed.")
-                    else:
-                        self._log_message(f"Page {i} is blank, skipping.")
-
-                except Exception as e:
-                    self._log_message(f"Page {i} OCR failed: {str(e)}", "WARNING")
-                    continue
-
-            if not markdown_contents:
-                raise ValueError("All pages failed OCR processing")
-
-            # 合并所有OCR结果
-            combined_markdown = "\n\n".join(markdown_contents)
-            self._save_ocr_results(combined_markdown)
-
-            self._log_message(f"OCR (normal mode) complete. Processed {len(markdown_contents)} non-blank pages.")
+            self._save_ocr_results(md_content)
+            self._log_message("OCR (normal mode) complete.")
             return True
 
         except Exception as e:
@@ -361,64 +299,41 @@ class PDFProcessor:
             return False
 
     def _process_batch_ocr(self) -> bool:
-        """批量OCR处理模式"""
+        """批量OCR处理模式：通过 Batch API 将 PDF 直接发送给模型"""
         try:
-            self._log_message("Starting OCR (batch mode)...")
+            self._log_message("Starting OCR (batch mode, PDF direct input)...")
             self._update_task_status("processing", "02_ocr", 30)
 
-            # 初始化批量OCR工具
             if not self.batch_ocr_tool:
                 self.batch_ocr_tool = BatchOcrProcessor()
-            if not self.ocr_tool:
-                self.ocr_tool = ImageOcrProcessor()
 
-            # 获取图片路径
-            image_paths = self._get_image_paths()
-            if not image_paths:
-                raise ValueError("No image files found for batch OCR")
-
-            # 保存图片路径列表到实例数据（确保数据一致性）
-            if not hasattr(self, "step_data"):
-                self.step_data = {}
-            self.step_data["image_paths"] = image_paths
-            self.step_data["total_pages"] = len(image_paths)
+            pdf_path = self.pdf_file_path
+            if not Path(pdf_path).exists():
+                raise FileNotFoundError(f"PDF file not found: {pdf_path}")
 
             # 检查是否已有批次在处理中
             batch_status = self.batch_ocr_tool.check_batch_status(self.task_id)
 
             if "error" not in batch_status and batch_status.get("total_batches", 0) > 0:
-                # 已有批次，检查状态
                 self._log_message(f"Found existing batch submission. Total batches: {batch_status['total_batches']}")
                 if not batch_status.get("all_completed", False):
-                    # 还没完成，继续等待
                     self._log_message("Batch not yet complete, entering wait loop...")
                     self._update_task_status("processing", "02_ocr_batch_waiting", 35)
                     return self._wait_for_batch_completion()
                 else:
-                    # 已完成，获取结果
                     self._log_message("Batch already complete, retrieving results...")
                     return self._retrieve_and_save_batch_results()
             else:
-                # 没有批次，提交新的批次
-                self._log_message(f"Submitting new batch OCR job for {len(image_paths)} pages.")
-                try:
-                    batch_ids = self.batch_ocr_tool.submit_batch_ocr(image_paths, self.task_id)
-                    self._log_message(f"Submitted {len(batch_ids)} batches: {batch_ids}")
-                    self._update_task_status("processing", "02_ocr_batch_submitted", 32)
-
-                    # 开始等待完成
-                    return self._wait_for_batch_completion()
-
-                except Exception as e:
-                    self._log_message(f"Batch OCR submission failed, falling back to normal mode: {e}", "WARNING")
-                    return self._process_normal_ocr()
+                self._log_message(f"Submitting new batch OCR job for PDF: {Path(pdf_path).name}")
+                batch_ids = self.batch_ocr_tool.submit_batch_ocr_pdf(pdf_path, self.task_id)
+                self._log_message(f"Submitted {len(batch_ids)} batches: {batch_ids}")
+                self._update_task_status("processing", "02_ocr_batch_submitted", 32)
+                return self._wait_for_batch_completion()
 
         except Exception as e:
             error_msg = f"Batch OCR processing failed: {str(e)}"
             self._log_message(error_msg, "ERROR")
-            # 回退到普通模式
-            self._log_message("Falling back to normal OCR mode.", "WARNING")
-            return self._process_normal_ocr()
+            return False
 
     def _wait_for_batch_completion(self) -> bool:
         """等待批次完成"""
@@ -448,6 +363,10 @@ class PDFProcessor:
                 self._log_message("All batches completed!")
                 return self._retrieve_and_save_batch_results()
 
+            if failed > 0 and processing == 0:
+                self._log_message(f"{failed} batch(es) failed with no remaining in-progress batches.", "ERROR")
+                return False
+
             # 更新进度
             if total > 0:
                 progress = 30 + int((completed / total) * 10)  # 30-40%的进度
@@ -458,65 +377,34 @@ class PDFProcessor:
             time.sleep(check_interval)
 
         # 超时
-        self._log_message("Batch processing timed out, falling back to normal mode.", "WARNING")
-        return self._process_normal_ocr()
+        self._log_message("Batch processing timed out.", "ERROR")
+        return False
 
     def _retrieve_and_save_batch_results(self) -> bool:
         """获取并保存批次结果"""
         try:
             self._log_message("Retrieving batch OCR results...")
-            page_results = self.batch_ocr_tool.retrieve_batch_results(self.task_id, self.ocr_tool)
+            page_results = self.batch_ocr_tool.retrieve_batch_results(self.task_id)
 
             if not page_results:
                 raise ValueError("Batch processing returned no results")
 
-            # 创建OCR输出目录
-            ocr_dir = self.task_dir / "ocr"
-            ocr_dir.mkdir(exist_ok=True)
-
-            # 保存单页结果并收集有效内容
-            markdown_contents = []
-            for page_key in sorted(page_results.keys()):
-                md_content = page_results[page_key]
-                if md_content and md_content.strip() != "EMPTY_PAGE":
-                    markdown_contents.append(md_content)
-
-                    # 保存单页OCR结果
-                    page_md_file = ocr_dir / f"page_{page_key}.md"
-                    with open(page_md_file, "w", encoding="utf-8") as f:
-                        f.write(md_content)
+            markdown_contents = [page_results[k] for k in sorted(page_results.keys()) if page_results[k] and page_results[k].strip() != "EMPTY_PAGE"]
 
             if not markdown_contents:
-                raise ValueError("All pages failed batch OCR processing")
+                raise ValueError("Batch OCR returned empty content")
 
-            # 合并所有OCR结果
             combined_markdown = "\n\n".join(markdown_contents)
             self._save_ocr_results(combined_markdown)
-
-            # 清理批次数据
             self.batch_ocr_tool.cleanup_batch_data(self.task_id)
 
-            self._log_message(f"Batch OCR complete. Processed {len(markdown_contents)} non-blank pages.")
+            self._log_message("Batch OCR complete.")
             return True
 
         except Exception as e:
             error_msg = f"Failed to retrieve batch results: {str(e)}"
             self._log_message(error_msg, "ERROR")
             return False
-
-    def _get_image_paths(self) -> list:
-        """获取图片路径列表"""
-        if hasattr(self, "step_data") and "image_paths" in self.step_data:
-            return self.step_data["image_paths"]
-        elif (hasattr(self, "previous_results") and "image_paths" in self.previous_results):
-            return self.previous_results["image_paths"]
-        else:
-            # 尝试从文件系统加载
-            images_dir = self.task_dir / "images"
-            if images_dir.exists():
-                return sorted([str(p) for p in images_dir.glob("page_*.png")])
-            else:
-                return []
 
     def _save_ocr_results(self, combined_markdown: str):
         """保存OCR结果"""
@@ -622,8 +510,6 @@ class PDFProcessor:
 
             if not self.batch_ocr_tool:
                 self.batch_ocr_tool = BatchOcrProcessor()
-            if not self.ocr_tool:
-                self.ocr_tool = ImageOcrProcessor()
 
             content = self._get_original_md_content()
             if not content:
@@ -674,7 +560,7 @@ class PDFProcessor:
 
             self._log_message(f"Submitting asset OCR batch for {len(image_paths)} images.")
             prompt = self.batch_ocr_tool._create_asset_prompt()
-            self.batch_ocr_tool.submit_batch_ocr(image_paths, self.task_id, prompt=prompt, page_numbers=page_numbers)
+            self.batch_ocr_tool.submit_batch_ocr_images(image_paths, self.task_id, prompt=prompt, page_numbers=page_numbers)
             return self._wait_for_asset_batch_completion(content, asset_entries)
 
         except Exception as e:
@@ -726,7 +612,7 @@ class PDFProcessor:
     def _retrieve_and_merge_asset_results(self, content: str, asset_entries: list) -> bool:
         try:
             self._log_message("Retrieving asset OCR batch results...")
-            page_results = self.batch_ocr_tool.retrieve_batch_results(self.task_id, fallback_ocr_tool=None)
+            page_results = self.batch_ocr_tool.retrieve_batch_results(self.task_id)
             updated_content = self._merge_asset_ocr_results(content, asset_entries, page_results)
             self._save_ocr_results(updated_content)
             self.batch_ocr_tool.cleanup_batch_data(self.task_id)

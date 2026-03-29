@@ -1,159 +1,202 @@
+"""
+OCR处理器 - 基于 Responses API 的文档识别工具
+
+PdfOcrProcessor: 将 PDF 直接发送给模型，进行文档级识别（主流程）
+ImageOcrProcessor: 将图像发送给模型，用于 asset 图片识别（辅助流程）
+"""
 import base64
+import json
 import os
 import time
 
-from agents import Agent
-from agents import Runner
-from agents import TResponseInputItem
+from openai import OpenAI
 
 from ..core.logging import setup_logger
 
-logger = setup_logger(logger_name="ImageOcrProcessor", log_level="INFO")
+logger = setup_logger(logger_name="OcrProcessor", log_level="INFO")
+
+_OCR_JSON_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "full_markdown": {
+            "type": "string",
+            "description": "完整的文档Markdown内容。若文档无有效内容，返回字符串 EMPTY_PAGE。",
+        },
+        "document_type": {
+            "type": "string",
+            "description": "文档类型，如「募集要项」「出願要件」「大学案内」等。",
+        },
+    },
+    "required": ["full_markdown", "document_type"],
+    "additionalProperties": False,
+}
+
+_PDF_OCR_PROMPT = """你是一个专业的OCR文本识别与Markdown格式化专家。
+请对上传的PDF文档进行整体识别和提取，直接输出结构化结果。
+
+识别要求：
+1. 提取文档中所有文本内容，包括正文、标题、表格
+2. 保持原始日语文本，不要翻译
+3. 忽略所有纯图形内容（logo、地图、水印等）
+4. 忽略页眉和页脚，但保留原文中标注的页码
+5. 针对表格，使用Markdown表格语法精确提取，严格保证列数（包括空单元格首行也要算作一列）
+
+Markdown格式化要求：
+1. 输出标准Markdown，表格/列表/标题前后保留空行
+2. 目录中的点状导引（..........）最多使用6个点（......）
+3. URL保持纯文本形式，不使用Markdown链接格式
+4. 不要添加任何```markdown```之类的定界符
+5. 若整份文档无有效内容，full_markdown字段返回字符串 EMPTY_PAGE
+
+请将完整的文档Markdown写入full_markdown字段，将文档类型写入document_type字段。"""
+
+_IMAGE_OCR_PROMPT = """你是一个专业的OCR文本识别与Markdown格式化专家。
+请仔细识别图像中的所有文本内容，直接输出为标准Markdown格式。
+
+要求：
+1. 仅提取图像中的实际文本，不要添加任何解释或说明
+2. 保持原始日语文本，不要翻译
+3. 表格使用Markdown表格语法精确提取，注意列数（包括空单元格）
+4. 忽略纯图形内容（logo、地图、水印等）
+5. 忽略页眉页脚，但保留原文中标注的页码
+6. 如果图像没有有效文字内容，返回：EMPTY_PAGE
+7. 不要添加任何```markdown```之类的定界符，直接输出Markdown文本"""
+
+
+class PdfOcrProcessor:
+    """
+    PDF直接输入OCR处理器。
+
+    将 PDF 文件上传至 Files API，通过 Responses API 直接发送给模型进行文档级识别，
+    使用 Structured Outputs 返回结构化 JSON，提取 full_markdown 字段作为结果。
+    """
+
+    def __init__(self):
+        if not os.getenv("OPENAI_API_KEY"):
+            raise ValueError("OPENAI_API_KEY 环境变量未设置")
+        self.model_name = os.getenv("OPENAI_OCR_MODEL", "gpt-5.4-mini")
+        self.client = OpenAI()
+
+    def pdf2md(self, pdf_path: str) -> str:
+        """
+        将 PDF 直接发送给模型进行文档级 OCR 识别，返回 Markdown 字符串。
+
+        参数:
+            pdf_path: PDF 文件路径
+
+        返回:
+            str: 识别后的 Markdown 文本；空文档返回空字符串
+        """
+        start_time = time.time()
+        uploaded_file = None
+
+        try:
+            logger.info(f"上传 PDF 至 Files API: {pdf_path}")
+            with open(pdf_path, "rb") as f:
+                uploaded_file = self.client.files.create(file=f, purpose="user_data")
+            logger.info(f"PDF 已上传，file_id: {uploaded_file.id}")
+
+            response = self.client.responses.create(
+                model=self.model_name,
+                input=[{
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_file",
+                            "file_id": uploaded_file.id,
+                        },
+                        {
+                            "type": "input_text",
+                            "text": _PDF_OCR_PROMPT,
+                        },
+                    ],
+                }],
+                text={"format": {
+                    "type": "json_schema",
+                    "name": "ocr_result",
+                    "schema": _OCR_JSON_SCHEMA,
+                    "strict": True,
+                }},
+            )
+
+            result = json.loads(response.output_text)
+            full_markdown = result.get("full_markdown", "")
+            document_type = result.get("document_type", "")
+
+            elapsed = time.time() - start_time
+            logger.info(f"PDF OCR 完成，文档类型: {document_type}，耗时: {elapsed:.2f}秒")
+
+            if full_markdown.strip() == "EMPTY_PAGE":
+                return ""
+            return full_markdown
+
+        except Exception as e:
+            logger.error(f"PDF OCR 失败: {e}")
+            raise
+
+        finally:
+            if uploaded_file:
+                try:
+                    self.client.files.delete(uploaded_file.id)
+                    logger.info(f"已删除临时文件: {uploaded_file.id}")
+                except Exception:
+                    pass
 
 
 class ImageOcrProcessor:
-    """图像OCR处理器类，用于处理图像OCR识别"""
+    """
+    图像 OCR 处理器（用于 asset 图片识别）。
+
+    将图像通过 Responses API 发送给模型，单次调用完成 OCR + Markdown 格式化。
+    """
 
     def __init__(self):
-        """
-        初始化OCR工具类
-        
-        OCR工具需要在环境变量中设置OPENAI_API_KEY，请确认.env文件中已经设置。
-        """
         if not os.getenv("OPENAI_API_KEY"):
             raise ValueError("OPENAI_API_KEY 环境变量未设置")
+        self.model_name = os.getenv("OPENAI_OCR_MODEL", "gpt-5.4-mini")
+        self.client = OpenAI()
 
-        # 从环境变量读取模型名称
-        self.model_name = os.getenv("OPENAI_OCR_MODEL", "gpt-4o-mini")
-
-    def _perform_ocr(self, image_path):
-        """使用OpenAI Vision模型进行OCR"""
-        logger.info(f"使用OpenAI Vision对{image_path}进行OCR...")
-
-        try:
-            ocr_agent = Agent(name="OCR Agent",
-                              instructions="""你是一个专业的OCR文本识别专家。
-请仔细观察图像中的文本内容，并尽可能准确地提取所有文本和表格。
-输出应该保持原始文本的格式和结构，包括格式（加粗、斜体、下划线、表格）、段落和标题。
-针对表格的提取，可以采用markdown的语法来表示，特别注意表格的列数（有些表格首行有空单元格，也要算作一列）
-
-请注意：
-1. 仅提取图像中的实际文本，不要添加任何解释或说明
-2. 保持原始日语文本，不要翻译
-3. 尽可能保持原始格式结构，特别是表格，要准确的提取表格中的所有文字
-4. 忽略所有的纯图形内容（比如：logo，地图等，包括页面上的水印）
-5. 忽略所有的页眉和页脚，但保留原文中每页的页码（如果原文中有），严格按照原文中标注的页码来提取（不论原文是否有错）
-6. 如果遇到空白页或整页都是没有意义的内容，请返回：EMPTY_PAGE
-""",
-                              model=self.model_name)
-
-            with open(image_path, 'rb') as f:
-                image_data = f.read()
-            base64_image = base64.b64encode(image_data).decode('utf-8')
-
-            input_items: list[TResponseInputItem] = [{
-                "role":
-                "user",
-                "content": [{
-                    "type": "input_text",
-                    "text": "请识别这个图像中的所有文字内容，保持原始格式。"
-                }, {
-                    "type": "input_image",
-                    "image_url": f"data:image/png;base64,{base64_image}"
-                }]
-            }]
-
-            result = Runner.run_sync(ocr_agent, input_items)
-
-            if not result.final_output.strip():
-                raise ValueError("OpenAI Vision未能提取任何文本")
-
-            return result.final_output
-        except Exception as e:
-            logger.error(f"OpenAI Vision OCR错误: {e}")
-            return None  # 返回None而不是空字符串，表示OCR失败
-
-    def _format_to_markdown(self, text_content, image_path):
-        """使用OpenAI格式化OCR文本为markdown"""
-        logger.info("格式化OCR文本为markdown...")
-
-        # 创建格式化代理
-        format_agent = Agent(name="Markdown Formatter",
-                             instructions="""你是一个专业的文本格式化专家。
-请将OCR出来的文本重新组织成Markdown格式。
-输出应该保持原始文本的格式和结构，包括格式（加粗、斜体、下划线、表格）、段落和标题。
-
-请注意：
-1. 保持除非OCR结果有明显的识别错误，否则不要修改OCR结果，更不要添加任何解释或说明，也不要进行归纳总结
-2. 保持原始日语文本，不要翻译
-3. 尽可能保持原始格式结构，特别是表格，要准确的提取不同的
-4. OCR时已经要求忽略页眉、页脚，仅保留原文中的页码，请保持
-如有原文有页码的话，按原文保留
-5. OCR时已经要求忽略所有的纯图形内容（比如：logo，地图等，包括页面上的水印），请保持；特别注意不要以Base64的编码来处理任何纯图形内容
-6. 如果文本中包含大量无意义的信息，请删除他们
-7. 对于像目录这样的内容，可能会包含大量的「..........」或事「-------------」这样的符号，如果只是为了表达页码的话请将其长度现在6个点也就是「......」
-8. 如果有URL信息，请保持完整的URL信息，但不要用Markdown的链接格式来处理URL，保留纯文本状态即可
-9. 如果遇到空白页或整页都是没有意义的内容，请返回：EMPTY_PAGE
-10. 结果会被直接保存为md文件，所以请不要添加任何```markdown```之类的定界符
-
-关于Markdown的语法格式，特别注意以下要求：
-1. 表格前后的空行要保留
-2. 列表前后的空行要保留
-3. 标题前后的空行要保留
-4. 表格的排版（特别是合并单元格）要与原文（图片）完全一致
-5. 根据Markdown的语法，需要添加空格的地方，请务必添加空格；但不要在表格的单元格内填充大量的空格，需要的话填充一个空格即可
-总之，要严格的践行Markdown的语法要求，不要只是看上去像，其实有不少语法错误
-""",
-                             model=self.model_name)
-
-        with open(image_path, 'rb') as f:
-            image_data = f.read()
-        base64_image = base64.b64encode(image_data).decode('utf-8')
-
-        input_items = [{
-            "role":
-            "user",
-            "content": [{
-                "type": "input_text",
-                "text": f"请将以下OCR文本重新组织成Markdown格式：\n\n{text_content} \n\n-----------\n\n务必尊从系统提示词中的要求来进行格式化。"
-            }, {
-                "type": "input_image",
-                "image_url": f"data:image/png;base64,{base64_image}"
-            }]
-        }]
-
-        result = Runner.run_sync(format_agent, input_items)
-
-        result.final_output = result.final_output.replace("``` Markdown", "")
-        result.final_output = result.final_output.replace("``` markdown", "")
-        result.final_output = result.final_output.replace("```Markdown", "")
-        result.final_output = result.final_output.replace("```markdown", "")
-        result.final_output = result.final_output.replace("```", "")
-        return result.final_output
-
-    def img2md(self, image_path) -> str:
+    def img2md(self, image_path: str) -> str:
         """
-        将图像转换为markdown
-        
-        注意，所有的原始错误将被直接传给调用者，不会进行任何的捕获。
-        
+        将图像识别为 Markdown 文本。
+
         参数:
-            image_path (str): 图像路径
+            image_path: 图像文件路径
 
         返回:
-            str: 转换后的markdown文本
+            str: 识别后的 Markdown 文本
         """
         start_time = time.time()
+        logger.info(f"对图像进行 OCR 识别: {image_path}")
 
-        ocr_start = time.time()
-        text_content = self._perform_ocr(image_path)
-        ocr_time = time.time() - ocr_start
+        with open(image_path, "rb") as f:
+            image_data = base64.b64encode(f.read()).decode("utf-8")
 
-        format_start = time.time()
-        result = self._format_to_markdown(text_content, image_path)
-        format_time = time.time() - format_start
+        response = self.client.responses.create(
+            model=self.model_name,
+            input=[{
+                "role":
+                "user",
+                "content": [
+                    {
+                        "type": "input_image",
+                        "detail": "high",
+                        "image_url": f"data:image/png;base64,{image_data}",
+                    },
+                    {
+                        "type": "input_text",
+                        "text": _IMAGE_OCR_PROMPT,
+                    },
+                ],
+            }],
+        )
 
-        total_time = time.time() - start_time
-        logger.info(f"OCR步骤耗时: {ocr_time:.2f}秒，格式化步骤耗时: {format_time:.2f}秒，总耗时: {total_time:.2f}秒")
+        result = response.output_text.strip()
+        # 清理可能残留的 markdown 定界符
+        for marker in ("```markdown", "```Markdown", "```"):
+            result = result.replace(marker, "")
+        result = result.strip()
 
+        elapsed = time.time() - start_time
+        logger.info(f"图像 OCR 完成，耗时: {elapsed:.2f}秒")
         return result
