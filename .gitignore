@@ -181,6 +181,7 @@ log/*
 temp/*
 data/db/*
 proof/
+backup/
 
 # Database and cache directories (keep directory structure, ignore contents)
 chroma_db/*
