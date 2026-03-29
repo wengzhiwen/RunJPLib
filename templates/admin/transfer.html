@@ -1,0 +1,386 @@
+{% extends "admin/layout.html" %}
+
+{% block title %}数据传输{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <h2>数据传输</h2>
+    <p>将本服务器处理完成的大学招生信息传输到生产服务器，或管理接收到的冲突数据。</p>
+
+    <!-- 配置状态卡片 -->
+    <div class="card mb-4">
+        <div class="card-header"><h5 class="mb-0">传输配置</h5></div>
+        <div class="card-body" id="config-status">
+            <div class="spinner-border spinner-border-sm" role="status"></div> 加载中...
+        </div>
+    </div>
+
+    <!-- 发送区域 -->
+    <div class="card mb-4" id="send-section">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">发送数据</h5>
+            <div>
+                <ul class="nav nav-pills" id="send-tabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="tab-tasks" data-bs-toggle="pill"
+                                data-bs-target="#panel-tasks" type="button" role="tab">按已完成任务</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tab-universities" data-bs-toggle="pill"
+                                data-bs-target="#panel-universities" type="button" role="tab">按大学列表</button>
+                    </li>
+                </ul>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="tab-content">
+                <!-- 按任务选择 -->
+                <div class="tab-pane fade show active" id="panel-tasks" role="tabpanel">
+                    <div class="mb-2">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="toggleSelectAll('tasks')">全选/取消</button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="loadSendableTasks()">刷新</button>
+                    </div>
+                    <div id="tasks-list">
+                        <div class="text-center text-muted py-3">
+                            <div class="spinner-border spinner-border-sm" role="status"></div> 加载中...
+                        </div>
+                    </div>
+                </div>
+                <!-- 按大学选择 -->
+                <div class="tab-pane fade" id="panel-universities" role="tabpanel">
+                    <div class="mb-2">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="toggleSelectAll('universities')">全选/取消</button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="loadSendableUniversities()">刷新</button>
+                    </div>
+                    <div id="universities-list">
+                        <div class="text-center text-muted py-3">
+                            <div class="spinner-border spinner-border-sm" role="status"></div> 加载中...
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <hr>
+            <button class="btn btn-primary" id="sendBtn" onclick="sendSelected()" disabled>
+                <span class="spinner-border spinner-border-sm d-none" id="sendSpinner" role="status"></span>
+                传输到生产服务器
+            </button>
+            <span class="ms-2 text-muted" id="sendStatus"></span>
+        </div>
+    </div>
+
+    <!-- 传输结果 -->
+    <div class="card mb-4 d-none" id="result-section">
+        <div class="card-header"><h5 class="mb-0">传输结果</h5></div>
+        <div class="card-body" id="result-body"></div>
+    </div>
+
+    <!-- 冲突管理区域 -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">冲突管理</h5>
+            <button class="btn btn-sm btn-outline-primary" onclick="loadConflicts()">刷新</button>
+        </div>
+        <div class="card-body" id="conflicts-body">
+            <div class="text-center text-muted py-3">
+                <div class="spinner-border spinner-border-sm" role="status"></div> 加载中...
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadConfig();
+    loadSendableTasks();
+    loadConflicts();
+});
+
+// ============================================================
+// 配置状态
+// ============================================================
+function loadConfig() {
+    fetch('/admin/api/transfer/config')
+        .then(r => r.json())
+        .then(data => {
+            const el = document.getElementById('config-status');
+            const items = [
+                `<span class="${data.has_target_url ? 'text-success' : 'text-danger'}">` +
+                `${data.has_target_url ? '&#10003;' : '&#10007;'} 目标URL</span>` +
+                (data.target_url ? ` <code>${escapeHtml(data.target_url)}</code>` : ' <small class="text-muted">未配置 TRANSFER_TARGET_URL</small>'),
+                `<span class="${data.has_token ? 'text-success' : 'text-danger'}">` +
+                `${data.has_token ? '&#10003;' : '&#10007;'} 共享密钥</span>` +
+                (!data.has_token ? ' <small class="text-muted">未配置 TRANSFER_SECRET_TOKEN</small>' : ''),
+            ];
+            el.innerHTML = items.join('<span class="mx-3">|</span>');
+
+            if (data.ready) {
+                document.getElementById('sendBtn').removeAttribute('disabled');
+            }
+        })
+        .catch(() => {
+            document.getElementById('config-status').innerHTML = '<span class="text-danger">加载失败</span>';
+        });
+}
+
+// ============================================================
+// 可发送的任务
+// ============================================================
+function loadSendableTasks() {
+    const container = document.getElementById('tasks-list');
+    fetch('/admin/api/transfer/sendable-tasks')
+        .then(r => r.json())
+        .then(tasks => {
+            if (tasks.error) { container.innerHTML = `<div class="alert alert-danger">${escapeHtml(tasks.error)}</div>`; return; }
+            if (tasks.length === 0) { container.innerHTML = '<div class="text-muted">没有已完成的处理任务</div>'; return; }
+
+            let html = '<div class="table-responsive"><table class="table table-sm table-hover">';
+            html += '<thead><tr><th style="width:40px"><input type="checkbox" id="checkall-tasks"></th><th>大学名称</th><th>中文名</th><th>任务类型</th><th>文件名</th><th>完成时间</th></tr></thead><tbody>';
+            tasks.forEach(t => {
+                const typeBadge = t.task_type === 'OCR_IMPORT'
+                    ? '<span class="badge bg-info">OCR导入</span>'
+                    : '<span class="badge bg-primary">PDF处理</span>';
+                const completedAt = t.completed_at ? new Date(t.completed_at).toLocaleString() : '-';
+                html += `<tr>
+                    <td><input type="checkbox" class="task-check" value="${escapeHtml(t.university_id)}" data-name="${escapeHtml(t.university_name)}"></td>
+                    <td>${escapeHtml(t.university_name)}</td>
+                    <td>${escapeHtml(t.university_name_zh)}</td>
+                    <td>${typeBadge}</td>
+                    <td><small>${escapeHtml(t.original_filename)}</small></td>
+                    <td><small>${completedAt}</small></td>
+                </tr>`;
+            });
+            html += '</tbody></table></div>';
+            container.innerHTML = html;
+
+            // 全选复选框
+            document.getElementById('checkall-tasks').addEventListener('change', function() {
+                document.querySelectorAll('.task-check').forEach(cb => cb.checked = this.checked);
+            });
+        })
+        .catch(e => { container.innerHTML = '<div class="text-danger">加载失败</div>'; });
+}
+
+// ============================================================
+// 可发送的大学
+// ============================================================
+function loadSendableUniversities() {
+    const container = document.getElementById('universities-list');
+    container.innerHTML = '<div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm" role="status"></div> 加载中...</div>';
+
+    fetch('/admin/api/transfer/sendable-universities')
+        .then(r => r.json())
+        .then(unis => {
+            if (unis.error) { container.innerHTML = `<div class="alert alert-danger">${escapeHtml(unis.error)}</div>`; return; }
+            if (unis.length === 0) { container.innerHTML = '<div class="text-muted">没有大学数据</div>'; return; }
+
+            let html = '<div class="table-responsive"><table class="table table-sm table-hover">';
+            html += '<thead><tr><th style="width:40px"><input type="checkbox" id="checkall-unis"></th><th>大学名称</th><th>中文名</th><th>PDF</th><th>截止日期</th><th>创建时间</th></tr></thead><tbody>';
+            unis.forEach(u => {
+                const deadline = u.deadline ? new Date(u.deadline).toLocaleDateString() : '-';
+                const createdAt = u.created_at ? new Date(u.created_at).toLocaleString() : '-';
+                const pdfBadge = u.has_pdf ? '<span class="badge bg-success">有</span>' : '<span class="badge bg-secondary">无</span>';
+                const disabled = u.has_pdf ? '' : 'disabled';
+                html += `<tr>
+                    <td><input type="checkbox" class="uni-check" value="${escapeHtml(u.university_id)}" data-name="${escapeHtml(u.university_name)}" ${disabled}></td>
+                    <td>${escapeHtml(u.university_name)}</td>
+                    <td>${escapeHtml(u.university_name_zh)}</td>
+                    <td>${pdfBadge}</td>
+                    <td>${deadline}</td>
+                    <td><small>${createdAt}</small></td>
+                </tr>`;
+            });
+            html += '</tbody></table></div>';
+            container.innerHTML = html;
+
+            document.getElementById('checkall-unis').addEventListener('change', function() {
+                document.querySelectorAll('.uni-check:not(:disabled)').forEach(cb => cb.checked = this.checked);
+            });
+        })
+        .catch(e => { container.innerHTML = '<div class="text-danger">加载失败</div>'; });
+}
+
+// 延迟加载大学 tab
+document.getElementById('tab-universities').addEventListener('shown.bs.tab', function() {
+    if (document.querySelectorAll('.uni-check').length === 0) {
+        loadSendableUniversities();
+    }
+});
+
+// ============================================================
+// 全选切换
+// ============================================================
+function toggleSelectAll(type) {
+    const selector = type === 'tasks' ? '.task-check' : '.uni-check:not(:disabled)';
+    const checkboxes = document.querySelectorAll(selector);
+    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+    checkboxes.forEach(cb => cb.checked = !allChecked);
+}
+
+// ============================================================
+// 发送
+// ============================================================
+function sendSelected() {
+    // 收集选中的 university_ids
+    const activeTab = document.querySelector('#send-tabs .nav-link.active').id;
+    const selector = activeTab === 'tab-tasks' ? '.task-check:checked' : '.uni-check:checked';
+    const checked = document.querySelectorAll(selector);
+
+    if (checked.length === 0) {
+        alert('请先选择要传输的数据');
+        return;
+    }
+
+    const ids = Array.from(checked).map(cb => cb.value);
+    const names = Array.from(checked).map(cb => cb.dataset.name);
+
+    if (!confirm(`确定要传输以下 ${ids.length} 个大学到生产服务器？\n\n${names.join('\n')}`)) {
+        return;
+    }
+
+    const btn = document.getElementById('sendBtn');
+    const spinner = document.getElementById('sendSpinner');
+    const status = document.getElementById('sendStatus');
+    btn.disabled = true;
+    spinner.classList.remove('d-none');
+    status.textContent = '传输中...';
+
+    fetch('/admin/api/transfer/send', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': getCSRFToken() || '',
+        },
+        body: JSON.stringify({ university_ids: ids }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        spinner.classList.add('d-none');
+
+        if (data.error) {
+            status.textContent = '';
+            alert('传输失败: ' + data.error);
+            return;
+        }
+
+        status.textContent = data.message || '完成';
+        showResults(data.results || []);
+        loadConflicts(); // 刷新冲突列表
+    })
+    .catch(e => {
+        btn.disabled = false;
+        spinner.classList.add('d-none');
+        status.textContent = '';
+        alert('传输请求失败: ' + e.message);
+    });
+}
+
+function showResults(results) {
+    const section = document.getElementById('result-section');
+    const body = document.getElementById('result-body');
+    section.classList.remove('d-none');
+
+    let html = '<div class="table-responsive"><table class="table table-sm">';
+    html += '<thead><tr><th>大学</th><th>状态</th><th>消息</th></tr></thead><tbody>';
+    results.forEach(r => {
+        const statusClass = r.success ? (r.status === 'conflict' ? 'table-warning' : 'table-success') : 'table-danger';
+        const statusText = {
+            'created': '新增',
+            'updated': '已覆盖',
+            'conflict': '冲突待处理',
+            'error': '失败',
+        }[r.status] || r.status;
+        html += `<tr class="${statusClass}">
+            <td>${escapeHtml(r.university_name || r.university_id)}</td>
+            <td><strong>${statusText}</strong></td>
+            <td>${escapeHtml(r.message)}</td>
+        </tr>`;
+    });
+    html += '</tbody></table></div>';
+    body.innerHTML = html;
+}
+
+// ============================================================
+// 冲突管理
+// ============================================================
+function loadConflicts() {
+    const body = document.getElementById('conflicts-body');
+    fetch('/admin/api/transfer/conflicts')
+        .then(r => r.json())
+        .then(conflicts => {
+            if (conflicts.error) { body.innerHTML = `<div class="alert alert-danger">${escapeHtml(conflicts.error)}</div>`; return; }
+            if (conflicts.length === 0) {
+                body.innerHTML = '<div class="text-muted text-center py-3">没有待处理的冲突</div>';
+                return;
+            }
+
+            let html = '<div class="table-responsive"><table class="table table-sm table-hover">';
+            html += '<thead><tr><th>大学名称</th><th>传入中文名</th><th>传入截止日期</th><th>传入PDF</th><th>现有PDF</th><th>接收时间</th><th>操作</th></tr></thead><tbody>';
+            conflicts.forEach(c => {
+                const receivedAt = c.received_at ? new Date(c.received_at).toLocaleString() : '-';
+                const deadline = c.incoming_deadline ? new Date(c.incoming_deadline).toLocaleDateString() : '-';
+                html += `<tr id="conflict-${c._id}">
+                    <td><strong>${escapeHtml(c.university_name)}</strong></td>
+                    <td>${escapeHtml(c.incoming_university_name_zh)}</td>
+                    <td>${deadline}</td>
+                    <td><code>${escapeHtml(c.incoming_checksum)}</code></td>
+                    <td><code>${escapeHtml(c.existing_checksum)}</code></td>
+                    <td><small>${receivedAt}</small></td>
+                    <td>
+                        <button class="btn btn-sm btn-success" onclick="resolveConflict('${c._id}', 'accept')">接受</button>
+                        <button class="btn btn-sm btn-danger" onclick="resolveConflict('${c._id}', 'reject')">拒绝</button>
+                    </td>
+                </tr>`;
+            });
+            html += '</tbody></table></div>';
+            body.innerHTML = html;
+        })
+        .catch(() => { body.innerHTML = '<div class="text-danger">加载失败</div>'; });
+}
+
+function resolveConflict(conflictId, action) {
+    const actionText = action === 'accept' ? '接受（用传入数据覆盖现有数据）' : '拒绝（丢弃传入数据）';
+    if (!confirm(`确定要${actionText}？`)) return;
+
+    fetch(`/admin/api/transfer/conflicts/${conflictId}/resolve`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': getCSRFToken() || '',
+        },
+        body: JSON.stringify({ action: action }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) {
+            alert('操作失败: ' + data.error);
+        } else {
+            // 移除该行
+            const row = document.getElementById('conflict-' + conflictId);
+            if (row) row.remove();
+            // 如果没有更多冲突
+            if (document.querySelectorAll('[id^="conflict-"]').length === 0) {
+                loadConflicts();
+            }
+        }
+    })
+    .catch(e => alert('请求失败: ' + e.message));
+}
+
+// ============================================================
+// 工具函数
+// ============================================================
+function escapeHtml(text) {
+    if (text === null || typeof text === 'undefined') return '';
+    return text.toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#x27;');
+}
+</script>
+{% endblock %}

@@ -24,6 +24,7 @@ import routes.admin.blogs
 import routes.admin.chat_logs
 import routes.admin.dashboard
 import routes.admin.pdf_processor
+import routes.admin.transfer
 import routes.admin.universities
 import routes.blog.cache
 import routes.blog.views
