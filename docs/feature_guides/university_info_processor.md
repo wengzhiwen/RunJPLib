@@ -6,59 +6,84 @@
 
 - **自动化处理流程**: 基于工作流引擎，将复杂的处理过程分解为多个独立的、可管理的步骤。
 - **异步任务处理**: 所有 PDF 处理都在后台异步执行，管理员可以提交多个任务而无需等待。
-- **多种处理模式**: 支持“普通模式”（实时处理）和“批量模式”（成本优化），以适应不同场景的需求。
+- **多种处理模式**: 支持"普通模式"（实时处理）和"批量模式"（成本优化，约节省 50%）。
 - **可选参考校对**: PDF 上传时可附带参考 Markdown（B），用于在 OCR 后对结果进行校对补强。
 - **智能名称识别**: 在处理过程中，利用 AI 自动识别并提取大学的简体中文全称。
+- **并发任务处理**: 支持可配置的最大并发任务数，充分利用等待时间。
 - **任务管理与监控**: 提供完整的后台界面，用于监控任务进度、查看日志，并支持从任意步骤重启失败的任务。
 
-## 详细实现：Agent 协作工作流
+## 处理流水线：Agent 协作工作流
 
-该功能的核心是 `utils/pdf_processor.py` 中的 `PDFProcessor` 类，它基于 `buffalo-workflow` 工作流引擎来编排整个处理流程。任务的每一步都由一个专门的工具或 Agent 来执行。
+核心是 `utils/document/pdf_processor.py` 中的 `PDFProcessor` 类，基于 `buffalo-workflow` 工作流引擎编排处理流程。每个步骤由专门的工具或 Agent 执行。
 
 ### 工作流步骤详解
 
 1.  **PDF 转图片 (`01_pdf2img`)**
-    - **工具**: `pdf2image` 库
-    - **职责**: 接收上传的 PDF 文件路径，将其每一页转换为指定 DPI 的 PNG 图片，为后续的 OCR 处理做准备。
+    - 使用 `pdf2image` 库将 PDF 每一页转换为指定 DPI 的 PNG 图片。
 
 2.  **OCR 识别 (`02_ocr`)**
-    - **职责**: 将图片中的文字内容识别出来。
-    - **工具 (普通模式)**: `utils/ai/ocr_tool.py` 中的 `ImageOcrProcessor`。它会遍历所有图片，逐一调用 OpenAI Vision API 进行文字识别。
-    - **工具 (批量模式)**: `utils/ai/batch_ocr_tool.py` 中的 `BatchOcrProcessor`。它会先将所有页面的识别请求打包，通过 OpenAI Batch API 一次性提交，以实现成本优化。
-    - **可选校对补强**: 如果上传了参考 Markdown（B），则在 OCR 完成后使用 `OPENAI_ANALYSIS_MODEL` 对 A/B 进行校对补强，输出校对后的日文 Markdown（C）。
+    - **普通模式**: `ImageOcrProcessor` 逐一调用 OpenAI Vision API 进行文字识别。
+    - **批量模式**: `BatchOcrProcessor` 将识别请求打包，通过 OpenAI Batch API 一次性提交。智能分批（每批最多 40 页），每 5 分钟检查批次状态，失败页面自动用普通模式补救。
+    - **可选校对补强**: 如果上传了参考 Markdown（B），OCR 完成后使用 `OPENAI_ANALYSIS_MODEL` 对 A/B 进行校对补强，输出校对后的日文 Markdown（C）。
 
 3.  **翻译 Agent (`03_translate`)**
-    - **Agent**: `utils/ai/translate_tool.py` 中的 `DocumentTranslator` 实际上是一个 **翻译 Agent**。
-    - **Prompt**: 它接收上一步 OCR 识别出的全部日文文本，并使用一个精心设计的 Prompt 来调用 OpenAI API。该 Prompt 指示 AI：
-        - 将所有日文文本翻译成流畅、准确的简体中文。
-        - 参考 `TRANSLATE_TERMS_FILE` 中提供的术语表，确保专业词汇（如“出願”、“併願”）翻译的准确性和一致性。
-        - 保持原文的格式，如列表、标题等。
-    - **输出**: Agent 的输出是完整的简体中文 Markdown 文本。
+    - `DocumentTranslator` 接收 OCR 识别的日文文本，参考 `TRANSLATE_TERMS_FILE` 术语表，翻译为简体中文 Markdown。
 
 4.  **分析 Agent (`04_analysis`)**
-    - **Agent**: `utils/ai/analysis_tool.py` 中的 `DocumentAnalyzer` 是一个 **分析 Agent**。
-    - **Prompt**: 这是提取结构化信息的关键步骤。它向 OpenAI API 提交一个包含多个问题的复杂 Prompt，其核心指令是：
-        - “你是一位日本大学招生专家，请根据以下翻译后的招生简章，回答下列问题...”
-        - 问题列表从 `ANALYSIS_QUESTIONS_FILE` 文件中加载，涵盖申请条件、学费、日程、所需材料等。
-        - **一个至关重要的指令是**：“请在报告的开头，明确标识出这所大学的简体中文全称，格式为：`大学中文名称：[大学的简体中文全名]`”。
-    - **输出**: Agent 的输出是一份结构化的分析报告，其中包含了所有问题的答案以及明确标识的大学中文名。
+    - `DocumentAnalyzer` 向 AI 提交包含多个问题的复杂 Prompt（问题列表从 `ANALYSIS_QUESTIONS_FILE` 加载），生成结构化分析报告。
+    - 报告开头标识大学简体中文全称，供后续步骤提取。
 
 5.  **发布 (`05_output`)**
-    - **职责**: 将所有处理完成的数据整理并存入 MongoDB。
-    - **流程**:
-        1.  **提取中文名**: 从分析 Agent 的报告中，通过正则表达式精确提取 `大学中文名称：` 后的大学名称。
-        2.  **存储 PDF**: 将原始 PDF 文件上传到 GridFS。
-        3.  **写入数据库**: 创建一个新的 `universities` 文档，将所有处理结果（OCR 文本、翻译文本、分析报告、大学中日文名、GridFS 文件 ID 等）一并存入数据库。
+    - 从分析报告中提取中文名，将原始 PDF 上传到 GridFS，创建 `universities` 文档并存入数据库。
 
-## 校对追踪与 Proof 归档
+## 校对补强与 Proof 归档
 
-当发生“校对补强”时，系统会在项目根目录 `proof/` 下生成一个以 `时间戳_大学名称` 命名的文件夹，并保存：
+当发生"校对补强"时，系统在项目根目录 `proof/` 下生成一个以 `时间戳_大学名称` 命名的文件夹，保存三份文件：
 
 - `A_original.md`: OCR 原始结果（A）
 - `B_reference.md`: 上传的参考 Markdown（B）
 - `C_refined.md`: 校对后的结果（C）
 
-## 任务管理与异步处理
+用于质量追踪和事后审计。
 
-- **任务管理器 (`utils/task_manager.py`)**: 一个单例 `TaskManager` 负责管理所有 PDF 处理任务的生命周期。它维护一个任务队列，并使用后台线程 (`ThreadPoolExecutor`) 来逐一执行任务，实现了任务的异步处理。
-- **数据库 (`processing_tasks` 集合)**: 每个任务的状态、日志、当前步骤等信息都会被实时记录到这个集合中，后台管理界面的任务列表和详情页就是通过查询这个集合来展示信息的。
+## 招生信息再生成
+
+管理员可以在编辑大学信息页面，对已有的分析报告进行重新生成：
+
+1. **入口**: 在"编辑招生信息"页面的分析报告区域，点击"再生成分析报告"按钮。
+2. **编辑提示词**: 跳转到再生成页面，系统预填充当前的 `analysis_questions` 内容，管理员可自由编辑。
+3. **后台执行**: 提交后创建 `REGENERATE_ANALYSIS` 类型的后台任务，读取已有的 `content.translated_md` 作为输入。
+4. **覆盖写入**: 任务成功后，新报告覆盖写入 `content.report_md`（最后写赢策略）。
+
+**设计约束**:
+- 再生成任务不支持断点重启，失败后需手动重新提交。
+- 提示词不持久化，仅用于本次任务。
+- 同一大学可并发提交多个再生成任务。
+
+## 任务管理
+
+### 任务类型
+
+| 类型 | 说明 |
+|------|------|
+| `PDF_PROCESSING` | 完整的 PDF 五步处理流程 |
+| `OCR_IMPORT` | 本地 OCR 结果导入，从翻译步骤开始 |
+| `TAG_UNIVERSITIES` | 大学标签批量生成 |
+| `REGENERATE_ANALYSIS` | 分析报告再生成 |
+| `REFINE_AND_REGENERATE` | 校对补强 + 再生成 |
+
+### 并发调度
+
+- 最大并发数通过 `PDF_MAX_CONCURRENT_TASKS` 环境变量控制（默认 1）。
+- 任务进入长时间等待时（如批量 OCR 轮询），通过 `notify_task_is_waiting()` 通知管理器检查队列，尝试启动新任务。
+
+### PID 监控与中断恢复
+
+- 任务启动时记录进程 ID (`pid` 字段)。
+- 后台 API 检查 PID 是否存活，自动将"僵尸"任务标记为 `interrupted`。
+- 管理员可从任意步骤重启 `interrupted` 或 `failed` 的任务。
+- `REGENERATE_ANALYSIS` 类型不支持断点重启。
+
+### 独立任务日志
+
+`TaskManager` 和 `PDFProcessor` 共享独立的按日分割日志文件 `log/TaskManager_YYYYMMDD.log`，详细记录任务的创建、入队、出队、启动、等待和完成过程。

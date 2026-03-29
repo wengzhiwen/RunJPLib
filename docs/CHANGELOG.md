@@ -1,3 +1,19 @@
+## [文档更新] 全面更新项目文档 - 2026-03-29
+
+### 变更
+- 删除已完成的历史计划文档（`routes_refactoring_plan.md`、`utils_refactoring_plan.md`、`feature_regeneration_analysis.md`）
+- 全面更新 `system_overview.md`：补充完整技术栈、功能模块和项目结构
+- 全面更新 `technical_architecture.md`：补充 Routes 模块架构、任务管理器（多任务类型、并发调度、PID 监控）、安全架构概要
+- 更新 `database_design.md`：补充所有集合的字段说明和索引策略
+- 更新 `university_info_processor.md`：合并再生成功能、校对补强与 Proof 归档、并发调度
+- 更新 `admin_panel.md`：补充标签工具、再生成、聊天履历、TOP30 访问等新功能
+- 更新 `blog_management.md`：补充 Formatter Agent、内容缩减器、429 错误处理
+- 更新 `university_chat.md`：补充向量索引自动更新、内存优化、并行搜索
+- 更新 `deployment_guide.md`：补充完整环境变量表和核心依赖
+- 更新开发者指南（README、logging、tools、recommendation_algorithm）
+
+---
+
 ## [新功能] Admin可以再次生成基础分析报告 - 2025-09-06
 
 ### Added
