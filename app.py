@@ -65,7 +65,7 @@ def setup_logging():
 
     # 文件处理器 - 根据环境调整日志文件大小
     max_bytes = int(os.getenv('LOG_MAX_BYTES', '10485760'))  # 默认10MB
-    backup_count = int(os.getenv('LOG_BACKUP_COUNT', '50'))
+    backup_count = int(os.getenv('LOG_BACKUP_COUNT', '14'))
 
     file_handler = RotatingFileHandler(os.path.join(log_dir, 'app.log'), maxBytes=max_bytes, backupCount=backup_count, encoding='utf-8')
     file_handler.setLevel(app_log_level)

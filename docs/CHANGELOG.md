@@ -1,3 +1,14 @@
+## [其他] 切换至 Gunicorn 生产服务器并治理日志 - 2026-03-30
+
+### 变更
+- 新增 `wsgi.py`，作为 Gunicorn 启动入口
+- 更新 `systemd/lacus.service`：由 `python app.py` 改为 Gunicorn（4 workers × 2 threads）
+- 重写 `utils/core/logging.py`：统一切换为 `TimedRotatingFileHandler`（按天轮转、自动清理），修复 `setup_task_logger` 和 `setup_retrieval_logger` 日志永不清理的问题；去除生产环境下的 console handler
+- `app.py` 的 `RotatingFileHandler` backupCount 从 50 降至 14
+- 清理历史积压旧日志文件
+
+---
+
 ## [文档更新] 全面更新项目文档 - 2026-03-29
 
 ### 变更

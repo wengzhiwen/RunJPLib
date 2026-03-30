@@ -20,3 +20,4 @@ llama-index-embeddings-openai>=0.1.0
 llama-index-vector-stores-chroma>=0.1.0
 chromadb>=0.4.0
 cachetools>=5.0.0
+gunicorn>=21.0.0
